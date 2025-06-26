@@ -2,7 +2,18 @@
 const nextConfig = {
   experimental: {
     reactCompiler: true,
-    ppr: 'incremental'
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "static.wikia.nocookie.net",
+      },
+      {
+        protocol: "https",
+        hostname: "instagram.ftbs10-1.fna.fbcdn.net",
+      },
+    ],
   },
 };
 
