@@ -19,9 +19,9 @@ function Birthdays() {
             alt=""
             width={40}
             height={40}
-            className="w-10 h-10 rounded-full object-cover"
+            className="w-10 h-10 rounded-full object-cover cursor-pointer"
           ></Image>
-          <span className="font-semibold">Goga Gureshidze</span>
+          <span className="font-semibold cursor-pointer">Goga Gureshidze</span>
         </div>
 
         <div className="flex items-center gap-3 justify-end">
@@ -32,9 +32,11 @@ function Birthdays() {
       </div>
 
       <div className="p-4 bg-slate-100 rounded-lg flex items-center gap-4">
-        <Cake className="w-10 h-10 text-rose-300" />
+        <Cake className="w-10 h-10 text-rose-300 cursor-pointer" />
         <Link href="/" className="flex flex-col gap-1 text-xs">
-          <span className="text-gray-700 font-semibold">Upcoming Birthdays</span>
+          <span className="text-gray-700 font-semibold">
+            Upcoming Birthdays
+          </span>
           <span className="text-gray-500">See other 3 upcoming birthdays!</span>
         </Link>
       </div>

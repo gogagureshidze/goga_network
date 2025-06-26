@@ -1,5 +1,5 @@
-import Image from 'next/image';
-import React from 'react'
+import Image from "next/image";
+import React from "react";
 import {
   SmilePlus,
   ImagePlus,
@@ -16,7 +16,7 @@ function AddPost() {
         alt=""
         width={40}
         height={40}
-        className="w-12 h-12 object-cover rounded-full ring-orange-200 ring-2"
+        className="cursor-pointer w-12 h-12 object-cover rounded-full ring-orange-200 ring-2"
       />
 
       <div className="flex-1">
@@ -55,4 +55,4 @@ function AddPost() {
   );
 }
 
-export default AddPost
+export default AddPost;

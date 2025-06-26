@@ -22,9 +22,11 @@ function FriendRequests() {
             alt=""
             width={40}
             height={40}
-            className="w-10 h-10 rounded-full object-cover"
+            className="w-10 h-10 rounded-full object-cove cursor-pointer"
           ></Image>
-          <span className="font-semibold">Goga Gureshidze</span>
+          <span className="font-semibold cursor-pointer cursor-pointer">
+            Goga Gureshidze
+          </span>
         </div>
 
         <div className="flex items-center gap-3 justify-end">
@@ -42,9 +44,9 @@ function FriendRequests() {
             alt=""
             width={40}
             height={40}
-            className="w-10 h-10 rounded-full object-cover"
+            className="w-10 h-10 rounded-full object-cover cursor-pointer"
           ></Image>
-          <span className="font-semibold">Mate Diakonidze</span>
+          <span className="font-semibold cursor-pointer">Mate Diakonidze</span>
         </div>
 
         <div className="flex items-center gap-3 justify-end">
@@ -62,9 +64,9 @@ function FriendRequests() {
             alt=""
             width={40}
             height={40}
-            className="w-10 h-10 rounded-full object-cover"
+            className="w-10 h-10 rounded-full object-cover cursor-pointer"
           ></Image>
-          <span className="font-semibold">Zaal Chkheidze</span>
+          <span className="font-semibold cursor-pointer">Zaal Chkheidze</span>
         </div>
 
         <div className="flex items-center gap-3 justify-end">
