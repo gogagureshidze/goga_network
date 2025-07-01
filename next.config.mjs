@@ -13,6 +13,10 @@ const nextConfig = {
         protocol: "https",
         hostname: "instagram.ftbs10-1.fna.fbcdn.net",
       },
+      {
+        protocol: "https",
+        hostname: "static.vecteezy.com",
+      },
     ],
   },
 };

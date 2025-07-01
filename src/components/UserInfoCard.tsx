@@ -30,14 +30,14 @@ function UserInfoCard({ userId }: { userId: string }) {
           deserunt, eum deleniti. Inventore.a
         </p>
         <div className="flex items-center gap-2">
-          <MapPinHouse className="text-green-500"/>
+          <MapPinHouse className="text-green-500" />
           <span>
             Living in <b>London</b>
           </span>
         </div>
 
         <div className="flex items-center gap-2">
-          <University className="text-blue-500"/>
+          <University className="text-blue-500" />
           <span>
             Went to <b>KIU</b> University of Medicine
           </span>
@@ -56,18 +56,21 @@ function UserInfoCard({ userId }: { userId: string }) {
               anna_ambroladze
             </Link>
           </div>
-
-          <div className="flex gap-1 items-center">
-            <CalendarHeart className="text-rose-400" />
-            <span>Joined November 2024</span>
-          </div>
         </div>
         <button className="bg-orange-300 hover:bg-rose-300 text-white font-semibold text-sm px-4 py-2 rounded-lg shadow-sm transition-all duration-200">
           Follow
         </button>
-        <span className="text-red-600 self-end text-xs cursor-pointer hover:underline">
-          Block User!
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="text-red-600 self-end text-xs cursor-pointer hover:underline">
+            Block User!
+          </span>
+          <div>
+            <div className="flex gap-1 items-center">
+              <CalendarHeart className="text-rose-400" />
+              <span className="text-xs">Joined November 2024</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
