@@ -2,22 +2,11 @@ import React from "react";
 import FriendRequests from "./FriendRequests";
 import Birthdays from "./Birthdays";
 import Ad from "./Ad";
-import UserInfoCard from "./UserInfoCard";
-import UserMediaCard from "./UserMediaCard";
 
-type RightMenuProps = {
-  userId: string;
-};
-
-const RightMenu = ({ userId }: { userId?: string }) => {
+const RightMenu = ({ children }: { children?: React.ReactNode }) => {
   return (
     <div className="flex flex-col gap-6">
-      {userId ? (
-        <>
-          <UserInfoCard userId={userId} />
-          <UserMediaCard userId={userId} />
-        </>
-      ) : null}
+      {children}
       <FriendRequests />
       <Birthdays />
       <Ad size="md" />

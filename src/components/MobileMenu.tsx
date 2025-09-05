@@ -1,9 +1,12 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
 
 function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
+  const { isLoaded, isSignedIn, user } = useUser();
 
   useEffect(() => {
     if (isOpen) {
@@ -16,6 +19,10 @@ function MobileMenu() {
       document.body.classList.remove("overflow-hidden");
     };
   }, [isOpen]);
+
+  if (!isLoaded) return null; // Wait until user is loaded
+
+  const username = user?.username || "unknown";
 
   return (
     <div className="md:hidden">
@@ -49,21 +56,50 @@ function MobileMenu() {
             : "h-0 opacity-0 pointer-events-none overflow-hidden"
         }`}
       >
-        {["Home", "Friends", "Profile", "Stories", "Login"].map((label, i) => (
-          <Link
-            key={label}
-            href={`/${label === "Home" ? "" : label.toLowerCase()}`}
-            onClick={() => setIsOpen(false)}
-            className={`text-xl font-bold hover:text-rose-900 text-rose-800 my-2 transition-all duration-700 ease-in-out transform ${
-              isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
-            } hover:-translate-y-[1px]`}
-            style={{ transitionDelay: `${i * 100}ms` }}
-          >
-            {label}
-          </Link>
-        ))}
-      </div>
-      
+        <Link
+          href="/"
+          onClick={() => setIsOpen(false)}
+          className={`text-xl font-bold hover:text-rose-900 text-rose-800 my-2 transition-all duration-700 ease-in-out transform ${
+            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+          } hover:-translate-y-[1px]`}
+          style={{ transitionDelay: `0ms` }}
+        >
+          Home
+        </Link>
+
+        <Link
+          href="/friends"
+          onClick={() => setIsOpen(false)}
+          className={`text-xl font-bold hover:text-rose-900 text-rose-800 my-2 transition-all duration-700 ease-in-out transform ${
+            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+          } hover:-translate-y-[1px]`}
+          style={{ transitionDelay: `100ms` }}
+        >
+          Friends
+        </Link>
+
+        <Link
+          href={`/profile/${username}`}
+          onClick={() => setIsOpen(false)}
+          className={`text-xl font-bold hover:text-rose-900 text-rose-800 my-2 transition-all duration-700 ease-in-out transform ${
+            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+          } hover:-translate-y-[1px]`}
+          style={{ transitionDelay: `200ms` }}
+        >
+          Profile
+        </Link>
+
+        <Link
+          href="/requests"
+          onClick={() => setIsOpen(false)}
+          className={`text-xl font-bold hover:text-rose-900 text-rose-800 my-2 transition-all duration-700 ease-in-out transform ${
+            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+          } hover:-translate-y-[1px]`}
+          style={{ transitionDelay: `300ms` }}
+        >
+           Requests
+        </Link>
+       </div>
     </div>
   );
 }

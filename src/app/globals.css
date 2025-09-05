@@ -11,3 +11,57 @@
 .scrollbar-hide{
      scrollbar-width: none;
 }
+
+@layer utilities {
+
+  /* Spinner loader */
+  .loader-spinner {
+    @apply relative h-20 aspect-square p-2.5 rounded-2xl box-border;
+    mask: conic-gradient(#000 0 0) content-box exclude, conic-gradient(#000 0 0);
+    -webkit-mask: conic-gradient(#000 0 0) content-box exclude, conic-gradient(#000 0 0);
+    filter: blur(12px);
+  }
+
+  .loader-spinner::before {
+    content: "";
+    @apply absolute inset-0;
+    background: repeating-conic-gradient(transparent 0 5%,
+        #fb7185,
+        /* rose-400 (pinkish red) */
+        transparent 20% 50%);
+    animation: spin-gradient 1.5s linear infinite;
+  }
+
+  @keyframes spin-gradient {
+    to {
+      rotate: 1turn;
+    }
+  }
+
+  /* Text loader */
+  .loader-text {
+    @apply relative w-fit font-mono font-bold text-[30px] text-orange-500;
+    text-shadow: 0 0 0 rgb(251 113 133),
+      /* rose-400 */
+      0 0 0 rgb(252, 135, 52),
+      /* orange-500 */
+      0 0 0 rgb(196, 45, 45);
+    /* rose-900 */
+    animation: text-glitch 1s infinite cubic-bezier(0.5, -2000, 0.5, 2000);
+  }
+
+  .loader-text::before {
+    content: "Loading...";
+  }
+
+  @keyframes text-glitch {
+
+    25%,
+    100% {
+      text-shadow:
+        0.03px -0.01px 0.01px rgb(251 113 133),
+        0.02px 0.02px 0 rgb(249 115 22),
+        -0.02px 0.02px 0 rgb(223, 34, 34);
+    }
+  }
+}

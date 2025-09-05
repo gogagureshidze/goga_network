@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                     String          @id
+  username               String?
+  avatar                 String?
+  cover                  String?
+  name                   String?
+  surname                String?
+  description            String?
+  city                   String?
+  school                 String?
+  work                   String?
+  website                String?
+  createdAt              DateTime        @default(now())
+  blockedBy              Block[]         @relation("BlocksReceived")
+  blocks                 Block[]         @relation("BlocksSent")
+  comments               Comment[]
+  followRequestsReceived FollowRequest[] @relation("FollowRequestsReceived")
+  followRequestsSent     FollowRequest[] @relation("FollowRequestsSent")
+  followers              Follower[]      @relation("UserFollowers")
+  followings             Follower[]      @relation("UserFollowings")
+  likes                  Like[]
+  posts                  Post[]
+  stories                Story[]
+  storyComments          StoryComment[]
+}
+
+model Post {
+  id        Int       @id @default(autoincrement())
+  desc      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  userId    String
+  comments  Comment[]
+  likes     Like[]
+  media     Media[]
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Media {
+  id      Int     @id @default(autoincrement())
+  url     String
+  safeUrl String?
+  type    String // "photo" | "video"
+  postId  Int
+  post    Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id        Int       @id @default(autoincrement())
+  desc      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  postId    Int
+  userId    String
+  parentId  Int?
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[] @relation("CommentReplies")
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes     Like[]
+
+  @@index([parentId], map: "Comment_parentId_fkey")
+  @@index([postId], map: "Comment_postId_fkey")
+  @@index([userId], map: "Comment_userId_fkey")
+}
+
+model Like {
+  id            Int      @id @default(autoincrement())
+  createdAt     DateTime @default(now())
+  userId        String
+  postId        Int?
+  commentId     Int?
+  storyId       Int?
+  storyCommentId Int?
+  comment       Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  post          Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  story         Story?   @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  storyComment  StoryComment? @relation(fields: [storyCommentId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([commentId], map: "Like_commentId_fkey")
+  @@index([postId], map: "Like_postId_fkey")
+  @@index([storyId], map: "Like_storyId_fkey")
+  @@index([userId], map: "Like_userId_fkey")
+  @@index([storyCommentId])
+}
+
+model Follower {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  followerId  String
+  followingId String
+  follower    User     @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("UserFollowings", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@index([followerId], map: "Follower_followerId_fkey")
+  @@index([followingId], map: "Follower_followingId_fkey")
+}
+
+model FollowRequest {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  senderId   String
+  receiverId String
+  receiver   User     @relation("FollowRequestsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+  sender     User     @relation("FollowRequestsSent", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId], map: "FollowRequest_receiverId_fkey")
+}
+
+model Block {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  blockerId String
+  blockedId String
+  blocked   User     @relation("BlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+  blocker   User     @relation("BlocksSent", fields: [blockerId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId], map: "Block_blockedId_fkey")
+}
+
+model Story {
+  id        Int      @id @default(autoincrement())
+  img       String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  likes     Like[]
+
+  comments  StoryComment[]   // 👈 add this
+}
+
+
+model StoryComment {
+  id        Int      @id @default(autoincrement())
+  desc      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  storyId   Int
+  userId    String
+  
+  // 👈 ADD THIS: For reply functionality
+  parentId  Int?
+  
+  // Relations
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes     Like[]
+  
+  // 👈 ADD THESE: Self-referencing relationships for replies
+  parent    StoryComment? @relation("StoryCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   StoryComment[] @relation("StoryCommentReplies")
+
+  @@index([storyId])
+  @@index([userId])
+  @@index([parentId])  // 👈 ADD THIS INDEX
+}

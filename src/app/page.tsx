@@ -3,8 +3,14 @@ import Feed from "@/components/Feed";
 import LeftMenu from "@/components/LeftMenu";
 import RightMenu from "@/components/RightMenu";
 import Stories from "@/components/Stories";
+import { currentUser } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
-const Homepage = () => {
+const Homepage = async () => {
+  const user = await currentUser();
+  if (!user) {
+    redirect("/sign-in");
+  }
   return (
     <div className="flex gap-6 pt-6">
 
