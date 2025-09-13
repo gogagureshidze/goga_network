@@ -1,7 +1,6 @@
 const { createServer } = require("http");
 const { Server } = require("socket.io");
-const { PrismaClient } = require("@prisma/client"); // works in CommonJS
-
+const { PrismaClient } = require("./src/generated/prisma");
 const prisma = new PrismaClient();
 
 const httpServer = createServer();
