@@ -1,18 +1,22 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Funnel_Display } from "next/font/google"; // Import the Funnel_Display font
 import "./globals.css";
 import Navbar from "@/components/Navbar";
-import { ClerkProvider } from "@clerk/nextjs";
 import GlobalLoader from "@/components/GlobalLoader";
 import PageTransition from "@/components/PageTransition";
 import prisma from "@/lib/client";
+import Providers from "./providers";
+import Footer from "@/components/Footer";
 
-const inter = Inter({ subsets: ["latin"] });
+// Define the Funnel Display font with the variable property
+const funnel_display = Funnel_Display({
+  subsets: ["latin"],
+  variable: "--font-funnel-display",
+});
 
 export const metadata: Metadata = {
   title: "Goga_Network Social Media App",
   description: "Social media app built with Next.js",
-  
 };
 
 export default async function RootLayout({
@@ -20,7 +24,6 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Fetch all users from Prisma and select only the necessary fields
   const rawUsers = await prisma.user.findMany({
     select: {
       id: true,
@@ -30,8 +33,7 @@ export default async function RootLayout({
     },
   });
 
-  // Ensure all fields are strings (not null)
-  const users = rawUsers.map(user => ({
+  const users = rawUsers.map((user) => ({
     id: user.id,
     username: user.username ?? "",
     name: user.name ?? "",
@@ -39,25 +41,31 @@ export default async function RootLayout({
   }));
 
   return (
-    <html lang="en">
+    <html lang="en" className={funnel_display.variable}>
       <head>
-        {/* Prevent mobile zoom on inputs by setting maximum-scale */}
+        {/* ADD THIS HERE: PRECONNECT HINTS */}
+        <link rel="preconnect" href="https://img.clerk.com" />
+        <link
+          rel="preconnect"
+          href="https://faithful-goblin-72.clerk.accounts.dev"
+        />
+        {/* END OF ADDITION */}
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
         />
       </head>
-      <body className={inter.className}>
-        <ClerkProvider>
+      <body className="font-sans">
+        <Providers>
           <div className="w-full px-4 text-orange-50 bg-rose-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64">
-            {/* Pass the fetched users to Navbar */}
             <Navbar users={users} />
           </div>
-          <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64">
+          <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
             <GlobalLoader />
             <PageTransition>{children}</PageTransition>
           </div>
-        </ClerkProvider>
+          <Footer />
+        </Providers>
       </body>
     </html>
   );

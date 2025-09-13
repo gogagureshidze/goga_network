@@ -4,191 +4,87 @@ import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 
-// This function handles liking and unliking a story.
-export const likeStory = async (storyId: number, isLiking: boolean) => {
-  const user = await currentUser();
-  const userId = user?.id;
-
-  if (!userId) {
-    throw new Error("User not authenticated.");
-  }
-
-  try {
-    if (isLiking) {
-      // Create a new like record for the story
-      await prisma.like.create({
-        data: {
-          userId: userId,
-          storyId: storyId,
-        },
-      });
-    } else {
-      // Delete the like record for the story
-      const likeRecord = await prisma.like.findFirst({
-        where: {
-          userId: userId,
-          storyId: storyId,
-        },
-      });
-
-      if (likeRecord) {
-        await prisma.like.delete({
-          where: {
-            id: likeRecord.id,
-          },
-        });
-      }
-    }
-
-    // Revalidate the path to update the UI
-    revalidatePath("/");
-  } catch (err) {
-    console.error("Failed to like/unlike story:", err);
-    throw err;
-  }
-};
-
 // This function handles liking and unliking a comment on a story.
-export const likeStoryComment = async (
-  commentId: number,
-  isLiking: boolean
-) => {
-  const user = await currentUser();
+export async function likeStoryComment(commentId: number, isLiking: boolean) {
+  const user = await currentUser(); // get current user
   const userId = user?.id;
+  if (!userId) throw new Error("Not authenticated");
 
-  if (!userId) {
-    throw new Error("User not authenticated.");
-  }
+  // 1️⃣ Check if the user exists in DB
+  const dbUser = await prisma.user.findUnique({ where: { id: userId } });
+  if (!dbUser) throw new Error("User not found in database");
 
-  try {
-    if (isLiking) {
-      // Create a new like record for the comment
+  // 2️⃣ Check if the comment exists
+  const comment = await prisma.storyComment.findUnique({
+    where: { id: commentId },
+  });
+  if (!comment) throw new Error("Comment does not exist");
+
+  // 3️⃣ Check if a like already exists
+  const existingLike = await prisma.like.findFirst({
+    where: { storyCommentId: commentId, userId },
+  });
+
+  if (isLiking) {
+    // Add like only if it doesn't exist
+    if (!existingLike) {
       await prisma.like.create({
         data: {
-          userId: userId,
-          commentId: commentId,
+          storyCommentId: commentId,
+          userId,
         },
       });
-    } else {
-      // Find the like record first by userId and commentId
-      const likeRecord = await prisma.like.findFirst({
-        where: {
-          userId: userId,
-          commentId: commentId,
-        },
-      });
-
-      if (likeRecord) {
-        await prisma.like.delete({
-          where: {
-            id: likeRecord.id,
-          },
-        });
-      }
     }
-
-    // Revalidate the path to update the UI
-    revalidatePath("/");
-  } catch (err) {
-    console.error("Failed to like/unlike story comment:", err);
-    throw err;
+  } else {
+    // Remove like if it exists
+    if (existingLike) {
+      await prisma.like.delete({
+        where: { id: existingLike.id },
+      });
+    }
   }
-};
+  revalidatePath("/");
+
+  return { success: true };
+}
 
 // This function adds a new comment to a story.
 export const addStoryComment = async (storyId: number, desc: string) => {
   const user = await currentUser();
-  const userId = user?.id;
+  if (!user) throw new Error("User not authenticated.");
 
-  if (!userId) {
-    throw new Error("User not authenticated.");
-  }
-
-  if (!desc.trim()) {
-    throw new Error("Comment cannot be empty.");
-  }
+  if (!desc.trim()) throw new Error("Comment cannot be empty.");
 
   try {
     const newComment = await prisma.storyComment.create({
       data: {
-        desc: desc.trim(),
-        userId: userId,
-        storyId: storyId,
+        desc,
+        storyId,
+        userId: user.id,
       },
       include: {
         user: true,
         likes: {
           select: { userId: true },
         },
-        replies: {
-          include: {
-            user: true,
-            likes: {
-              select: { userId: true },
-            },
-          },
-        },
       },
     });
 
-    // Revalidate the path to update the UI
+    const commentWithIds = {
+      ...newComment,
+      storyId,
+      userId: user.id,
+    };
+
     revalidatePath("/");
-    return newComment;
+    return commentWithIds;
   } catch (err) {
     console.error("Failed to add story comment:", err);
     throw err;
   }
 };
 
-// NEW: This function adds a reply to a story comment
-export const addStoryCommentReply = async (commentId: number, desc: string) => {
-  const user = await currentUser();
-  const userId = user?.id;
-
-  if (!userId) {
-    throw new Error("User not authenticated.");
-  }
-
-  if (!desc.trim()) {
-    throw new Error("Reply cannot be empty.");
-  }
-
-  try {
-    // First, get the original comment to find the storyId
-    const parentComment = await prisma.storyComment.findUnique({
-      where: { id: commentId },
-      select: { storyId: true },
-    });
-
-    if (!parentComment) {
-      throw new Error("Parent comment not found.");
-    }
-
-    const newReply = await prisma.storyComment.create({
-      data: {
-        desc: desc.trim(),
-        userId: userId,
-        storyId: parentComment.storyId,
-        parentId: commentId, // This makes it a reply
-      },
-      include: {
-        user: true,
-        likes: {
-          select: { userId: true },
-        },
-      },
-    });
-
-    // Revalidate the path to update the UI
-    revalidatePath("/");
-    return newReply;
-  } catch (err) {
-    console.error("Failed to add story comment reply:", err);
-    throw err;
-  }
-};
-
-// Optional: Function to delete a story comment or reply
+// Function to delete a story comment
 export const deleteStoryComment = async (commentId: number) => {
   const user = await currentUser();
   const userId = user?.id;
@@ -208,11 +104,8 @@ export const deleteStoryComment = async (commentId: number) => {
       throw new Error("Comment not found.");
     }
 
-    if (comment.userId !== userId) {
-      throw new Error("You can only delete your own comments.");
-    }
 
-    // Delete the comment (this will also delete all replies due to cascade)
+    // Delete the comment
     await prisma.storyComment.delete({
       where: { id: commentId },
     });
@@ -224,27 +117,17 @@ export const deleteStoryComment = async (commentId: number) => {
   }
 };
 
-// Optional: Function to get comments with replies for a specific story
+// Function to get comments for a specific story
 export const getStoryComments = async (storyId: number) => {
   try {
     const comments = await prisma.storyComment.findMany({
       where: {
         storyId: storyId,
-        parentId: null, // Only get top-level comments
       },
       include: {
         user: true,
         likes: {
           select: { userId: true },
-        },
-        replies: {
-          include: {
-            user: true,
-            likes: {
-              select: { userId: true },
-            },
-          },
-          orderBy: { createdAt: "asc" },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -256,3 +139,104 @@ export const getStoryComments = async (storyId: number) => {
     throw err;
   }
 };
+
+// Record story view
+
+export async function recordStoryView(storyId: number, userId: string) {
+  return prisma.storyView.upsert({
+    where: { storyId_userId: { storyId, userId } },
+    update: {},
+    create: { storyId, userId },
+  });
+}
+
+
+// ✨ NEW: Get story activity (views and likes)
+export async function getStoryActivity(storyId: number) {
+  const user = await currentUser();
+  const userId = user?.id;
+
+  if (!userId) throw new Error("Not authenticated");
+
+  try {
+    // Check if user owns the story
+    const story = await prisma.story.findUnique({
+      where: { id: storyId },
+      select: { userId: true },
+    });
+
+    if (!story || story.userId !== userId) {
+      throw new Error("You can only view activity for your own stories");
+    }
+
+    // Get story views
+    const views = await prisma.storyView.findMany({
+      where: { storyId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            name: true,
+            surname: true,
+            avatar: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Get story likes
+    const likes = await prisma.like.findMany({
+      where: { storyId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            name: true,
+            surname: true,
+            avatar: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return { views, likes };
+  } catch (err) {
+    console.error("Failed to get story activity:", err);
+    throw err;
+  }
+}
+
+// ✨ NEW: Delete story
+export async function deleteStory(storyId: number) {
+  const user = await currentUser();
+  const userId = user?.id;
+
+  if (!userId) throw new Error("Not authenticated");
+
+  try {
+    // Check if user owns the story
+    const story = await prisma.story.findUnique({
+      where: { id: storyId },
+      select: { userId: true },
+    });
+
+    if (!story || story.userId !== userId) {
+      throw new Error("You can only delete your own stories");
+    }
+
+    // Delete the story (cascade will handle related records)
+    await prisma.story.delete({
+      where: { id: storyId },
+    });
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (err) {
+    console.error("Failed to delete story:", err);
+    throw err;
+  }
+}

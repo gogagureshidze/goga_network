@@ -32,6 +32,11 @@ model User {
   posts                  Post[]
   stories                Story[]
   storyComments          StoryComment[]
+  storyViews             StoryView[]
+   conversations1         Conversation[] @relation("User1Conversations")
+  conversations2         Conversation[] @relation("User2Conversations")
+  sentMessages           Message[]      @relation("SentMessages")
+  receivedMessages       Message[]      @relation("ReceivedMessages")
 }
 
 model Post {
@@ -136,11 +141,12 @@ model Story {
   img       String
   createdAt DateTime @default(now())
   expiresAt DateTime
+  showLikes Boolean  @default(true) // ✨ New field to store the user's preference
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   likes     Like[]
-
-  comments  StoryComment[]   // 👈 add this
+  views     StoryView[]
+  comments  StoryComment[]  
 }
 
 
@@ -151,20 +157,64 @@ model StoryComment {
   updatedAt DateTime @updatedAt
   storyId   Int
   userId    String
-  
-  // 👈 ADD THIS: For reply functionality
-  parentId  Int?
-  
+
   // Relations
   story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   likes     Like[]
-  
-  // 👈 ADD THESE: Self-referencing relationships for replies
-  parent    StoryComment? @relation("StoryCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   StoryComment[] @relation("StoryCommentReplies")
 
   @@index([storyId])
   @@index([userId])
-  @@index([parentId])  // 👈 ADD THIS INDEX
 }
+
+model StoryView {
+  id        Int      @id @default(autoincrement())
+  storyId   Int
+  userId    String
+  createdAt DateTime @default(now())
+
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, userId]) // one view per user per story
+  @@index([storyId])
+  @@index([userId])
+}
+
+model Conversation {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user1Id     String
+  user2Id     String
+  user1       User     @relation("User1Conversations", fields: [user1Id], references: [id])
+  user2       User     @relation("User2Conversations", fields: [user2Id], references: [id])
+  messages    Message[]
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id])
+  @@index([user2Id])
+}
+
+model Message {
+  id             Int       @id @default(autoincrement())
+  text           String?   // Make the text field optional, as a message can just be an image
+  createdAt      DateTime  @default(now())
+  senderId       String
+  receiverId     String
+  conversationId Int
+  isRead         Boolean   @default(false)
+  
+  // New fields for media
+  mediaUrl       String?   // URL to the hosted image or video
+  mediaType      String?   // "image" or "video"
+  
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiver       User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+}
+

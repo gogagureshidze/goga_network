@@ -6,7 +6,7 @@ import Link from "next/link";
 
 async function ProfileCard() {
   const usr = await currentUser();
-  const username = usr?.username ;
+  const username = usr?.username;
   const userId = usr?.id || "";
   if (!userId) {
     return;
@@ -37,8 +37,12 @@ async function ProfileCard() {
 
   if (!user) return null;
 
-  // Extract followers' avatars
-  let followerUsers = user.followings.map((f) => f.follower);
+  // Extract followers' avatars and filter out duplicates
+  const uniqueFollowersMap = new Map();
+  user.followings.forEach((f) => {
+    uniqueFollowersMap.set(f.follower.id, f.follower);
+  });
+  let followerUsers = Array.from(uniqueFollowersMap.values());
 
   // If more than 3, randomize and pick 3
   if (followerUsers.length > 3) {

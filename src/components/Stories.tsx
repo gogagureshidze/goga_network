@@ -7,7 +7,6 @@ import StoryList from "./StoryList";
 export default async function Stories() {
   const user = await currentUser();
   const userId = user?.id;
-
   if (!userId) return null;
 
   // Fetch stories visible to this user (self + followed users)
@@ -15,12 +14,12 @@ export default async function Stories() {
     where: {
       expiresAt: { gt: new Date() },
       OR: [
-        { userId }, // own stories
+        { userId },
         {
           user: {
             followers: {
               some: {
-                followingId: userId, // stories from users I follow
+                followingId: userId,
               },
             },
           },
@@ -30,26 +29,22 @@ export default async function Stories() {
     include: {
       user: true,
       likes: {
-        select: { userId: true },
+        select: {
+          id: true,
+          createdAt: true,
+          postId: true,
+          userId: true,
+          commentId: true,
+          storyId: true,
+          storyCommentId: true,
+        },
       },
       comments: {
+        // ✅ use the correct field name
         include: {
           user: true,
-          likes: {
-            select: { userId: true },
-          },
-          // Include replies to comments
-          replies: {
-            include: {
-              user: true,
-              likes: {
-                select: { userId: true },
-              },
-            },
-            orderBy: { createdAt: "asc" }, // replies in chronological order
-          },
+          likes: true,
         },
-        orderBy: { createdAt: "desc" },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -58,7 +53,16 @@ export default async function Stories() {
   return (
     <div className="p-4 bg-white rounded-lg shadow-md overflow-scroll text-sm scrollbar-hide">
       <div className="flex gap-8 w-max">
-        <StoryList stories={stories} userId={userId} />
+        <StoryList
+          stories={stories.map(({ comments, ...rest }) => ({
+            ...rest,
+            comments: comments.map((c) => ({
+              ...c,
+              likes: c.likes.map((l) => ({ userId: l.userId })), // match type
+            })),
+          }))}
+          userId={userId}
+        />
       </div>
     </div>
   );

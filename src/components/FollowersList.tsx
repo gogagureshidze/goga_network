@@ -19,7 +19,13 @@ const FollowersList = ({
 }: {
   initialFollowers: Follower[];
 }) => {
-  const [followers, setFollowers] = useState(initialFollowers);
+  // Deduplicate the initialFollowers array based on the 'id'
+  const uniqueFollowers = Array.from(
+    new Map(
+      initialFollowers.map((follower) => [follower.id, follower])
+    ).values()
+  );
+  const [followers, setFollowers] = useState(uniqueFollowers);
   const [searchQuery, setSearchQuery] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -39,7 +45,7 @@ const FollowersList = ({
       } catch (err) {
         console.error(err);
         // Rollback UI in case of error
-        setFollowers(initialFollowers);
+        setFollowers(uniqueFollowers);
       }
     });
   };
@@ -53,7 +59,7 @@ const FollowersList = ({
         await switchBlock(id);
       } catch (err) {
         console.error(err);
-        setFollowers(initialFollowers);
+        setFollowers(uniqueFollowers);
       }
     });
   };

@@ -1,36 +1,11 @@
-
-  // Monitor user updates and refresh page when changes are detected
-  // useEffect(() => {
-  //   if (!isLoaded || !user) return;
-
-  //   const currentUserData = JSON.stringify({
-  //     username: user.username,
-  //     firstName: user.firstName,
-  //     lastName: user.lastName,
-  //     imageUrl: user.imageUrl,
-  //     updatedAt: user.updatedAt,
-  //   });
-
-  //   // If this is not the first load and user data has changed
-  //   if (userDataRef.current && userDataRef.current !== currentUserData) {
-  //     console.log("👤 User profile updated, refreshing page...");
-
-  //     // Small delay to ensure Clerk updates are complete
-  //     setTimeout(() => {
-  //       window.location.reload();
-  //     }, 1000);
-  //   }
-
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import {
   House,
   Handshake,
-  SquareLibrary,
   UsersRound,
   MessagesSquare,
   BellRing,
@@ -98,7 +73,6 @@ function Navbar({ users }: { users: User[] }) {
     user?.imageUrl,
     isLoaded,
   ]);
-
 
   const toggleSearch = () => {
     setIsSearchOpen(!isSearchOpen);
@@ -191,8 +165,6 @@ function Navbar({ users }: { users: User[] }) {
 
       {/* Right Section (Auth + Mobile Search) */}
       <div className="w-[30%] flex justify-end items-center gap-4">
-        {/* Search Icon (Mobile & Tablet) */}
-        {/* Search Icon (Mobile & Tablet) */}
         {user && isLoaded && (
           <button
             onClick={toggleSearch}
@@ -215,12 +187,12 @@ function Navbar({ users }: { users: User[] }) {
         <ClerkLoaded>
           <SignedIn>
             <div className="flex items-center gap-3">
-              <UsersRound className="hidden sm:inline-flex text-orange-300 cursor-pointer hover:text-rose-400 transition-all duration-300" />
+              {" "}
               <MessagesSquare className="hidden sm:inline-flex text-orange-300 cursor-pointer hover:text-rose-400 transition-all duration-300" />
               <BellRing className="hidden sm:inline-flex text-orange-300 cursor-pointer hover:text-rose-400 transition-all duration-300" />
               <UserButton
                 appearance={{ elements: { avatarBox: "w-8 h-8" } }}
-                afterSignOutUrl="/"
+                //? deprecated unlucky me idk what to use| afterSignOutUrl="/"
               />
             </div>
           </SignedIn>

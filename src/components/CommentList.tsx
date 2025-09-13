@@ -237,7 +237,7 @@ function CommentItem({
       {repliesToDisplay && repliesToDisplay.length > 0 && (
         <div className="pl-8 mt-2 border-l-2 border-gray-300">
           {repliesToDisplay.map((reply) => (
-            <div key={reply.id} className="mt-2">
+            <div key={reply.id} className="mt-2 mb-2">
               <CommentItem
                 comment={reply}
                 user={user}
@@ -479,7 +479,7 @@ function CommentList({
       )}
 
       {commentsToDisplay.map((comment) => (
-        <div key={comment.id} className="mb-3">
+        <div key={comment.id} className="mb-2">
           <CommentItem
             comment={comment}
             user={user}

@@ -49,57 +49,60 @@ function MobileMenu() {
       </div>
 
       {/* Dropdown Menu */}
+      {/* Dropdown Menu */}
       <div
-        className={`fixed top-[96px] left-0 w-full z-40 flex flex-col items-center justify-center bg-rose-100 transition-all duration-700 ease-in-out ${
+        className={`fixed inset-0 z-40 flex flex-col items-center justify-center bg-rose-100 transition-all duration-700 ease-in-out ${
           isOpen
-            ? "h-[calc(100vh)] opacity-95 pointer-events-auto"
-            : "h-0 opacity-0 pointer-events-none overflow-hidden"
+            ? "opacity-95 pointer-events-auto"
+            : "opacity-0 pointer-events-none overflow-hidden"
         }`}
       >
-        <Link
-          href="/"
-          onClick={() => setIsOpen(false)}
-          className={`text-xl font-bold hover:text-rose-900 text-rose-800 my-2 transition-all duration-700 ease-in-out transform ${
-            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
-          } hover:-translate-y-[1px]`}
-          style={{ transitionDelay: `0ms` }}
-        >
-          Home
-        </Link>
+        <nav className="flex flex-col items-center justify-center w-full space-y-6">
+          <Link
+            href="/"
+            onClick={() => setIsOpen(false)}
+            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+              isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+            } hover:-translate-y-[1px]`}
+            style={{ transitionDelay: `0ms` }}
+          >
+            Home
+          </Link>
 
-        <Link
-          href="/friends"
-          onClick={() => setIsOpen(false)}
-          className={`text-xl font-bold hover:text-rose-900 text-rose-800 my-2 transition-all duration-700 ease-in-out transform ${
-            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
-          } hover:-translate-y-[1px]`}
-          style={{ transitionDelay: `100ms` }}
-        >
-          Friends
-        </Link>
+          <Link
+            href="/friends"
+            onClick={() => setIsOpen(false)}
+            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+              isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+            } hover:-translate-y-[1px]`}
+            style={{ transitionDelay: `100ms` }}
+          >
+            Friends
+          </Link>
 
-        <Link
-          href={`/profile/${username}`}
-          onClick={() => setIsOpen(false)}
-          className={`text-xl font-bold hover:text-rose-900 text-rose-800 my-2 transition-all duration-700 ease-in-out transform ${
-            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
-          } hover:-translate-y-[1px]`}
-          style={{ transitionDelay: `200ms` }}
-        >
-          Profile
-        </Link>
+          <Link
+            href={`/profile/${username}`}
+            onClick={() => setIsOpen(false)}
+            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+              isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+            } hover:-translate-y-[1px]`}
+            style={{ transitionDelay: `200ms` }}
+          >
+            Profile
+          </Link>
 
-        <Link
-          href="/requests"
-          onClick={() => setIsOpen(false)}
-          className={`text-xl font-bold hover:text-rose-900 text-rose-800 my-2 transition-all duration-700 ease-in-out transform ${
-            isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
-          } hover:-translate-y-[1px]`}
-          style={{ transitionDelay: `300ms` }}
-        >
-           Requests
-        </Link>
-       </div>
+          <Link
+            href="/requests"
+            onClick={() => setIsOpen(false)}
+            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+              isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+            } hover:-translate-y-[1px]`}
+            style={{ transitionDelay: `300ms` }}
+          >
+            Requests
+          </Link>
+        </nav>
+      </div>
     </div>
   );
 }
