@@ -4,60 +4,50 @@ const { PrismaClient } = require("./src/generated/prisma");
 const prisma = new PrismaClient();
 
 const httpServer = createServer();
+
+// Explicitly allow polling + websocket
 const io = new Server(httpServer, {
   cors: {
-    origin: '*',
-    methods: ["GET", "POST", "DELETE", "PUT"],
+    origin: "*",
+    methods: ["GET", "POST"],
+    credentials: true,
   },
+  transports: ["websocket", "polling"],
 });
 
 io.on("connection", (socket) => {
   const userId = socket.handshake.query.userId;
   console.log(`User ${userId} connected with socket ID ${socket.id}`);
-  if (userId) {
-    socket.join(userId);
-  }
+  if (userId) socket.join(userId);
 
   socket.on("sendMessage", async (data) => {
     try {
-      // Find or create a conversation
-      const conversation = await prisma.conversation.findFirst({
-        where: {
-          OR: [
-            { user1Id: data.senderId, user2Id: data.receiverId },
-            { user1Id: data.receiverId, user2Id: data.senderId },
-          ],
-        },
-      });
-
-      let conversationId;
-      if (conversation) {
-        conversationId = conversation.id;
-      } else {
-        const newConversation = await prisma.conversation.create({
-          data: {
-            user1Id: data.senderId,
-            user2Id: data.receiverId,
+      const conversation =
+        (await prisma.conversation.findFirst({
+          where: {
+            OR: [
+              { user1Id: data.senderId, user2Id: data.receiverId },
+              { user1Id: data.receiverId, user2Id: data.senderId },
+            ],
           },
-        });
-        conversationId = newConversation.id;
-      }
+        })) ||
+        (await prisma.conversation.create({
+          data: { user1Id: data.senderId, user2Id: data.receiverId },
+        }));
 
-      // Save the message to the database with the conversationId
       const newMessage = await prisma.message.create({
         data: {
-          conversationId: conversationId,
+          conversationId: conversation.id,
           senderId: data.senderId,
           receiverId: data.receiverId,
           text: data.text,
         },
       });
 
-      // Broadcast the message to the specific rooms of both the sender and receiver
       io.to(data.senderId).emit("receiveMessage", newMessage);
       io.to(data.receiverId).emit("receiveMessage", newMessage);
-    } catch (error) {
-      console.error("Error saving message:", error);
+    } catch (err) {
+      console.error("Error saving message:", err);
     }
   });
 
@@ -67,6 +57,6 @@ io.on("connection", (socket) => {
 });
 
 const PORT = 3001;
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`WebSocket server listening on port ${PORT}`);
-});
+httpServer.listen(PORT, "0.0.0.0", () =>
+  console.log(`WebSocket server listening on port ${PORT}`)
+);
