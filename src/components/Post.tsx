@@ -17,6 +17,7 @@ function Post({ post }: { post: any }) {
               src={post.user?.avatar || "/noAvatar.png"}
               alt="Profile"
               width={40}
+              loading="lazy"
               height={40}
               className="w-10 h-10 object-cover cursor-pointer rounded-full ring-orange-200 ring-2"
             />

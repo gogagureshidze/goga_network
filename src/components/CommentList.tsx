@@ -3,7 +3,13 @@
 import { useUser } from "@clerk/nextjs";
 import { HandHeart, SendHorizonal, MoreVertical } from "lucide-react";
 import Image from "next/image";
-import { useOptimistic, useState, useTransition } from "react";
+import {
+  useOptimistic,
+  useState,
+  useTransition,
+  useCallback,
+  memo,
+} from "react";
 import { addComment } from "../actions/createComment";
 import { addReplyComment } from "../actions/addReplyComment";
 import { likeComment } from "../actions/likeComment";
@@ -30,6 +36,7 @@ type CommentWithUser = {
   parentId?: number | null;
   replies?: CommentWithUser[];
 };
+
 // Helper function to build a nested comment tree from a flat list
 const buildCommentTree = (flatComments: CommentWithUser[]) => {
   const commentMap: { [key: number]: CommentWithUser } = {};
@@ -52,8 +59,27 @@ const buildCommentTree = (flatComments: CommentWithUser[]) => {
 
   return rootComments;
 };
-// Recursive component to render a single comment and its replies
-function CommentItem({
+
+// Helper function to remove a comment from the tree
+const removeCommentFromTree = (
+  comments: CommentWithUser[],
+  commentId: number
+): CommentWithUser[] => {
+  return comments.reduce((acc, comment) => {
+    if (comment.id === commentId) {
+      return acc;
+    }
+    const updatedReplies = comment.replies
+      ? removeCommentFromTree(comment.replies, commentId)
+      : [];
+    acc.push({ ...comment, replies: updatedReplies });
+    return acc;
+  }, [] as CommentWithUser[]);
+};
+
+// --- CommentItem Component (Memoized) ---
+// Memoization is crucial here. This component will only re-render if its props change.
+const CommentItem = memo(function CommentItem({
   comment,
   user,
   handleLike,
@@ -70,9 +96,7 @@ function CommentItem({
   setReplyingTo: (id: number | null) => void;
   replyingTo: number | null;
   isPending: boolean;
-  addOptimisticComment: (action: {
-    newComment: CommentWithUser & { parentId?: number };
-  }) => void;
+  addOptimisticComment: (action: any) => void;
   startTransition: (callback: () => void) => void;
   handleDeleteComment: (commentId: number) => void;
 }) {
@@ -183,8 +207,10 @@ function CommentItem({
                 ).value;
                 if (!desc.trim()) return;
 
+                // Unique ID for optimistic update
+                const newCommentId = Date.now();
                 const newComment: CommentWithUser = {
-                  id: Math.random(),
+                  id: newCommentId,
                   desc,
                   postId: comment.postId,
                   likes: [],
@@ -199,13 +225,10 @@ function CommentItem({
                   parentId: comment.id,
                 };
 
-                // Moved both optimistic update and server action inside startTransition
                 startTransition(() => {
                   addOptimisticComment({
-                    newComment: {
-                      ...newComment,
-                      parentId: replyingTo || undefined,
-                    },
+                    type: "add",
+                    newComment: newComment,
                   });
                   setReplyingTo(null);
                   (
@@ -264,24 +287,9 @@ function CommentItem({
       )}
     </>
   );
-}
+});
 
-const removeCommentFromTree = (
-  comments: CommentWithUser[],
-  commentId: number
-): CommentWithUser[] => {
-  return comments.reduce((acc, comment) => {
-    if (comment.id === commentId) {
-      return acc;
-    }
-    const updatedReplies = comment.replies
-      ? removeCommentFromTree(comment.replies, commentId)
-      : [];
-    acc.push({ ...comment, replies: updatedReplies });
-    return acc;
-  }, [] as CommentWithUser[]);
-};
-
+// --- CommentList Component ---
 function CommentList({
   comments,
   postId,
@@ -291,11 +299,9 @@ function CommentList({
   postId: number;
   username: string | null | undefined;
 }) {
-
   const { user } = useUser();
   const [desc, setDesc] = useState("");
   const [isPending, startTransition] = useTransition();
-
   const [showAll, setShowAll] = useState(false);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
 
@@ -304,129 +310,161 @@ function CommentList({
     (
       state,
       action: {
-        newComment?: CommentWithUser & { parentId?: number };
+        type: "add" | "like" | "delete";
+        newComment?: CommentWithUser;
         likedComment?: { commentId: number; userId: string };
         deletedComment?: { commentId: number };
       }
     ) => {
-      if (action.newComment) {
-        const newComment = {
-          ...action.newComment,
-          replies: [],
-        };
+      switch (action.type) {
+        case "add":
+          const newComment = { ...action.newComment!, replies: [] };
+          if (newComment.parentId) {
+            const findAndAddReply = (
+              comments: CommentWithUser[],
+              parentId: number,
+              reply: CommentWithUser
+            ): CommentWithUser[] => {
+              return comments.map((comment) => {
+                if (comment.id === parentId) {
+                  return {
+                    ...comment,
+                    replies: [...(comment.replies || []), reply],
+                  };
+                } else if (comment.replies && comment.replies.length > 0) {
+                  return {
+                    ...comment,
+                    replies: findAndAddReply(comment.replies, parentId, reply),
+                  };
+                }
+                return comment;
+              });
+            };
+            return findAndAddReply(state, newComment.parentId, newComment);
+          }
+          return [newComment, ...state];
 
-        if (newComment.parentId) {
-          const findAndAddReply = (
+        case "like":
+          const { commentId: likedId, userId: likedUserId } =
+            action.likedComment!;
+          const findAndToggleLike = (
             comments: CommentWithUser[],
-            parentId: number,
-            reply: CommentWithUser
+            targetId: number,
+            targetUserId: string
           ): CommentWithUser[] => {
             return comments.map((comment) => {
-              if (comment.id === parentId) {
+              if (comment.id === targetId) {
+                const hasLiked = comment.likes.some(
+                  (like) => like.userId === targetUserId
+                );
                 return {
                   ...comment,
-                  replies: [...(comment.replies || []), reply],
+                  likes: hasLiked
+                    ? comment.likes.filter(
+                        (like) => like.userId !== targetUserId
+                      )
+                    : [...comment.likes, { userId: targetUserId }],
                 };
-              } else if (comment.replies && comment.replies.length > 0) {
+              }
+              if (comment.replies && comment.replies.length > 0) {
                 return {
                   ...comment,
-                  replies: findAndAddReply(comment.replies, parentId, reply),
+                  replies: findAndToggleLike(
+                    comment.replies,
+                    targetId,
+                    targetUserId
+                  ),
                 };
               }
               return comment;
             });
           };
+          return findAndToggleLike(state, likedId, likedUserId);
 
-          return findAndAddReply(state, newComment.parentId, newComment);
-        }
-        return [newComment, ...state];
+        case "delete":
+          return removeCommentFromTree(state, action.deletedComment!.commentId);
+
+        default:
+          return state;
       }
-
-      if (action.likedComment) {
-        const { commentId, userId } = action.likedComment;
-        return state.map((comment) => {
-          if (comment.id === commentId) {
-            const hasLiked = comment.likes.some(
-              (like) => like.userId === userId
-            );
-            return {
-              ...comment,
-              likes: hasLiked
-                ? comment.likes.filter((like) => like.userId !== userId)
-                : [...comment.likes, { userId }],
-            };
-          }
-          const updatedReplies = comment.replies?.map((reply) =>
-            reply.id === commentId
-              ? {
-                  ...reply,
-                  likes: reply.likes.some((like) => like.userId === userId)
-                    ? reply.likes.filter((like) => like.userId !== userId)
-                    : [...reply.likes, { userId }],
-                }
-              : reply
-          );
-          return { ...comment, replies: updatedReplies };
-        });
-      }
-
-      if (action.deletedComment) {
-        const { commentId } = action.deletedComment;
-        return removeCommentFromTree(state, commentId);
-      }
-
-      return state;
     }
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!desc.trim() || !user) return;
+  // Use useCallback to memoize these functions. They will not be recreated on every render.
+  // This is a major performance boost for the CommentItem component.
+  const handleLike = useCallback(
+    async (commentId: number) => {
+      if (!user) return;
+      startTransition(() => {
+        addOptimisticComment({
+          type: "like",
+          likedComment: { commentId, userId: user.id },
+        });
+      });
+      await likeComment(commentId);
+    },
+    [user, startTransition, addOptimisticComment]
+  );
 
-    const newComment: CommentWithUser = {
-      id: Math.random(),
+  const handleDeleteComment = useCallback(
+    (commentId: number) => {
+      startTransition(() => {
+        addOptimisticComment({ type: "delete", deletedComment: { commentId } });
+        deleteComment(commentId);
+      });
+    },
+    [startTransition, addOptimisticComment]
+  );
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!desc.trim() || !user) return;
+
+      // A more reliable way to get a temporary ID for optimistic update
+      const newCommentId = Date.now();
+
+      const newComment: CommentWithUser = {
+        id: newCommentId,
+        desc,
+        postId,
+        likes: [],
+        userId: user.id,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        user: {
+          id: user.id,
+          username: user.username || username || "Anonymous",
+          avatar: user.imageUrl,
+        },
+        parentId: replyingTo || undefined,
+      };
+
+      addOptimisticComment({
+        type: "add",
+        newComment: newComment,
+      });
+      setDesc("");
+      setReplyingTo(null);
+
+      startTransition(() => {
+        if (replyingTo) {
+          addReplyComment(postId, desc, replyingTo);
+        } else {
+          addComment(postId, desc);
+        }
+      });
+    },
+    [
       desc,
+      user,
       postId,
-      likes: [],
-      userId: user.id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      user: {
-        id: user.id,
-        username: user.username || username || "Anonymous",
-        avatar: user.imageUrl,
-      },
-    };
-
-    addOptimisticComment({
-      newComment: { ...newComment, parentId: replyingTo || undefined },
-    });
-    setDesc("");
-    setReplyingTo(null);
-
-    startTransition(() => {
-      if (replyingTo) {
-        addReplyComment(postId, desc, replyingTo);
-      } else {
-        addComment(postId, desc);
-      }
-    });
-  };
-
-  const handleLike = async (commentId: number) => {
-    if (!user) return;
-    startTransition(() => {
-      addOptimisticComment({ likedComment: { commentId, userId: user.id } });
-    });
-    await likeComment(commentId);
-  };
-
-  const handleDeleteComment = (commentId: number) => {
-    startTransition(() => {
-      addOptimisticComment({ deletedComment: { commentId } });
-      deleteComment(commentId);
-    });
-  };
+      username,
+      replyingTo,
+      startTransition,
+      addOptimisticComment,
+    ]
+  );
 
   const nestedComments = buildCommentTree(optimisticComments);
   const commentsToDisplay = showAll
@@ -452,7 +490,6 @@ function CommentList({
             onSubmit={handleSubmit}
             className="relative flex-1 bg-slate-100 rounded-xl mb-0.5 px-4 py-2 text-sm"
           >
-            
             <input
               className="w-full pr-10 bg-transparent outline-none"
               type="text"

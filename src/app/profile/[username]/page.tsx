@@ -9,17 +9,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 
-async function ProfilePage({ params }: { params:  any}) {
-  let user = await prisma.user.findFirst({
-    where: { username: params.username },
-    include: {
-      _count: {
-        select: { posts: true, followers: true, followings: true },
-      },
-    },
-  });
-
-  const usr = params.username;
+async function ProfilePage({ params }: { params: any }) {
   const loggedInUser = await currentUser();
   const loggedInUserId = loggedInUser?.id;
   const clerkUsername = loggedInUser?.username ?? undefined;
@@ -27,57 +17,58 @@ async function ProfilePage({ params }: { params:  any}) {
   if (!loggedInUser) {
     redirect("/sign-in");
   }
-
   if (!loggedInUserId) return notFound();
+  const { username } = await params; // ✅ await params
+
+  // ✅ Fetch user + counts in one query
+  let user = await prisma.user.findFirst({
+    where: { username: username },
+    include: {
+      _count: { select: { posts: true, followers: true, followings: true } },
+    },
+  });
 
   if (!user && clerkUsername) {
     user = await prisma.user.findFirst({
       where: { id: loggedInUserId },
       include: {
-        _count: {
-          select: { posts: true, followers: true, followings: true },
-        },
+        _count: { select: { posts: true, followers: true, followings: true } },
       },
     });
   }
-
   if (!user) return notFound();
 
   const isOwner = user.id === loggedInUserId;
 
+  // ✅ Sync Clerk username with DB
   if (isOwner && clerkUsername && user.username !== clerkUsername) {
     await prisma.user.update({
       where: { id: user.id },
       data: { username: clerkUsername },
     });
-
     if (params.username !== clerkUsername) {
       redirect(`/profile/${clerkUsername}`);
     }
   }
 
-  if (!isOwner) {
-    const res = await prisma.block.findFirst({
-      where: { blockerId: user.id, blockedId: loggedInUserId },
-    });
+  // ✅ Run relational checks in parallel (faster)
+  const [isFollowing, isFollowingSent, isBlockedByViewer, isBlockedByUser] =
+    await Promise.all([
+      prisma.follower.count({
+        where: { followerId: loggedInUserId, followingId: user.id },
+      }),
+      prisma.followRequest.count({
+        where: { senderId: loggedInUserId, receiverId: user.id },
+      }),
+      prisma.block.count({
+        where: { blockerId: loggedInUserId, blockedId: user.id },
+      }),
+      prisma.block.count({
+        where: { blockerId: user.id, blockedId: loggedInUserId },
+      }),
+    ]);
 
-    if (res) return notFound();
-  }
-
-  const isFollowing =
-    (await prisma.follower.count({
-      where: { followerId: loggedInUserId, followingId: user.id },
-    })) > 0;
-
-  const isFollowingSent =
-    (await prisma.followRequest.count({
-      where: { senderId: loggedInUserId, receiverId: user.id },
-    })) > 0;
-
-  const isBlockedByViewer =
-    (await prisma.block.count({
-      where: { blockerId: loggedInUserId, blockedId: user.id },
-    })) > 0;
+  if (isBlockedByUser) return notFound();
 
   const formatedDate = new Date(user.createdAt).toLocaleDateString("en-US", {
     year: "numeric",
@@ -101,15 +92,17 @@ async function ProfilePage({ params }: { params:  any}) {
               alt="Banner"
               fill
               className="object-cover rounded-lg"
-              priority
+              priority={isOwner} // only priority for your own profile
+              sizes="100vw"
             />
             <div className="absolute bottom-[-3rem] left-1/2 transform -translate-x-1/2 z-10">
               <Image
                 src={user.avatar || "/noAvatar.png"}
                 alt="Avatar"
-                width={200}
-                height={200}
+                width={160}
+                height={160}
                 className="rounded-full ring-2 ring-white object-cover aspect-square"
+                sizes="160px"
               />
             </div>
           </div>
@@ -123,24 +116,18 @@ async function ProfilePage({ params }: { params:  any}) {
 
           {/* Stats */}
           <div className="flex items-center justify-center gap-12 mb-4">
-            <div className="flex flex-col items-center">
-              <span className="font-medium text-orange-400">
-                {user._count.posts}
-              </span>
-              <span className="text-sm">Posts</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="font-medium text-orange-400">
-                {user._count.followers}
-              </span>
-              <span className="text-sm">Followers</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="font-medium text-orange-400">
-                {user._count.followings}
-              </span>
-              <span className="text-sm">Following</span>
-            </div>
+            {[
+              { label: "Posts", count: user._count.posts },
+              { label: "Followers", count: user._count.followers },
+              { label: "Following", count: user._count.followings },
+            ].map((stat) => (
+              <div key={stat.label} className="flex flex-col items-center">
+                <span className="font-medium text-orange-400">
+                  {stat.count}
+                </span>
+                <span className="text-sm">{stat.label}</span>
+              </div>
+            ))}
           </div>
 
           {/* 👇 Mobile Interaction Section */}
@@ -148,9 +135,9 @@ async function ProfilePage({ params }: { params:  any}) {
             <div className="px-4 lg:hidden">
               <UserInfoCardInteraction
                 formatedDate={formatedDate}
-                isUserBlocked={isBlockedByViewer}
-                isFollowing={isFollowing}
-                isFollowingSent={isFollowingSent}
+                isUserBlocked={!!isBlockedByViewer}
+                isFollowing={!!isFollowing}
+                isFollowingSent={!!isFollowingSent}
                 userId={user.id}
                 currentUserId={loggedInUserId}
               />
@@ -163,15 +150,15 @@ async function ProfilePage({ params }: { params:  any}) {
               user={user}
               username={user.username!}
               isOwner={isOwner}
-              isFollowing={isFollowing}
-              isFollowingSent={isFollowingSent}
-              isBlockedByViewer={isBlockedByViewer}
-              hideInteraction // 👈 this disables buttons inside
+              isFollowing={!!isFollowing}
+              isFollowingSent={!!isFollowingSent}
+              isBlockedByViewer={!!isBlockedByViewer}
+              hideInteraction
             />
           </div>
 
           {/* Feed */}
-          <Feed username={usr} />
+          <Feed username={user.username ?? undefined} />
         </div>
       </div>
 
@@ -182,9 +169,9 @@ async function ProfilePage({ params }: { params:  any}) {
             user={user}
             username={user.username!}
             isOwner={isOwner}
-            isFollowing={isFollowing}
-            isFollowingSent={isFollowingSent}
-            isBlockedByViewer={isBlockedByViewer}
+            isFollowing={!!isFollowing}
+            isFollowingSent={!!isFollowingSent}
+            isBlockedByViewer={!!isBlockedByViewer}
           />
           <UserMediaCard user={user} username={user.username!} />
         </RightMenu>
