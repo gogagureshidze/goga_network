@@ -41,6 +41,7 @@ const MainChat = ({
 
     const newSocket = io("http://31.97.76.24:3001", {
       query: { userId },
+      transports: ["websocket", "polling"],
     });
     setSocket(newSocket);
 
