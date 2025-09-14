@@ -1,4 +1,3 @@
-// src/components/Messenger.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -6,20 +5,20 @@ import ChatListDesktop from "@/components/ChatListDesktop";
 import MainChat from "@/components/MainChat";
 import { useUser } from "@clerk/nextjs";
 import { getFollowers } from "@/actions/getFollowers";
-import { getMessages } from "@/actions/getMessages"; // Import the new server action
+import { getMessages } from "@/actions/getMessages";
 
 // Types
 export type Message = {
   id: number;
   senderId: string;
-  text: string | null; // Allow text to be null
+  text: string | null;
   createdAt: string;
   isOwn: boolean;
-  mediaUrl?: string | null; // Allow mediaUrl to be null
-  mediaType?: string | null; // Allow mediaType to be null
-  conversationId?: number; // Add conversationId
-  isRead?: boolean; // Add isRead
-  receiverId?: string; // Add receiverId
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  conversationId?: number;
+  isRead?: boolean;
+  receiverId?: string;
 };
 
 export type Friend = {
@@ -29,15 +28,14 @@ export type Friend = {
   lastMessage: string;
 };
 
-// Placeholder Avatar Component
-export const Avatar = () => (
+// 💡 Keep Avatar & SendIcon **inside the file but do not export them**
+const Avatar = () => (
   <div className="w-10 h-10 rounded-full bg-orange-300 flex items-center justify-center font-bold text-gray-700 text-lg">
     A
   </div>
 );
 
-// Send Icon Component
-export const SendIcon = () => (
+const SendIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
@@ -50,7 +48,6 @@ export const SendIcon = () => (
 
 export default function Messenger() {
   const { user, isSignedIn } = useUser();
-
   const [followers, setFollowers] = useState<Friend[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -65,7 +62,7 @@ export default function Messenger() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Fetch real followers using the server action
+  // Fetch followers
   useEffect(() => {
     if (!isSignedIn || !user) return;
 
@@ -73,28 +70,22 @@ export default function Messenger() {
       setIsLoading(true);
       try {
         const fetchedFollowers = await getFollowers();
-
         if (fetchedFollowers) {
-          const formattedFollowers: Friend[] = fetchedFollowers.map(
-            (follower) => ({
-              id: follower.id,
-              name: follower.username || "Unknown User",
-              avatar: follower.avatar || "/noAvatar.png",
-              lastMessage: "Start a conversation!",
-            })
-          );
-
+          const formattedFollowers: Friend[] = fetchedFollowers.map((f) => ({
+            id: f.id,
+            name: f.username || "Unknown User",
+            avatar: f.avatar || "/noAvatar.png",
+            lastMessage: "Start a conversation!",
+          }));
           setFollowers(formattedFollowers);
           if (!isMobile && formattedFollowers.length > 0) {
             setSelectedFriend(formattedFollowers[0]);
           }
-
-          console.log(followers, 'fetched from chat componet')
         } else {
           setFollowers([]);
         }
-      } catch (error) {
-        console.error("Failed to fetch followers:", error);
+      } catch (e) {
+        console.error("Failed to fetch followers:", e);
         setFollowers([]);
       } finally {
         setIsLoading(false);
@@ -104,58 +95,55 @@ export default function Messenger() {
     fetchFollowers();
   }, [isSignedIn, user, isMobile]);
 
-  // Fetch messages when a new friend is selected
+  // Fetch messages
   useEffect(() => {
-    if (selectedFriend) {
-      const fetchMessages = async () => {
-        try {
-          const fetchedMessages = await getMessages(selectedFriend.id);
-          // Safely assert that fetchedMessages is not null or undefined
-          const formattedMessages: Message[] = (fetchedMessages || []).map(
-            (msg) => ({
-              ...msg,
-              isOwn: msg.senderId === user?.id,
-              createdAt: new Date(msg.createdAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-            })
-          );
-          setMessages(formattedMessages);
-        } catch (error) {
-          console.error("Failed to fetch messages:", error);
-          setMessages([]);
-        }
-      };
-      fetchMessages();
-    }
+    if (!selectedFriend) return;
+
+    const fetchMessages = async () => {
+      try {
+        const fetchedMessages = await getMessages(selectedFriend.id);
+        const formattedMessages: Message[] = (fetchedMessages || []).map(
+          (msg) => ({
+            ...msg,
+            isOwn: msg.senderId === user?.id,
+            createdAt: new Date(msg.createdAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          })
+        );
+        setMessages(formattedMessages);
+      } catch (e) {
+        console.error("Failed to fetch messages:", e);
+        setMessages([]);
+      }
+    };
+
+    fetchMessages();
   }, [selectedFriend, user]);
 
   const handleBack = () => setSelectedFriend(null);
 
-  if (!isSignedIn) {
+  if (!isSignedIn)
     return (
       <div className="flex justify-center items-center h-screen">
         <p>Please sign in to chat</p>
       </div>
     );
-  }
 
-  if (isLoading) {
+  if (isLoading)
     return (
       <div className="flex justify-center items-center h-screen">
         <p>Loading ...</p>
       </div>
     );
-  }
 
-  if (followers.length === 0) {
+  if (followers.length === 0)
     return (
       <div className="flex justify-center items-center h-screen">
         <p>No followers found. Start following people to chat with them!</p>
       </div>
     );
-  }
 
   return (
     <div className="flex h-[87dvh] bg-rose-50 font-sans text-gray-900 antialiased pt-4">
