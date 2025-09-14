@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:3000", "https://f69f1cfbb69b.ngrok-free.app"],
+    origin: '*',
     methods: ["GET", "POST", "DELETE", "PUT"],
   },
 });

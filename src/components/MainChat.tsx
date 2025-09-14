@@ -39,7 +39,7 @@ const MainChat = ({
    useEffect(() => {
     if (!selectedFriend || !userId) return;
 
-    const newSocket = io("http://localhost:3001", {
+    const newSocket = io("http://31.97.76.24:3001", {
       query: { userId },
     });
     setSocket(newSocket);
