@@ -176,6 +176,7 @@ export default function Messenger() {
           Avatar={Avatar}
           SendIcon={SendIcon}
           onBack={isMobile ? handleBack : undefined}
+          userId={user.id}
         />
       )}
     </div>

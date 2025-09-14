@@ -19,6 +19,7 @@ type Props = {
   Avatar: React.ComponentType;
   SendIcon: React.ComponentType;
   onBack?: () => void;
+  userId: string; 
 };
 
 const MainChat = ({
@@ -28,46 +29,48 @@ const MainChat = ({
   Avatar,
   SendIcon,
   onBack,
+  userId, 
 }: Props) => {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
 
   // 1. Establish WebSocket Connection and Listen for Messages
-  useEffect(() => {
-    // Only connect if a friend is selected
-    if (!selectedFriend) return;
+   useEffect(() => {
+    if (!selectedFriend || !userId) return;
 
-    // Connect to your WebSocket server (replace with your server URL)
-    const newSocket = io("http://localhost:3001");
+    const newSocket = io("http://localhost:3001", {
+      query: { userId },
+    });
     setSocket(newSocket);
 
     // Listen for incoming messages
     newSocket.on("receiveMessage", (message: Message) => {
-      // Only add the message if it belongs to the current conversation
-      if (
-        message.senderId === selectedFriend.id ||
-        message.receiverId === selectedFriend.id
-      ) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            ...message,
-            isOwn: message.senderId === selectedFriend.id ? false : true,
-            createdAt: new Date(message.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          },
-        ]);
+      // FIX: Only add the message if it's NOT from the current user
+      if (message.senderId !== userId) {
+        if (
+          message.senderId === selectedFriend.id ||
+          message.receiverId === selectedFriend.id
+        ) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              ...message,
+              isOwn: message.senderId === userId,
+              createdAt: new Date(message.createdAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            },
+          ]);
+        }
       }
     });
 
-    // Clean up the socket connection on component unmount
     return () => {
       newSocket.disconnect();
     };
-  }, [selectedFriend, setMessages]); // Re-connect if the selected friend changes
+  }, [selectedFriend, setMessages, userId]);
 
   // 2. Handle Sending a Message via WebSocket
   const handleSendMessage = () => {
@@ -75,7 +78,7 @@ const MainChat = ({
 
     // Create a message object to send
     const messageToSend = {
-      senderId: "your_user_id", // TODO: Replace with the actual logged-in user's ID
+      senderId: userId,
       receiverId: selectedFriend.id,
       text: input,
       createdAt: new Date().toISOString(),

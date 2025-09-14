@@ -6,39 +6,67 @@ const prisma = new PrismaClient();
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"],
+    origin: ["http://localhost:3000", "https://f69f1cfbb69b.ngrok-free.app"],
+    methods: ["GET", "POST", "DELETE", "PUT"],
   },
 });
 
-const onlineUsers = new Map();
-
 io.on("connection", (socket) => {
-  console.log("Socket connected:", socket.id);
+  const userId = socket.handshake.query.userId;
+  console.log(`User ${userId} connected with socket ID ${socket.id}`);
+  if (userId) {
+    socket.join(userId);
+  }
 
-  socket.on("register", (userId) => {
-    onlineUsers.set(userId, socket.id);
-    console.log(`User ${userId} registered with socket ${socket.id}`);
-  });
+  socket.on("sendMessage", async (data) => {
+    try {
+      // Find or create a conversation
+      const conversation = await prisma.conversation.findFirst({
+        where: {
+          OR: [
+            { user1Id: data.senderId, user2Id: data.receiverId },
+            { user1Id: data.receiverId, user2Id: data.senderId },
+          ],
+        },
+      });
 
-  socket.on("sendMessage", async ({ senderId, receiverId, text }) => {
-    const message = await prisma.message.create({
-      data: { senderId, receiverId, text },
-    });
+      let conversationId;
+      if (conversation) {
+        conversationId = conversation.id;
+      } else {
+        const newConversation = await prisma.conversation.create({
+          data: {
+            user1Id: data.senderId,
+            user2Id: data.receiverId,
+          },
+        });
+        conversationId = newConversation.id;
+      }
 
-    const receiverSocket = onlineUsers.get(receiverId);
-    if (receiverSocket) io.to(receiverSocket).emit("receiveMessage", message);
-    socket.emit("receiveMessage", message);
+      // Save the message to the database with the conversationId
+      const newMessage = await prisma.message.create({
+        data: {
+          conversationId: conversationId,
+          senderId: data.senderId,
+          receiverId: data.receiverId,
+          text: data.text,
+        },
+      });
+
+      // Broadcast the message to the specific rooms of both the sender and receiver
+      io.to(data.senderId).emit("receiveMessage", newMessage);
+      io.to(data.receiverId).emit("receiveMessage", newMessage);
+    } catch (error) {
+      console.error("Error saving message:", error);
+    }
   });
 
   socket.on("disconnect", () => {
-    for (const [userId, id] of onlineUsers.entries()) {
-      if (id === socket.id) onlineUsers.delete(userId);
-    }
-    console.log("Socket disconnected:", socket.id);
+    console.log(`User ${userId} disconnected`);
   });
 });
 
-httpServer.listen(3001, () =>
-  console.log("✅ WebSocket server running on 3001")
-);
+const PORT = 3001;
+httpServer.listen(PORT, () => {
+  console.log(`WebSocket server listening on port ${PORT}`);
+});
