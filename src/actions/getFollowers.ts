@@ -1,14 +1,17 @@
-'use server'
+"use server";
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
-// This function is a server action
+// This function is a server action with added logging
 export async function getFollowers() {
   const user = await currentUser();
   if (!user) {
+    console.log("No authenticated user found. Redirecting to sign-in.");
     redirect("/sign-in");
   }
+
+  console.log(`Searching for user with ID: ${user.id}`);
 
   const dbUser = await prisma.user.findFirst({
     where: { id: user.id },
@@ -24,7 +27,14 @@ export async function getFollowers() {
     },
   });
 
-  if (!dbUser) return null;
+  if (!dbUser) {
+    console.log(`User not found in the database for ID: ${user.id}`);
+    return null;
+  }
+
+  console.log(
+    `Found user, fetching followers. Number of raw followers: ${dbUser.followers.length}`
+  );
 
   // Filter out any users who are blocked by the current user
   const blockedUserIds = new Set(dbUser.blocks.map((block) => block.blockedId));
@@ -36,5 +46,8 @@ export async function getFollowers() {
       avatar: f.following.avatar,
     }));
 
+  console.log(
+    `Final number of filtered followers: ${filteredFollowers.length}`
+  );
   return filteredFollowers;
 }

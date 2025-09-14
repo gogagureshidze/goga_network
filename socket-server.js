@@ -11,7 +11,12 @@ const io = new Server(httpServer, {
     // CHANGE THIS: Add the URL of your frontend application
     // If you're running locally, it's "http://localhost:3000"
     // If you're deployed, use your domain name, e.g., "https://your-domain.com"
-    origin: ["http://localhost:3000", "https://f69f1cfbb69b.ngrok-free.app"],
+    origin: [
+      "http://localhost:3000",
+      "https://f69f1cfbb69b.ngrok-free.app",
+      "goga-network-ahy0nnnnb-gogagureshidzes-projects.vercel.app",
+      "https://goga-network.vercel.app",
+    ],
     methods: ["GET", "POST"],
     credentials: true,
   },

@@ -30,7 +30,6 @@ type CommentWithUser = {
   parentId?: number | null;
   replies?: CommentWithUser[];
 };
-
 // Helper function to build a nested comment tree from a flat list
 const buildCommentTree = (flatComments: CommentWithUser[]) => {
   const commentMap: { [key: number]: CommentWithUser } = {};
@@ -292,7 +291,6 @@ function CommentList({
   postId: number;
   username: string | null | undefined;
 }) {
-  console.log("Username passed from server:", username);
 
   const { user } = useUser();
   const [desc, setDesc] = useState("");
