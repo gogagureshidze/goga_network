@@ -39,10 +39,12 @@ const MainChat = ({
    useEffect(() => {
     if (!selectedFriend || !userId) return;
 
-    const newSocket = io("http://31.97.76.24:3001", {
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const newSocket = io(`${protocol}://31.97.76.24:3001`, {
       query: { userId },
       transports: ["websocket", "polling"],
     });
+
     setSocket(newSocket);
 
     // Listen for incoming messages
