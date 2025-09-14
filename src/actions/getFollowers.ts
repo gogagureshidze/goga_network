@@ -1,53 +1,50 @@
 "use server";
+
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 
-// This function is a server action with added logging
 export async function getFollowers() {
-  const user = await currentUser();
-  if (!user) {
-    console.log("No authenticated user found. Redirecting to sign-in.");
-    redirect("/sign-in");
-  }
+  try {
+    const user = await currentUser();
+    if (!user) {
+      console.log("No authenticated user");
+      return []; // don't redirect, just return empty
+    }
 
-  console.log(`Searching for user with ID: ${user.id}`);
-
-  const dbUser = await prisma.user.findFirst({
-    where: { id: user.id },
-    include: {
-      followers: {
-        include: { following: true }, // get user info of followers
-      },
-      blocks: {
-        select: {
-          blockedId: true,
+    const dbUser = await prisma.user.findFirst({
+      where: { id: user.id },
+      include: {
+        followers: {
+          include: { following: true },
+        },
+        blocks: {
+          select: { blockedId: true },
         },
       },
-    },
-  });
+    });
 
-  if (!dbUser) {
-    console.log(`User not found in the database for ID: ${user.id}`);
-    return null;
+    if (!dbUser) {
+      console.log(`User not found in DB for id: ${user.id}`);
+      return [];
+    }
+
+    const blockedUserIds = new Set(dbUser.blocks.map((b) => b.blockedId));
+
+    const filteredFollowers = dbUser.followers
+      .filter((f) => !blockedUserIds.has(f.following.id))
+      .map((f) => ({
+        id: f.following.id,
+        username: f.following.username || "Unknown User",
+        avatar: f.following.avatar || "/noAvatar.png",
+      }));
+
+    console.log(
+      `Followers fetched for ${user.id}: ${filteredFollowers.length}`
+    );
+
+    return filteredFollowers;
+  } catch (err) {
+    console.error("getFollowers error:", err);
+    return [];
   }
-
-  console.log(
-    `Found user, fetching followers. Number of raw followers: ${dbUser.followers.length}`
-  );
-
-  // Filter out any users who are blocked by the current user
-  const blockedUserIds = new Set(dbUser.blocks.map((block) => block.blockedId));
-  const filteredFollowers = dbUser.followers
-    .filter((f) => !blockedUserIds.has(f.following.id))
-    .map((f) => ({
-      id: f.following.id,
-      username: f.following.username,
-      avatar: f.following.avatar,
-    }));
-
-  console.log(
-    `Final number of filtered followers: ${filteredFollowers.length}`
-  );
-  return filteredFollowers;
 }
