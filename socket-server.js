@@ -8,7 +8,10 @@ const httpServer = createServer();
 // Explicitly allow polling + websocket
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
+    // CHANGE THIS: Add the URL of your frontend application
+    // If you're running locally, it's "http://localhost:3000"
+    // If you're deployed, use your domain name, e.g., "https://your-domain.com"
+    origin: ["http://localhost:3000", "https://f69f1cfbb69b.ngrok-free.app"],
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -44,7 +47,7 @@ io.on("connection", (socket) => {
         },
       });
 
-      io.to(data.senderId).emit("receiveMessage", newMessage);
+      // Emit the message to the receiver's room.
       io.to(data.receiverId).emit("receiveMessage", newMessage);
     } catch (err) {
       console.error("Error saving message:", err);
