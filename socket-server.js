@@ -16,6 +16,7 @@ const io = new Server(httpServer, {
       "https://f69f1cfbb69b.ngrok-free.app",
       "goga-network-ahy0nnnnb-gogagureshidzes-projects.vercel.app",
       "https://goga-network.vercel.app",
+      "https://goga-network.onrender.com",
     ],
     methods: ["GET", "POST"],
     credentials: true,

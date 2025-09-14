@@ -1,12 +1,11 @@
+// app/components/Post.tsx
 import Image from "next/image";
 import MediaGrid from "./MediaGrid";
-import PostInteractions from "./PostInteractions";
-import Comments from "./Comments"; // Server Component
 import Link from "next/link";
-import { Suspense } from "react";
 import PostInfo from "./PostInfo";
+import Comments from "./Comments";
 
-function Post({ post }: { post: any }) {
+export default function Post({ post }: { post: any }) {
   return (
     <div className="flex flex-col gap-4 p-4 bg-white rounded-xl shadow-sm">
       {/* Header */}
@@ -17,7 +16,6 @@ function Post({ post }: { post: any }) {
               src={post.user?.avatar || "/noAvatar.png"}
               alt="Profile"
               width={40}
-              loading="lazy"
               height={40}
               className="w-10 h-10 object-cover cursor-pointer rounded-full ring-orange-200 ring-2"
             />
@@ -26,8 +24,6 @@ function Post({ post }: { post: any }) {
             </span>
           </div>
         </Link>
-
-        {/* ✅ pass post owner ID */}
         <PostInfo postId={post.id} postOwnerId={post.userId} />
       </div>
 
@@ -37,23 +33,9 @@ function Post({ post }: { post: any }) {
           {post.desc}
         </p>
       )}
+      <MediaGrid media={post.media} />
+      <Comments postId={post.id} />
 
-      <Suspense fallback={<p>Loading...</p>}>
-        {/* Media */}
-        <MediaGrid media={post.media} />
-
-        {/* Reactions */}
-        <PostInteractions
-          postId={post.id}
-          likes={post.likes?.map((l: { userId: string }) => l.userId) || []}
-          commentNumber={post._count?.comments || 0}
-        />
-
-        {/* Comments */}
-        <Comments postId={post.id} />
-      </Suspense>
     </div>
   );
 }
-
-export default Post;
