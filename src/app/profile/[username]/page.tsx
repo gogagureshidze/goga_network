@@ -9,7 +9,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 
-async function ProfilePage({ params }: { params: { username: string } }) {
+async function ProfilePage({ params }: { params:  any}) {
   let user = await prisma.user.findFirst({
     where: { username: params.username },
     include: {
