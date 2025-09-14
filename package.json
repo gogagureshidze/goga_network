@@ -12,6 +12,7 @@
   "dependencies": {
     "@clerk/nextjs": "^6.31.6",
     "@prisma/client": "^6.11.0",
+    "@vercel/speed-insights": "^1.2.0",
     "babel-plugin-react-compiler": "^0.0.0-experimental-938cd9a-20240601",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.514.0",

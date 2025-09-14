@@ -7,6 +7,7 @@ import PageTransition from "@/components/PageTransition";
 import prisma from "@/lib/client";
 import Providers from "./providers";
 import Footer from "@/components/Footer";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 // Define the Funnel Display font with the variable property
 const funnel_display = Funnel_Display({
@@ -63,6 +64,7 @@ export default async function RootLayout({
           <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
             <GlobalLoader />
             <PageTransition>{children}</PageTransition>
+            <SpeedInsights />
           </div>
           <Footer />
         </Providers>
