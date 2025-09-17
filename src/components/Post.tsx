@@ -4,6 +4,7 @@ import MediaGrid from "./MediaGrid";
 import Link from "next/link";
 import PostInfo from "./PostInfo";
 import Comments from "./Comments";
+import PostInteractions from "./PostInteractions";
 
 export default function Post({ post }: { post: any }) {
   return (
@@ -33,9 +34,14 @@ export default function Post({ post }: { post: any }) {
           {post.desc}
         </p>
       )}
-      <MediaGrid media={post.media} />
-      <Comments postId={post.id} />
 
+      <MediaGrid media={post.media} />
+      <PostInteractions
+        postId={post.id}
+        likes={post.likes}
+        commentNumber={post._count?.comments || 0}
+      />
+      <Comments postId={post.id} />
     </div>
   );
 }
