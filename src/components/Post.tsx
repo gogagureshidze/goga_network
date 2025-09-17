@@ -7,6 +7,7 @@ import Comments from "./Comments";
 import PostInteractions from "./PostInteractions";
 
 export default function Post({ post }: { post: any }) {
+  console.log(post.user.avatar, 'KIUKLLKEAikhd')
   return (
     <div className="flex flex-col gap-4 p-4 bg-white rounded-xl shadow-sm">
       {/* Header */}

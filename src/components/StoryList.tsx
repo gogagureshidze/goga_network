@@ -303,22 +303,43 @@ const lastTrackedRef = useRef<number | null>(null);
   };
 
 const handleDeleteComment = async (commentId: number) => {
-  try {
+  if (!currentStory) return;
 
-    if (!currentStory) return;
+  // Store the original comment for potential rollback
+  const originalComment = currentStory.comments?.find(
+    (c) => c.id === commentId
+  );
+  if (!originalComment) return;
 
-    await deleteStoryComment(commentId); // server action
+  // Prevent multiple clicks
+  if (isPending) return;
 
-    // Optimistically update the UI
+  startTransition(async () => {
+    // Optimistically remove the comment immediately
     dispatch({
       type: "DELETE_COMMENT",
       storyId: currentStory.id,
       commentId,
     });
-  } catch (err: any) {
-    console.error(err);
-    alert(err.message || "Failed to delete comment");
-  }
+
+    try {
+      // Call server action
+      await deleteStoryComment(commentId);
+      // Success - comment is already removed from UI
+    } catch (error: any) {
+      console.error("Failed to delete comment:", error);
+
+      // Rollback: Add the comment back to UI
+      dispatch({
+        type: "ADD_COMMENT",
+        storyId: currentStory.id,
+        comment: originalComment,
+      });
+
+      // Show error to user
+      alert(error.message || "Failed to delete comment. Please try again.");
+    }
+  });
 };
 
 
