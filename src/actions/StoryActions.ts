@@ -4,42 +4,35 @@ import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 
-// This function handles liking and unliking a comment on a story.
 export async function likeStoryComment(commentId: number, isLiking: boolean) {
   const user = await currentUser();
-  const userId = user?.id;
-  if (!userId) throw new Error("Not authenticated");
+  if (!user?.id) throw new Error("Not authenticated");
 
   try {
     if (isLiking) {
       await prisma.like.upsert({
         where: {
-          userId_storyCommentId: { userId, storyCommentId: commentId },
+          userId_storyCommentId: { userId: user.id, storyCommentId: commentId },
         },
-        create: {
-          storyCommentId: commentId,
-          userId,
-        },
+        create: { storyCommentId: commentId, userId: user.id },
         update: {},
       });
     } else {
-      await prisma.like
-        .delete({
-          where: {
-            userId_storyCommentId: { userId, storyCommentId: commentId },
-          },
-        })
-        .catch(() => {
-          // Ignore if like doesn't exist
-        });
+      await prisma.like.delete({
+        where: {
+          userId_storyCommentId: { userId: user.id, storyCommentId: commentId },
+        },
+      });
     }
-
+    revalidatePath('/')
     return { success: true };
-  } catch (error) {
-    console.error("Like comment error:", error);
-    throw new Error("Failed to update like");
+  } catch (error: any) {
+    console.error("FULL ERROR:", error); // 🔥 log full error
+    throw error; // rethrow to see full stack in console
   }
 }
+
+
 
 // This function adds a new comment to a story.
 export const addStoryComment = async (storyId: number, desc: string) => {

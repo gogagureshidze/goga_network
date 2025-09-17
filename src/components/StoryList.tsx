@@ -443,39 +443,41 @@ const handleDeleteComment = async (commentId: number) => {
   };
 
 const handleLikeComment = (storyId: number, commentId: number) => {
-  // 1️⃣ Prevent multiple clicks on same comment
   if (likingComments.has(commentId)) return;
 
-  const activeGroup = optimisticStories.find((group) =>
-    group.stories.some((s) => s.id === storyId)
+  const activeGroup = optimisticStories.find(
+    (group) => group.user.id === activeUserStoryId
   );
   const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
-  const currentComment = currentStory?.comments?.find(
-    (c) => c.id === commentId
-  );
 
-  if (!currentComment) return;
+  if (!currentStory) return;
+
+  const currentComment = currentStory.comments?.find((c) => c.id === commentId);
+  if (!currentComment || currentComment.id < 0) return;
 
   const isLiking = !currentComment.likes.some((like) => like.userId === userId);
 
-  // 2️⃣ Optimistic update
-  dispatch({ type: "TOGGLE_COMMENT_LIKE", storyId, commentId, isLiking });
   setLikingComments((prev) => new Set(prev).add(commentId));
 
-  // 3️⃣ Server request
   startTransition(async () => {
+    // Dispatch the optimistic update first
+    dispatch({ type: "TOGGLE_COMMENT_LIKE", storyId, commentId, isLiking });
+
     try {
+      // Make the server call to update the database
       await likeStoryComment(commentId, isLiking);
     } catch (err) {
       console.error("Failed to like comment:", err);
-      // Rollback if server fails
+      // Rollback the optimistic update on failure
       dispatch({
         type: "TOGGLE_COMMENT_LIKE",
         storyId,
         commentId,
         isLiking: !isLiking,
       });
+      alert("Failed to like/unlike comment. Please try again.");
     } finally {
+      // Remove from the pending set regardless of success or failure
       setLikingComments((prev) => {
         const newSet = new Set(prev);
         newSet.delete(commentId);
@@ -484,7 +486,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
     }
   });
 };
-
 
   const handleStoryBubbleClick = async (uId: string) => {
     setActiveUserStoryId(uId);
@@ -846,7 +847,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                           <Heart
                             size={16}
                             className={`transition-colors duration-200 ${
-                              hasLikedByAuthor
+                              c.likes.some((l) => l.userId === userId)
                                 ? "text-red-500 fill-red-500"
                                 : "text-white"
                             }`}
