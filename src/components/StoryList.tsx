@@ -304,55 +304,59 @@ const lastTrackedRef = useRef<number | null>(null);
         console.error("Failed to add stories:", err);
       }
     });
-  };
-const handleDeleteComment = async (commentId: number) => {
-  if (!currentStory) return;
+  };const handleDeleteComment = async (commentId: number) => {
+    // Get currentStory properly
+    const activeGroup = optimisticStories.find(
+      (group) => group.user.id === activeUserStoryId
+    );
+    const currentStory = activeGroup?.stories[activeIndex];
 
-  // Prevent rapid clicks
-  if (deletingComments.has(commentId) || isPending) return;
+    if (!currentStory) return;
 
-  // Store the original comment for potential rollback
-  const originalComment = currentStory.comments?.find(
-    (c) => c.id === commentId
-  );
-  if (!originalComment) return;
+    // Prevent rapid clicks
+    if (deletingComments.has(commentId) || isPending) return;
 
-  // Mark as deleting
-  setDeletingComments((prev) => new Set(prev).add(commentId));
+    // Store the original comment for potential rollback
+    const originalComment = currentStory.comments?.find(
+      (c) => c.id === commentId
+    );
+    if (!originalComment) return;
 
-  startTransition(async () => {
-    // Optimistically remove the comment immediately
-    dispatch({
-      type: "DELETE_COMMENT",
-      storyId: currentStory.id,
-      commentId,
-    });
+    // Mark as deleting
+    setDeletingComments((prev) => new Set(prev).add(commentId));
 
-    try {
-      await deleteStoryComment(commentId);
-      // Success - comment is already removed from UI
-    } catch (error: any) {
-      console.error("Failed to delete comment:", error);
-
-      // Rollback: Add the comment back to UI
+    startTransition(async () => {
+      // Optimistically remove the comment immediately
       dispatch({
-        type: "ADD_COMMENT",
+        type: "DELETE_COMMENT",
         storyId: currentStory.id,
-        comment: originalComment,
+        commentId,
       });
 
-      alert(error.message || "Failed to delete comment. Please try again.");
-    } finally {
-      // Always remove from deleting set
-      setDeletingComments((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(commentId);
-        return newSet;
-      });
-    }
-  });
-};
+      try {
+        await deleteStoryComment(commentId);
+        // Success - comment is already removed from UI
+      } catch (error: any) {
+        console.error("Failed to delete comment:", error);
 
+        // Rollback: Add the comment back to UI
+        dispatch({
+          type: "ADD_COMMENT",
+          storyId: currentStory.id,
+          comment: originalComment,
+        });
+
+        alert(error.message || "Failed to delete comment. Please try again.");
+      } finally {
+        // Always remove from deleting set
+        setDeletingComments((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(commentId);
+          return newSet;
+        });
+      }
+    });
+  };
   const handleAddComment = async (storyId: number) => {
     const commentText = commentMap[storyId] || "";
     if (!commentText.trim()) return;
