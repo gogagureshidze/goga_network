@@ -75,6 +75,10 @@ export default function StoryList({
   stories: StoryWithUser[];
   userId: string;
 }) {
+  const [deletingComments, setDeletingComments] = useState<Set<number>>(
+    new Set()
+  );
+  const [likingComments, setLikingComments] = useState<Set<number>>(new Set());
   const [media, setMedia] = useState<any[]>([]);
   const [isPending, startTransition] = useTransition();
   const { user, isLoaded } = useUser();
@@ -301,9 +305,11 @@ const lastTrackedRef = useRef<number | null>(null);
       }
     });
   };
-
 const handleDeleteComment = async (commentId: number) => {
   if (!currentStory) return;
+
+  // Prevent rapid clicks
+  if (deletingComments.has(commentId) || isPending) return;
 
   // Store the original comment for potential rollback
   const originalComment = currentStory.comments?.find(
@@ -311,8 +317,8 @@ const handleDeleteComment = async (commentId: number) => {
   );
   if (!originalComment) return;
 
-  // Prevent multiple clicks
-  if (isPending) return;
+  // Mark as deleting
+  setDeletingComments((prev) => new Set(prev).add(commentId));
 
   startTransition(async () => {
     // Optimistically remove the comment immediately
@@ -323,7 +329,6 @@ const handleDeleteComment = async (commentId: number) => {
     });
 
     try {
-      // Call server action
       await deleteStoryComment(commentId);
       // Success - comment is already removed from UI
     } catch (error: any) {
@@ -336,12 +341,17 @@ const handleDeleteComment = async (commentId: number) => {
         comment: originalComment,
       });
 
-      // Show error to user
       alert(error.message || "Failed to delete comment. Please try again.");
+    } finally {
+      // Always remove from deleting set
+      setDeletingComments((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(commentId);
+        return newSet;
+      });
     }
   });
 };
-
 
   const handleAddComment = async (storyId: number) => {
     const commentText = commentMap[storyId] || "";
@@ -430,35 +440,51 @@ const handleDeleteComment = async (commentId: number) => {
     });
   };
 
-  const handleLikeComment = (storyId: number, commentId: number) => {
-    const activeGroup = optimisticStories.find(
-      (group) => group.user.id === activeUserStoryId
-    );
-    const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
-    const currentComment = currentStory?.comments?.find(
-      (c) => c.id === commentId
-    );
-    if (!currentComment || currentComment.id < 0) return;
+const handleLikeComment = (storyId: number, commentId: number) => {
+  // Prevent rapid clicks
+  if (likingComments.has(commentId) || isPending) return;
 
-    const isLiking = !currentComment.likes.some(
-      (like) => like.userId === userId
-    );
+  const activeGroup = optimisticStories.find(
+    (group) => group.user.id === activeUserStoryId
+  );
+  const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
+  const currentComment = currentStory?.comments?.find(
+    (c) => c.id === commentId
+  );
 
-    startTransition(async () => {
-      dispatch({ type: "TOGGLE_COMMENT_LIKE", storyId, commentId, isLiking });
-      try {
-        await likeStoryComment(commentId, isLiking);
-      } catch (err) {
-        console.error(err);
-        dispatch({
-          type: "TOGGLE_COMMENT_LIKE",
-          storyId,
-          commentId,
-          isLiking: !isLiking,
-        });
-      }
-    });
-  };
+  if (!currentComment || currentComment.id < 0) return;
+
+  const isLiking = !currentComment.likes.some((like) => like.userId === userId);
+
+  // Mark as liking
+  setLikingComments((prev) => new Set(prev).add(commentId));
+
+  startTransition(async () => {
+    // Optimistic update
+    dispatch({ type: "TOGGLE_COMMENT_LIKE", storyId, commentId, isLiking });
+
+    try {
+      await likeStoryComment(commentId, isLiking);
+      // Success
+    } catch (err) {
+      console.error("Failed to like comment:", err);
+      // Revert optimistic update
+      dispatch({
+        type: "TOGGLE_COMMENT_LIKE",
+        storyId,
+        commentId,
+        isLiking: !isLiking,
+      });
+    } finally {
+      // Always remove from liking set
+      setLikingComments((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(commentId);
+        return newSet;
+      });
+    }
+  });
+};
 
   const handleStoryBubbleClick = async (uId: string) => {
     setActiveUserStoryId(uId);
