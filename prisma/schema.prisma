@@ -93,6 +93,10 @@ model Like {
   storyComment  StoryComment? @relation(fields: [storyCommentId], references: [id], onDelete: Cascade)
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, postId]) 
+  @@unique([userId, commentId]) 
+  @@unique([userId, storyId])
+  @@unique([userId, storyCommentId])
   @@index([commentId], map: "Like_commentId_fkey")
   @@index([postId], map: "Like_postId_fkey")
   @@index([storyId], map: "Like_storyId_fkey")
