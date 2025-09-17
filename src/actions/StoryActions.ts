@@ -6,46 +6,39 @@ import { revalidatePath } from "next/cache";
 
 // This function handles liking and unliking a comment on a story.
 export async function likeStoryComment(commentId: number, isLiking: boolean) {
-  const user = await currentUser(); // get current user
+  const user = await currentUser();
   const userId = user?.id;
   if (!userId) throw new Error("Not authenticated");
 
-  // 1️⃣ Check if the user exists in DB
-  const dbUser = await prisma.user.findUnique({ where: { id: userId } });
-  if (!dbUser) throw new Error("User not found in database");
-
-  // 2️⃣ Check if the comment exists
-  const comment = await prisma.storyComment.findUnique({
-    where: { id: commentId },
-  });
-  if (!comment) throw new Error("Comment does not exist");
-
-  // 3️⃣ Check if a like already exists
-  const existingLike = await prisma.like.findFirst({
-    where: { storyCommentId: commentId, userId },
-  });
-
-  if (isLiking) {
-    // Add like only if it doesn't exist
-    if (!existingLike) {
-      await prisma.like.create({
-        data: {
+  try {
+    if (isLiking) {
+      await prisma.like.upsert({
+        where: {
+          userId_storyCommentId: { userId, storyCommentId: commentId },
+        },
+        create: {
           storyCommentId: commentId,
           userId,
         },
+        update: {},
       });
+    } else {
+      await prisma.like
+        .delete({
+          where: {
+            userId_storyCommentId: { userId, storyCommentId: commentId },
+          },
+        })
+        .catch(() => {
+          // Ignore if like doesn't exist
+        });
     }
-  } else {
-    // Remove like if it exists
-    if (existingLike) {
-      await prisma.like.delete({
-        where: { id: existingLike.id },
-      });
-    }
-  }
-  revalidatePath("/");
 
-  return { success: true };
+    return { success: true };
+  } catch (error) {
+    console.error("Like comment error:", error);
+    throw new Error("Failed to update like");
+  }
 }
 
 // This function adds a new comment to a story.

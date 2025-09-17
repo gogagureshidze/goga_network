@@ -94,6 +94,10 @@ export default function StoryList({
   const [showStoryMenu, setShowStoryMenu] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [imageLoading, setImageLoading] = useState<{ [key: number]: boolean }>(
+    {}
+  );
+
 
   const groupStories = (storiesArray: StoryWithUser[]) => {
     const grouped: { [key: string]: UserStoryGroup } = {};
@@ -306,48 +310,54 @@ export default function StoryList({
     });
   };
   // Client-side logic for handleDeleteComment
-  const handleDeleteComment = async (storyId: number, commentId: number) => {
-    // Prevent rapid clicks on the delete button
-    if (deletingComments.has(commentId)) return;
+const handleDeleteComment = async (commentId: number) => {
+  // Get currentStory properly using the same logic as other functions
+  const activeGroup = optimisticStories.find(
+    (group) => group.user.id === activeUserStoryId
+  );
+  const currentStory = activeGroup?.stories[activeIndex];
 
-    const activeGroup = optimisticStories.find(
-      (g) => g.user.id === activeUserStoryId
-    );
-    const currentStory = activeGroup?.stories[activeIndex];
-    if (!currentStory) return;
+  if (!currentStory) return;
 
-    const originalComment = currentStory.comments?.find(
-      (c) => c.id === commentId
-    );
-    if (!originalComment) return;
+  // Prevent rapid clicks
+  if (deletingComments.has(commentId)) return;
 
-    // Add comment ID to the set to disable the button
-    setDeletingComments((prev) => new Set(prev).add(commentId));
+  const originalComment = currentStory.comments?.find(
+    (c) => c.id === commentId
+  );
+  if (!originalComment) return;
 
-    // Optimistically remove the comment from the UI
-    dispatch({ type: "DELETE_COMMENT", storyId: currentStory.id, commentId });
+  setDeletingComments((prev) => new Set(prev).add(commentId));
 
-    try {
-      // 1️⃣ Make the server action call
-      await deleteStoryComment(commentId);
-    } catch (err) {
-      console.error(err);
-      // 2️⃣ Rollback the optimistic change if the server call fails
-      dispatch({
-        type: "ADD_COMMENT",
-        storyId: currentStory.id,
-        comment: originalComment,
-      });
-      // You could also add a user-facing toast or error message here
-    } finally {
-      // 3️⃣ Always remove from the set, regardless of success or failure
-      setDeletingComments((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(commentId);
-        return newSet;
-      });
-    }
-  };
+  try {
+    // Optimistically remove comment
+    dispatch({
+      type: "DELETE_COMMENT",
+      storyId: currentStory.id,
+      commentId,
+    });
+
+    await deleteStoryComment(commentId);
+  } catch (error: any) {
+    console.error("Failed to delete comment:", error);
+
+    // Rollback
+    dispatch({
+      type: "ADD_COMMENT",
+      storyId: currentStory.id,
+      comment: originalComment,
+    });
+
+    alert(error.message || "Failed to delete comment");
+  } finally {
+    // Always clean up
+    setDeletingComments((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(commentId);
+      return newSet;
+    });
+  }
+};
 
   const handleAddComment = async (storyId: number) => {
     const commentText = commentMap[storyId] || "";
@@ -649,24 +659,37 @@ const handleLikeComment = (storyId: number, commentId: number) => {
             <h3 className="text-xl font-semibold mb-2">Preview Stories</h3>
 
             {/* Media grid */}
-            <div className="flex flex-wrap gap-4 overflow-y-auto max-h-96">
-              {media.map((item) => (
-                <div key={item.public_id} className="relative w-24 h-24">
+            <div className="flex flex-wrap gap-4 overflow-y-auto max-h-96 justify-center">
+              {media.map((item, index) => (
+                <div
+                  key={item.public_id}
+                  className="relative w-20 h-32 flex-shrink-0"
+                >
                   {item.resource_type === "video" ? (
                     <video
                       src={item.secure_url}
-                      controls
-                      className="rounded-lg shadow-lg w-24 h-24 object-cover"
+                      className="rounded-lg shadow-lg w-full h-full object-cover"
+                      muted
                     />
                   ) : (
-                    <Image
-                      src={item.secure_url}
-                      alt="Story Preview"
-                      fill
-                      style={{ objectFit: "cover" }}
-                      className="rounded-lg shadow-lg"
-                    />
+                    <div className="relative w-full h-full">
+                      <Image
+                        src={item.secure_url}
+                        alt={`Story Preview ${index + 1}`}
+                        fill
+                        className="rounded-lg shadow-lg object-cover"
+                      />
+                    </div>
                   )}
+                  {/* Remove button */}
+                  <button
+                    onClick={() =>
+                      setMedia((prev) => prev.filter((_, i) => i !== index))
+                    }
+                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-red-600"
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
             </div>
@@ -742,7 +765,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                 className="rounded-lg"
               />
             )}
-
             {isStoryVideo(currentStory) && (
               <button
                 onClick={(e) => {
@@ -754,7 +776,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                 {isMuted ? "🔇" : "🔊"}
               </button>
             )}
-
             <div className="absolute top-0 left-0 w-full p-2 flex flex-col gap-2 z-20">
               <div className="flex gap-1">
                 {activeGroup.stories.map((_, idx) => (
@@ -791,7 +812,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                 </div>
               </Link>
             </div>
-
             {/* Comments section */}
             <div className="absolute bottom-16 left-4 right-4 z-30 max-h-48 overflow-y-auto flex flex-col gap-2 px-2 py-1">
               {currentStory.comments && currentStory.comments.length > 0 ? (
@@ -851,7 +871,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteComment(currentStory.id, c.id);
+                            handleDeleteComment(c.id);
                           }}
                           className="ml-2 text-sm text-red-500 hover:text-red-700"
                         >
@@ -867,7 +887,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                 </span>
               )}
             </div>
-
             {/* Bottom actions */}
             <div className="absolute bottom-4 left-4 right-4 z-40 flex items-center gap-2">
               <button
@@ -920,7 +939,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                 </button>
               )}
             </div>
-
             {/* Close button */}
             <button
               onClick={() => setActiveUserStoryId(null)}
@@ -928,7 +946,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
             >
               ✕
             </button>
-
+            
             {/* ✨ Story menu button - only show for story owner */}
             {isOwner && (
               <div className="absolute top-4 right-16 z-40">
