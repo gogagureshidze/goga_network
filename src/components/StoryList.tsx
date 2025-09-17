@@ -207,7 +207,6 @@ export default function StoryList({
                 : story
             ),
           }));
-
         case "TOGGLE_COMMENT_LIKE":
           return state.map((group) => ({
             ...group,
@@ -217,8 +216,7 @@ export default function StoryList({
                 : {
                     ...story,
                     comments: (story.comments || []).map((comment) => {
-                      if (comment.id !== action.commentId || comment.id < 0)
-                        return comment;
+                      if (comment.id !== action.commentId) return comment;
                       const hasLiked = comment.likes.some(
                         (l) => l.userId === userId
                       );
@@ -445,50 +443,39 @@ const handleDeleteComment = async (commentId: number) => {
   };
 
 const handleLikeComment = (storyId: number, commentId: number) => {
-  // 1. Prevent multiple clicks while a request is in flight
-  if (likingComments.has(commentId) || isPending) {
-    console.log("Already processing a like request for this comment.");
-    return;
-  }
+  // 1️⃣ Prevent multiple clicks on same comment
+  if (likingComments.has(commentId)) return;
 
-  const activeGroup = optimisticStories.find(
-    (group) => group.user.id === activeUserStoryId
+  const activeGroup = optimisticStories.find((group) =>
+    group.stories.some((s) => s.id === storyId)
   );
   const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
   const currentComment = currentStory?.comments?.find(
     (c) => c.id === commentId
   );
 
-  if (!currentComment || currentComment.id < 0) {
-    console.error("Comment not found or is a temporary optimistic comment.");
-    return;
-  }
+  if (!currentComment) return;
 
   const isLiking = !currentComment.likes.some((like) => like.userId === userId);
 
-  // 2. Add the comment ID to the pending set
+  // 2️⃣ Optimistic update
+  dispatch({ type: "TOGGLE_COMMENT_LIKE", storyId, commentId, isLiking });
   setLikingComments((prev) => new Set(prev).add(commentId));
 
+  // 3️⃣ Server request
   startTransition(async () => {
-    // 3. Optimistic update: instantly change the UI
-    dispatch({ type: "TOGGLE_COMMENT_LIKE", storyId, commentId, isLiking });
-
     try {
-      // 4. Server call: attempt to update the database
       await likeStoryComment(commentId, isLiking);
-      // Success: the UI state is now correct
     } catch (err) {
       console.error("Failed to like comment:", err);
-      // 5. Rollback: revert the optimistic change if the server call fails
+      // Rollback if server fails
       dispatch({
         type: "TOGGLE_COMMENT_LIKE",
         storyId,
         commentId,
         isLiking: !isLiking,
       });
-      // Optional: show a user-facing error message
     } finally {
-      // 6. Clean up: remove the comment ID from the pending set
       setLikingComments((prev) => {
         const newSet = new Set(prev);
         newSet.delete(commentId);
@@ -497,6 +484,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
     }
   });
 };
+
 
   const handleStoryBubbleClick = async (uId: string) => {
     setActiveUserStoryId(uId);
