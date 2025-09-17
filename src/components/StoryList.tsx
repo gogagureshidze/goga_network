@@ -264,7 +264,7 @@ export default function StoryList({
   const [progress, setProgress] = useState(0);
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(Date.now());
-const lastTrackedRef = useRef<number | null>(null);
+  const lastTrackedRef = useRef<number | null>(null);
 
   const handleAddStory = async () => {
     if (media.length === 0) return;
@@ -304,59 +304,51 @@ const lastTrackedRef = useRef<number | null>(null);
         console.error("Failed to add stories:", err);
       }
     });
-  };const handleDeleteComment = async (commentId: number) => {
-    // Get currentStory properly
+  };
+  // Client-side logic for handleDeleteComment
+  const handleDeleteComment = async (storyId: number, commentId: number) => {
+    // Prevent rapid clicks on the delete button
+    if (deletingComments.has(commentId)) return;
+
     const activeGroup = optimisticStories.find(
-      (group) => group.user.id === activeUserStoryId
+      (g) => g.user.id === activeUserStoryId
     );
     const currentStory = activeGroup?.stories[activeIndex];
-
     if (!currentStory) return;
 
-    // Prevent rapid clicks
-    if (deletingComments.has(commentId) || isPending) return;
-
-    // Store the original comment for potential rollback
     const originalComment = currentStory.comments?.find(
       (c) => c.id === commentId
     );
     if (!originalComment) return;
 
-    // Mark as deleting
+    // Add comment ID to the set to disable the button
     setDeletingComments((prev) => new Set(prev).add(commentId));
 
-    startTransition(async () => {
-      // Optimistically remove the comment immediately
+    // Optimistically remove the comment from the UI
+    dispatch({ type: "DELETE_COMMENT", storyId: currentStory.id, commentId });
+
+    try {
+      // 1️⃣ Make the server action call
+      await deleteStoryComment(commentId);
+    } catch (err) {
+      console.error(err);
+      // 2️⃣ Rollback the optimistic change if the server call fails
       dispatch({
-        type: "DELETE_COMMENT",
+        type: "ADD_COMMENT",
         storyId: currentStory.id,
-        commentId,
+        comment: originalComment,
       });
-
-      try {
-        await deleteStoryComment(commentId);
-        // Success - comment is already removed from UI
-      } catch (error: any) {
-        console.error("Failed to delete comment:", error);
-
-        // Rollback: Add the comment back to UI
-        dispatch({
-          type: "ADD_COMMENT",
-          storyId: currentStory.id,
-          comment: originalComment,
-        });
-
-        alert(error.message || "Failed to delete comment. Please try again.");
-      } finally {
-        // Always remove from deleting set
-        setDeletingComments((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(commentId);
-          return newSet;
-        });
-      }
-    });
+      // You could also add a user-facing toast or error message here
+    } finally {
+      // 3️⃣ Always remove from the set, regardless of success or failure
+      setDeletingComments((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(commentId);
+        return newSet;
+      });
+    }
   };
+
   const handleAddComment = async (storyId: number) => {
     const commentText = commentMap[storyId] || "";
     if (!commentText.trim()) return;
@@ -405,8 +397,6 @@ const lastTrackedRef = useRef<number | null>(null);
     }
   };
 
-
-
   const goNextStory = useCallback(() => {
     const activeGroup = optimisticStories.find(
       (group) => group.user.id === activeUserStoryId
@@ -444,51 +434,53 @@ const lastTrackedRef = useRef<number | null>(null);
     });
   };
 
-const handleLikeComment = (storyId: number, commentId: number) => {
-  // Prevent rapid clicks
-  if (likingComments.has(commentId) || isPending) return;
+  const handleLikeComment = (storyId: number, commentId: number) => {
+    // Prevent rapid clicks
+    if (likingComments.has(commentId) || isPending) return;
 
-  const activeGroup = optimisticStories.find(
-    (group) => group.user.id === activeUserStoryId
-  );
-  const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
-  const currentComment = currentStory?.comments?.find(
-    (c) => c.id === commentId
-  );
+    const activeGroup = optimisticStories.find(
+      (group) => group.user.id === activeUserStoryId
+    );
+    const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
+    const currentComment = currentStory?.comments?.find(
+      (c) => c.id === commentId
+    );
 
-  if (!currentComment || currentComment.id < 0) return;
+    if (!currentComment || currentComment.id < 0) return;
 
-  const isLiking = !currentComment.likes.some((like) => like.userId === userId);
+    const isLiking = !currentComment.likes.some(
+      (like) => like.userId === userId
+    );
 
-  // Mark as liking
-  setLikingComments((prev) => new Set(prev).add(commentId));
+    // Mark as liking
+    setLikingComments((prev) => new Set(prev).add(commentId));
 
-  startTransition(async () => {
-    // Optimistic update
-    dispatch({ type: "TOGGLE_COMMENT_LIKE", storyId, commentId, isLiking });
+    startTransition(async () => {
+      // Optimistic update
+      dispatch({ type: "TOGGLE_COMMENT_LIKE", storyId, commentId, isLiking });
 
-    try {
-      await likeStoryComment(commentId, isLiking);
-      // Success
-    } catch (err) {
-      console.error("Failed to like comment:", err);
-      // Revert optimistic update
-      dispatch({
-        type: "TOGGLE_COMMENT_LIKE",
-        storyId,
-        commentId,
-        isLiking: !isLiking,
-      });
-    } finally {
-      // Always remove from liking set
-      setLikingComments((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(commentId);
-        return newSet;
-      });
-    }
-  });
-};
+      try {
+        await likeStoryComment(commentId, isLiking);
+        // Success
+      } catch (err) {
+        console.error("Failed to like comment:", err);
+        // Revert optimistic update
+        dispatch({
+          type: "TOGGLE_COMMENT_LIKE",
+          storyId,
+          commentId,
+          isLiking: !isLiking,
+        });
+      } finally {
+        // Always remove from liking set
+        setLikingComments((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(commentId);
+          return newSet;
+        });
+      }
+    });
+  };
 
   const handleStoryBubbleClick = async (uId: string) => {
     setActiveUserStoryId(uId);
@@ -522,38 +514,37 @@ const handleLikeComment = (storyId: number, commentId: number) => {
     });
   };
 
-  
-useEffect(() => {
-  if (!activeUserStoryId) return;
+  useEffect(() => {
+    if (!activeUserStoryId) return;
 
-  const shouldPause = isInputActive || showActivityModal || showDeleteConfirm;
-  if (shouldPause) return;
+    const shouldPause = isInputActive || showActivityModal || showDeleteConfirm;
+    if (shouldPause) return;
 
-  timerRef.current = window.setInterval(() => {
-    const elapsed = Date.now() - startTimeRef.current;
-    setProgress(Math.min((elapsed / 10000) * 100, 100)); // ⏳ 10 sec each
-    if (elapsed >= 10000) {
-      startTimeRef.current = Date.now();
-      goNextStory();
-    }
-  }, 100);
+    timerRef.current = window.setInterval(() => {
+      const elapsed = Date.now() - startTimeRef.current;
+      setProgress(Math.min((elapsed / 10000) * 100, 100)); // ⏳ 10 sec each
+      if (elapsed >= 10000) {
+        startTimeRef.current = Date.now();
+        goNextStory();
+      }
+    }, 100);
 
-  return () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-  };
-}, [
-  activeUserStoryId,
-  activeIndex,
-  isInputActive,
-  showActivityModal,
-  showDeleteConfirm,
-  goNextStory,
-]);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [
+    activeUserStoryId,
+    activeIndex,
+    isInputActive,
+    showActivityModal,
+    showDeleteConfirm,
+    goNextStory,
+  ]);
 
-useEffect(() => {
-  setProgress(0);
-  startTimeRef.current = Date.now();
-}, [activeIndex, activeUserStoryId]);
+  useEffect(() => {
+    setProgress(0);
+    startTimeRef.current = Date.now();
+  }, [activeIndex, activeUserStoryId]);
 
   useEffect(() => {
     if (!activeUserStoryId) return;
@@ -582,13 +573,11 @@ useEffect(() => {
     (group) => group.user.id === activeUserStoryId
   );
   const currentStory = activeGroup?.stories[activeIndex];
-  
+
   const hasLiked =
     currentStory?.likes.some((like) => like.userId === userId) || false;
   const isOwner = currentStory?.userId === userId;
 
-
-  
   return (
     <>
       {/* Upload widget */}
@@ -856,7 +845,7 @@ useEffect(() => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteComment(c.id); 
+                            handleDeleteComment(currentStory.id, c.id);
                           }}
                           className="ml-2 text-sm text-red-500 hover:text-red-700"
                         >
@@ -1016,7 +1005,9 @@ useEffect(() => {
             className="bg-black rounded-lg p-6 max-w-sm w-full"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg text-red-500 font-semibold mb-4">Delete Story?</h3>
+            <h3 className="text-lg text-red-500 font-semibold mb-4">
+              Delete Story?
+            </h3>
             <p className="text-slate-300 mb-6">
               This action cannot be undone. Your story will be permanently
               deleted.

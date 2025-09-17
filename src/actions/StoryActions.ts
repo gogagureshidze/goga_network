@@ -85,6 +85,7 @@ export const addStoryComment = async (storyId: number, desc: string) => {
 };
 
 // Function to delete a story comment
+// Function to delete a story comment
 export const deleteStoryComment = async (commentId: number) => {
   const user = await currentUser();
   const userId = user?.id;
@@ -94,7 +95,7 @@ export const deleteStoryComment = async (commentId: number) => {
   }
 
   try {
-    // Check if user owns the comment
+    // 1️⃣ Find and check comment ownership in one go
     const comment = await prisma.storyComment.findUnique({
       where: { id: commentId },
       select: { userId: true },
@@ -103,9 +104,13 @@ export const deleteStoryComment = async (commentId: number) => {
     if (!comment) {
       throw new Error("Comment not found.");
     }
+    
+    // 2️⃣ Ensure the user is the owner of the comment
+    if (comment.userId !== userId) {
+      throw new Error("Unauthorized: You can only delete your own comments.");
+    }
 
-
-    // Delete the comment
+    // 3️⃣ Delete the comment
     await prisma.storyComment.delete({
       where: { id: commentId },
     });
@@ -116,7 +121,6 @@ export const deleteStoryComment = async (commentId: number) => {
     throw err;
   }
 };
-
 // Function to get comments for a specific story
 export const getStoryComments = async (storyId: number) => {
   try {
