@@ -88,16 +88,17 @@ function useRateLimit(maxCalls: number, timeWindow: number) {
 
   return useCallback(() => {
     const now = Date.now();
-    callsRef.current = callsRef.current.filter(
-      (timestamp) => now - timestamp < timeWindow
-    );
+    const cutoff = now - timeWindow;
+
+    // More efficient filtering - only keep recent calls
+    callsRef.current = callsRef.current.filter((time) => time > cutoff);
 
     if (callsRef.current.length >= maxCalls) {
-      return false; // Rate limit exceeded
+      return false;
     }
 
     callsRef.current.push(now);
-    return true; // Call allowed
+    return true;
   }, [maxCalls, timeWindow]);
 }
 
@@ -323,6 +324,7 @@ export default function StoryList({
       }
     }
   );
+  
 
   // Story navigation state
   const [activeIndex, setActiveIndex] = useState(0);
@@ -332,22 +334,21 @@ export default function StoryList({
   const lastTrackedRef = useRef<number | null>(null);
 
   // Helper function to update pending actions
-  const updatePendingAction = useCallback(
-    (
-      actionType: keyof typeof pendingActions,
-      id: number,
-      isAdding: boolean
-    ) => {
-      setPendingActions((prev) => ({
-        ...prev,
-        [actionType]: isAdding
-          ? new Set([...prev[actionType], id])
-          : new Set([...prev[actionType]].filter((x) => x !== id)),
-      }));
-    },
-    []
-  );
-
+const updatePendingAction = useCallback(
+  (actionType: keyof typeof pendingActions, id: number, isAdding: boolean) => {
+    setPendingActions((prev) => {
+      const newSet = new Set(prev[actionType]);
+      if (isAdding) {
+        newSet.add(id);
+      } else {
+        newSet.delete(id);
+      }
+      return { ...prev, [actionType]: newSet };
+    });
+  },
+  []
+);
+useRateLimit
   // Improved story addition with better error handling
   const handleAddStory = async () => {
     if (media.length === 0 || isPending) return;
@@ -392,57 +393,56 @@ export default function StoryList({
   };
 
   // Improved comment deletion with proper error handling
-  const handleDeleteComment = useCallback(
-    async (commentId: number) => {
-      if (pendingActions.deletingComments.has(commentId)) return;
+const handleDeleteComment = useCallback(
+  async (commentId: number) => {
+    if (pendingActions.deletingComments.has(commentId)) return;
 
-      const activeGroup = optimisticStories.find(
-        (group) => group.user.id === activeUserStoryId
-      );
-      const currentStory = activeGroup?.stories[activeIndex];
+    const activeGroup = optimisticStories.find(
+      (group) => group.user.id === activeUserStoryId
+    );
+    const currentStory = activeGroup?.stories[activeIndex];
+    if (!currentStory) return;
 
-      if (!currentStory) return;
+    const originalComment = currentStory.comments?.find(
+      (c) => c.id === commentId
+    );
+    if (!originalComment) return;
 
-      const originalComment = currentStory.comments?.find(
-        (c) => c.id === commentId
-      );
-      if (!originalComment) return;
+    // Instant UI removal
+    dispatch({
+      type: "DELETE_COMMENT",
+      storyId: currentStory.id,
+      commentId,
+    });
+    updatePendingAction("deletingComments", commentId, true);
 
-      updatePendingAction("deletingComments", commentId, true);
+    try {
+      await deleteStoryComment(commentId);
+    } catch (error: any) {
+      console.error("Failed to delete comment:", error);
 
-      try {
-        dispatch({
-          type: "DELETE_COMMENT",
-          storyId: currentStory.id,
-          commentId,
-        });
+      // Rollback - restore the comment
+      dispatch({
+        type: "ADD_COMMENT",
+        storyId: currentStory.id,
+        comment: originalComment,
+      });
 
-        await deleteStoryComment(commentId);
-      } catch (error: any) {
-        console.error("Failed to delete comment:", error);
-
-        // Rollback optimistic update
-        dispatch({
-          type: "ADD_COMMENT",
-          storyId: currentStory.id,
-          comment: originalComment,
-        });
-
-        // Show error to user
-        alert(error.message || "Failed to delete comment");
-      } finally {
-        updatePendingAction("deletingComments", commentId, false);
-      }
-    },
-    [
-      pendingActions.deletingComments,
-      optimisticStories,
-      activeUserStoryId,
-      activeIndex,
-      updatePendingAction,
-      dispatch,
-    ]
-  );
+      // Show user-friendly error
+      alert(error.message || "Failed to delete comment. Please try again.");
+    } finally {
+      updatePendingAction("deletingComments", commentId, false);
+    }
+  },
+  [
+    pendingActions.deletingComments,
+    optimisticStories,
+    activeUserStoryId,
+    activeIndex,
+    dispatch,
+    updatePendingAction,
+  ]
+);
 
   // Improved comment addition with rate limiting and validation
   const handleAddComment = useCallback(
@@ -547,116 +547,119 @@ export default function StoryList({
   }, [activeIndex]);
 
   // Improved story liking with rate limiting and optimistic updates
-  const handleLikeStory = useCallback(
-    (storyId: number) => {
-      if (pendingActions.likingStories.has(storyId)) return;
+ const handleLikeStory = useCallback(
+   async (storyId: number) => {
+     // Prevent double-clicking and check rate limit
+     if (pendingActions.likingStories.has(storyId) || !canLikeStory()) {
+       return;
+     }
 
-      if (!canLikeStory()) {
-        alert("Please wait before liking again");
-        return;
-      }
+     const activeGroup = optimisticStories.find(
+       (group) => group.user.id === activeUserStoryId
+     );
+     const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
+     if (!currentStory) return;
 
-      const activeGroup = optimisticStories.find(
-        (group) => group.user.id === activeUserStoryId
-      );
-      const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
-      if (!currentStory) return;
+     const isCurrentlyLiked = currentStory.likes.some(
+       (like) => like.userId === userId
+     );
+     const isLiking = !isCurrentlyLiked;
 
-      const isLiking = !currentStory.likes.some(
-        (like) => like.userId === userId
-      );
+     // Instant UI update
+     dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking });
+     updatePendingAction("likingStories", storyId, true);
 
-      updatePendingAction("likingStories", storyId, true);
+     try {
+       // Fire and forget - don't await to keep UI snappy
+       likeStory(storyId, isLiking).catch((error) => {
+         console.error("Background like failed:", error);
+         // Rollback on error
+         dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking: !isLiking });
+       });
+     } finally {
+       // Clear pending state immediately for instant feedback
+       setTimeout(() => {
+         updatePendingAction("likingStories", storyId, false);
+       }, 100);
+     }
+   },
+   [
+     pendingActions.likingStories,
+     canLikeStory,
+     optimisticStories,
+     activeUserStoryId,
+     userId,
+     dispatch,
+     updatePendingAction,
+   ]
+ );
 
-      startTransition(async () => {
-        try {
-          dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking });
-          await likeStory(storyId, isLiking);
-        } catch (err) {
-          console.error("Failed to like story:", err);
-          // Rollback optimistic update
-          dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking: !isLiking });
-          alert("Failed to update like. Please try again.");
-        } finally {
-          updatePendingAction("likingStories", storyId, false);
-        }
-      });
-    },
-    [
-      pendingActions.likingStories,
-      canLikeStory,
-      optimisticStories,
-      activeUserStoryId,
-      userId,
-      updatePendingAction,
-      dispatch,
-    ]
-  );
 
   // Improved comment liking with better error handling
-  const handleLikeComment = useCallback(
-    (storyId: number, commentId: number) => {
-      if (
-        pendingActions.likingComments.has(commentId) ||
-        commentId < 0 // Don't allow liking temporary comments
-      )
-        return;
+ const handleLikeComment = useCallback(
+   async (storyId: number, commentId: number) => {
+     // Skip temporary comments and prevent double-clicking
+     if (
+       commentId < 0 ||
+       pendingActions.likingComments.has(commentId) ||
+       !canLikeComment()
+     ) {
+       return;
+     }
 
-      if (!canLikeComment()) {
-        alert("Please wait before liking again");
-        return;
-      }
+     const activeGroup = optimisticStories.find(
+       (group) => group.user.id === activeUserStoryId
+     );
+     const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
+     const currentComment = currentStory?.comments?.find(
+       (c) => c.id === commentId
+     );
 
-      const activeGroup = optimisticStories.find(
-        (group) => group.user.id === activeUserStoryId
-      );
-      const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
-      const currentComment = currentStory?.comments?.find(
-        (c) => c.id === commentId
-      );
+     if (!currentComment) return;
 
-      if (!currentComment) return;
+     const isCurrentlyLiked = currentComment.likes.some(
+       (like) => like.userId === userId
+     );
+     const isLiking = !isCurrentlyLiked;
 
-      const isLiking = !currentComment.likes.some(
-        (like) => like.userId === userId
-      );
+     // Instant UI update
+     dispatch({
+       type: "TOGGLE_COMMENT_LIKE",
+       storyId,
+       commentId,
+       isLiking,
+     });
+     updatePendingAction("likingComments", commentId, true);
 
-      updatePendingAction("likingComments", commentId, true);
-
-      startTransition(async () => {
-        try {
-          dispatch({
-            type: "TOGGLE_COMMENT_LIKE",
-            storyId,
-            commentId,
-            isLiking,
-          });
-          await likeStoryComment(commentId, isLiking);
-        } catch (err) {
-          console.error("Failed to like comment:", err);
-          // Rollback optimistic update
-          dispatch({
-            type: "TOGGLE_COMMENT_LIKE",
-            storyId,
-            commentId,
-            isLiking: !isLiking,
-          });
-          alert("Failed to update like. Please try again.");
-        } finally {
-          updatePendingAction("likingComments", commentId, false);
-        }
-      });
-    },
-    [
-      pendingActions.likingComments,
-      canLikeComment,
-      optimisticStories,
-      activeUserStoryId,
-      userId,
-      updatePendingAction,
-      dispatch,
-    ]
-  );
+     try {
+       // Background request - don't block UI
+       likeStoryComment(commentId, isLiking).catch((error) => {
+         console.error("Background comment like failed:", error);
+         // Rollback on error
+         dispatch({
+           type: "TOGGLE_COMMENT_LIKE",
+           storyId,
+           commentId,
+           isLiking: !isLiking,
+         });
+       });
+     } finally {
+       // Clear pending state quickly
+       setTimeout(() => {
+         updatePendingAction("likingComments", commentId, false);
+       }, 100);
+     }
+   },
+   [
+     pendingActions.likingComments,
+     canLikeComment,
+     optimisticStories,
+     activeUserStoryId,
+     userId,
+     dispatch,
+     updatePendingAction,
+   ]
+ );
 
   // Story bubble click handler with improved view tracking
   const handleStoryBubbleClick = useCallback(
