@@ -101,6 +101,16 @@ function MobileMenu() {
           >
             Requests
           </Link>
+          <Link
+            href="/chat"
+            onClick={() => setIsOpen(false)}
+            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+              isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+            } hover:-translate-y-[1px]`}
+            style={{ transitionDelay: `300ms` }}
+          >
+            Chats
+          </Link>
         </nav>
       </div>
     </div>
