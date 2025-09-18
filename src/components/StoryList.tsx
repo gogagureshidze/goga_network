@@ -19,9 +19,10 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
 } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Heart, MoreVertical, Eye, Trash2 } from "lucide-react";
+import { Heart, MoreVertical, Eye, Trash2, Loader2 } from "lucide-react";
 import StoryActivityModal from "./StoryActivityModal";
 import Link from "next/link";
 
@@ -35,10 +36,11 @@ type StoryWithUser = Story & {
     user: User;
     likes: { userId: string }[];
   }[];
-  showLikes?: boolean; // ✨ new
+  showLikes?: boolean;
 };
 
 type UserStoryGroup = { user: User; stories: StoryWithUser[] };
+
 type OptimisticAction =
   | { type: "ADD_STORIES"; stories: StoryWithUser[] }
   | { type: "TOGGLE_STORY_LIKE"; storyId: number; isLiking: boolean }
@@ -59,8 +61,45 @@ type OptimisticAction =
       tempId: number;
       comment: NonNullable<StoryWithUser["comments"]>[number];
     }
-  | { type: "DELETE_COMMENT"; storyId: number; commentId: number } // ✨ new
+  | { type: "DELETE_COMMENT"; storyId: number; commentId: number }
   | { type: "DELETE_STORY"; storyId: number };
+
+// Debounce utility
+function useDebounce<T extends (...args: any[]) => any>(
+  callback: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  return useCallback(
+    (...args: Parameters<T>) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => callback(...args), delay);
+    },
+    [callback, delay]
+  );
+}
+
+// Rate limiting utility
+function useRateLimit(maxCalls: number, timeWindow: number) {
+  const callsRef = useRef<number[]>([]);
+
+  return useCallback(() => {
+    const now = Date.now();
+    callsRef.current = callsRef.current.filter(
+      (timestamp) => now - timestamp < timeWindow
+    );
+
+    if (callsRef.current.length >= maxCalls) {
+      return false; // Rate limit exceeded
+    }
+
+    callsRef.current.push(now);
+    return true; // Call allowed
+  }, [maxCalls, timeWindow]);
+}
 
 const isStoryVideo = (story: { img: string }) => {
   if (!story.img) return false;
@@ -75,10 +114,19 @@ export default function StoryList({
   stories: StoryWithUser[];
   userId: string;
 }) {
-  const [deletingComments, setDeletingComments] = useState<Set<number>>(
-    new Set()
-  );
-  const [likingComments, setLikingComments] = useState<Set<number>>(new Set());
+  // State management with better organization
+  const [pendingActions, setPendingActions] = useState<{
+    likingStories: Set<number>;
+    likingComments: Set<number>;
+    deletingComments: Set<number>;
+    addingComments: Set<number>;
+  }>({
+    likingStories: new Set(),
+    likingComments: new Set(),
+    deletingComments: new Set(),
+    addingComments: new Set(),
+  });
+
   const [media, setMedia] = useState<any[]>([]);
   const [isPending, startTransition] = useTransition();
   const { user, isLoaded } = useUser();
@@ -88,9 +136,9 @@ export default function StoryList({
   const [commentMap, setCommentMap] = useState<{ [key: string]: string }>({});
   const [isMuted, setIsMuted] = useState(true);
   const [isInputActive, setIsInputActive] = useState(false);
-  const [showLikes, setShowLikes] = useState(true); // ✨ new toggle state
+  const [showLikes, setShowLikes] = useState(true);
 
-  // ✨ New states for story management
+  // Story management states
   const [showStoryMenu, setShowStoryMenu] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -98,8 +146,13 @@ export default function StoryList({
     {}
   );
 
+  // Rate limiting hooks
+  const canLikeStory = useRateLimit(10, 5000); // 10 likes per 5 seconds
+  const canLikeComment = useRateLimit(20, 10000); // 20 comment likes per 10 seconds
+  const canAddComment = useRateLimit(5, 10000); // 5 comments per 10 seconds
 
-  const groupStories = (storiesArray: StoryWithUser[]) => {
+  // Memoized story grouping function
+  const groupStories = useCallback((storiesArray: StoryWithUser[]) => {
     const grouped: { [key: string]: UserStoryGroup } = {};
     storiesArray.forEach((story) => {
       const uId = story.user.id;
@@ -107,177 +160,205 @@ export default function StoryList({
       grouped[uId].stories.push(story);
     });
     return Object.values(grouped);
-  };
+  }, []);
 
+  // Optimistic updates with better error handling
   const [optimisticStories, dispatch] = useOptimistic(
-    groupStories(stories),
+    useMemo(() => groupStories(stories), [stories, groupStories]),
     (state, action: OptimisticAction) => {
-      const userGroupIndex = state.findIndex(
-        (group) => group.user.id === userId
-      );
+      try {
+        const userGroupIndex = state.findIndex(
+          (group) => group.user.id === userId
+        );
 
-      switch (action.type) {
-        case "ADD_COMMENT":
-          return state.map((group) => {
-            if (!group.stories.find((s) => s.id === action.storyId))
-              return group;
-            return {
+        switch (action.type) {
+          case "ADD_COMMENT":
+            return state.map((group) => {
+              if (!group.stories.find((s) => s.id === action.storyId))
+                return group;
+              return {
+                ...group,
+                stories: group.stories.map((story) =>
+                  story.id === action.storyId
+                    ? {
+                        ...story,
+                        comments: [action.comment, ...(story.comments || [])],
+                      }
+                    : story
+                ),
+              };
+            });
+
+          case "REPLACE_COMMENT":
+            return state.map((group) => {
+              if (!group.stories.find((s) => s.id === action.storyId))
+                return group;
+              return {
+                ...group,
+                stories: group.stories.map((story) =>
+                  story.id === action.storyId
+                    ? {
+                        ...story,
+                        comments: (story.comments || []).map((comment) =>
+                          comment.id === action.tempId
+                            ? action.comment
+                            : comment
+                        ),
+                      }
+                    : story
+                ),
+              };
+            });
+
+          case "ADD_STORIES":
+            if (userGroupIndex !== -1) {
+              const newState = [...state];
+              newState[userGroupIndex] = {
+                ...newState[userGroupIndex],
+                stories: [
+                  ...action.stories,
+                  ...newState[userGroupIndex].stories,
+                ],
+              };
+              return newState;
+            } else {
+              const newUserGroup: UserStoryGroup = {
+                user: {
+                  id: userId,
+                  username: user?.username || "Sending...",
+                  avatar: user?.imageUrl || "/noAvatar.png",
+                  cover: user?.imageUrl || "/noCover.png",
+                  description: "",
+                  name: user?.firstName || "",
+                  surname: user?.lastName || "",
+                  city: "",
+                  work: "",
+                  school: "",
+                  website: "",
+                  createdAt: new Date(),
+                },
+                stories: action.stories,
+              };
+              return [newUserGroup, ...state];
+            }
+
+          case "TOGGLE_STORY_LIKE":
+            return state.map((group) => ({
               ...group,
               stories: group.stories.map((story) =>
                 story.id === action.storyId
                   ? {
                       ...story,
-                      comments: [action.comment, ...(story.comments || [])],
+                      likes: action.isLiking
+                        ? [
+                            ...story.likes,
+                            {
+                              id: -Date.now(),
+                              createdAt: new Date(),
+                              postId: null,
+                              userId,
+                              commentId: null,
+                              storyId: story.id,
+                              storyCommentId: null,
+                            },
+                          ]
+                        : story.likes.filter((like) => like.userId !== userId),
                     }
                   : story
               ),
-            };
-          });
+            }));
 
-        case "REPLACE_COMMENT":
-          return state.map((group) => {
-            if (!group.stories.find((s) => s.id === action.storyId))
-              return group;
-            return {
+          case "TOGGLE_COMMENT_LIKE":
+            return state.map((group) => ({
               ...group,
               stories: group.stories.map((story) =>
-                story.id === action.storyId
-                  ? {
+                story.id !== action.storyId
+                  ? story
+                  : {
                       ...story,
-                      comments: (story.comments || []).map((comment) =>
-                        comment.id === action.tempId ? action.comment : comment
+                      comments: (story.comments || []).map((comment) => {
+                        if (comment.id !== action.commentId) return comment;
+                        return {
+                          ...comment,
+                          likes: action.isLiking
+                            ? [...comment.likes, { userId }]
+                            : comment.likes.filter((l) => l.userId !== userId),
+                        };
+                      }),
+                    }
+              ),
+            }));
+
+          case "DELETE_STORY":
+            return state
+              .map((group) => ({
+                ...group,
+                stories: group.stories.filter(
+                  (story) => story.id !== action.storyId
+                ),
+              }))
+              .filter((group) => group.stories.length > 0);
+
+          case "DELETE_COMMENT":
+            return state.map((group) => ({
+              ...group,
+              stories: group.stories.map((story) =>
+                story.id !== action.storyId
+                  ? story
+                  : {
+                      ...story,
+                      comments: (story.comments || []).filter(
+                        (c) => c.id !== action.commentId
                       ),
                     }
-                  : story
               ),
-            };
-          });
+            }));
 
-        case "ADD_STORIES":
-          if (userGroupIndex !== -1) {
-            const newState = [...state];
-            newState[userGroupIndex] = {
-              ...newState[userGroupIndex],
-              stories: [...action.stories, ...newState[userGroupIndex].stories],
-            };
-            return newState;
-          } else {
-            const newUserGroup: UserStoryGroup = {
-              user: {
-                id: userId,
-                username: user?.username || "Sending...",
-                avatar: user?.imageUrl || "/noAvatar.png",
-                cover: user?.imageUrl || "/noCover.png",
-                description: "",
-                name: user?.firstName || "",
-                surname: user?.lastName || "",
-                city: "",
-                work: "",
-                school: "",
-                website: "",
-                createdAt: new Date(),
-              },
-              stories: action.stories,
-            };
-            return [newUserGroup, ...state];
-          }
-
-        case "TOGGLE_STORY_LIKE":
-          return state.map((group) => ({
-            ...group,
-            stories: group.stories.map((story) =>
-              story.id === action.storyId
-                ? {
-                    ...story,
-                    likes: story.likes.some((like) => like.userId === userId)
-                      ? story.likes.filter((like) => like.userId !== userId)
-                      : [
-                          ...story.likes,
-                          {
-                            id: -Date.now(),
-                            createdAt: new Date(),
-                            postId: null,
-                            userId,
-                            commentId: null,
-                            storyId: story.id,
-                            storyCommentId: null,
-                          },
-                        ],
-                  }
-                : story
-            ),
-          }));
-        case "TOGGLE_COMMENT_LIKE":
-          return state.map((group) => ({
-            ...group,
-            stories: group.stories.map((story) =>
-              story.id !== action.storyId
-                ? story
-                : {
-                    ...story,
-                    comments: (story.comments || []).map((comment) => {
-                      if (comment.id !== action.commentId) return comment;
-                      const hasLiked = comment.likes.some(
-                        (l) => l.userId === userId
-                      );
-                      return {
-                        ...comment,
-                        likes: hasLiked
-                          ? comment.likes.filter((l) => l.userId !== userId)
-                          : [...comment.likes, { userId }],
-                      };
-                    }),
-                  }
-            ),
-          }));
-
-        // ✨ New case for deleting story
-        case "DELETE_STORY":
-          return state
-            .map((group) => ({
-              ...group,
-              stories: group.stories.filter(
-                (story) => story.id !== action.storyId
-              ),
-            }))
-            .filter((group) => group.stories.length > 0);
-        case "DELETE_COMMENT":
-          return state.map((group) => ({
-            ...group,
-            stories: group.stories.map((story) =>
-              story.id !== action.storyId
-                ? story
-                : {
-                    ...story,
-                    comments: (story.comments || []).filter(
-                      (c) => c.id !== action.commentId
-                    ),
-                  }
-            ),
-          }));
-
-        default:
-          return state;
+          default:
+            return state;
+        }
+      } catch (error) {
+        console.error("Optimistic update error:", error);
+        return state; // Return unchanged state on error
       }
     }
   );
 
+  // Story navigation state
   const [activeIndex, setActiveIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(Date.now());
   const lastTrackedRef = useRef<number | null>(null);
 
+  // Helper function to update pending actions
+  const updatePendingAction = useCallback(
+    (
+      actionType: keyof typeof pendingActions,
+      id: number,
+      isAdding: boolean
+    ) => {
+      setPendingActions((prev) => ({
+        ...prev,
+        [actionType]: isAdding
+          ? new Set([...prev[actionType], id])
+          : new Set([...prev[actionType]].filter((x) => x !== id)),
+      }));
+    },
+    []
+  );
+
+  // Improved story addition with better error handling
   const handleAddStory = async () => {
-    if (media.length === 0) return;
+    if (media.length === 0 || isPending) return;
 
     const newOptimisticStories: StoryWithUser[] = media.map((item, idx) => ({
-      id: Date.now() + idx,
+      id: -(Date.now() + idx), // Negative IDs for temp stories
       img: item.secure_url,
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       userId,
-      showLikes, // ✨ include toggle value
+      showLikes,
       user: {
         id: userId,
         username: user?.username || "Sending...",
@@ -296,115 +377,157 @@ export default function StoryList({
     }));
 
     startTransition(async () => {
-      dispatch({ type: "ADD_STORIES", stories: newOptimisticStories });
-      setMedia([]);
       try {
+        dispatch({ type: "ADD_STORIES", stories: newOptimisticStories });
+        setMedia([]);
+
         await Promise.all(
-          media.map((item) => addStory(item.secure_url, showLikes)) // ✨ pass showLikes to backend
+          media.map((item) => addStory(item.secure_url, showLikes))
         );
       } catch (err) {
         console.error("Failed to add stories:", err);
+        // Could add toast notification here
       }
     });
   };
-  // Client-side logic for handleDeleteComment
-const handleDeleteComment = async (commentId: number) => {
-  // Get currentStory properly using the same logic as other functions
-  const activeGroup = optimisticStories.find(
-    (group) => group.user.id === activeUserStoryId
+
+  // Improved comment deletion with proper error handling
+  const handleDeleteComment = useCallback(
+    async (commentId: number) => {
+      if (pendingActions.deletingComments.has(commentId)) return;
+
+      const activeGroup = optimisticStories.find(
+        (group) => group.user.id === activeUserStoryId
+      );
+      const currentStory = activeGroup?.stories[activeIndex];
+
+      if (!currentStory) return;
+
+      const originalComment = currentStory.comments?.find(
+        (c) => c.id === commentId
+      );
+      if (!originalComment) return;
+
+      updatePendingAction("deletingComments", commentId, true);
+
+      try {
+        dispatch({
+          type: "DELETE_COMMENT",
+          storyId: currentStory.id,
+          commentId,
+        });
+
+        await deleteStoryComment(commentId);
+      } catch (error: any) {
+        console.error("Failed to delete comment:", error);
+
+        // Rollback optimistic update
+        dispatch({
+          type: "ADD_COMMENT",
+          storyId: currentStory.id,
+          comment: originalComment,
+        });
+
+        // Show error to user
+        alert(error.message || "Failed to delete comment");
+      } finally {
+        updatePendingAction("deletingComments", commentId, false);
+      }
+    },
+    [
+      pendingActions.deletingComments,
+      optimisticStories,
+      activeUserStoryId,
+      activeIndex,
+      updatePendingAction,
+      dispatch,
+    ]
   );
-  const currentStory = activeGroup?.stories[activeIndex];
 
-  if (!currentStory) return;
+  // Improved comment addition with rate limiting and validation
+  const handleAddComment = useCallback(
+    async (storyId: number) => {
+      const commentText = commentMap[storyId]?.trim();
+      if (!commentText || pendingActions.addingComments.has(storyId)) return;
 
-  // Prevent rapid clicks
-  if (deletingComments.has(commentId)) return;
+      if (!canAddComment()) {
+        alert("Please wait before adding another comment");
+        return;
+      }
 
-  const originalComment = currentStory.comments?.find(
-    (c) => c.id === commentId
-  );
-  if (!originalComment) return;
+      if (commentText.length > 500) {
+        alert("Comment is too long (max 500 characters)");
+        return;
+      }
 
-  setDeletingComments((prev) => new Set(prev).add(commentId));
-
-  try {
-    // Optimistically remove comment
-    dispatch({
-      type: "DELETE_COMMENT",
-      storyId: currentStory.id,
-      commentId,
-    });
-
-    await deleteStoryComment(commentId);
-  } catch (error: any) {
-    console.error("Failed to delete comment:", error);
-
-    // Rollback
-    dispatch({
-      type: "ADD_COMMENT",
-      storyId: currentStory.id,
-      comment: originalComment,
-    });
-
-    alert(error.message || "Failed to delete comment");
-  } finally {
-    // Always clean up
-    setDeletingComments((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(commentId);
-      return newSet;
-    });
-  }
-};
-
-  const handleAddComment = async (storyId: number) => {
-    const commentText = commentMap[storyId] || "";
-    if (!commentText.trim()) return;
-
-    const tempId = -Date.now();
-    const optimisticComment = {
-      id: tempId,
-      desc: commentText,
-      storyId,
-      userId,
-      user: {
-        id: userId,
-        username: user?.username || "",
-        avatar: user?.imageUrl || "/noAvatar.png",
-        name: user?.firstName || "",
-        surname: user?.lastName || "",
-        createdAt: new Date(),
-        description: "",
-        cover: "",
-        city: "",
-        work: "",
-        school: "",
-        website: "",
-      },
-      likes: [],
-    };
-
-    dispatch({ type: "ADD_COMMENT", storyId, comment: optimisticComment });
-    setCommentMap((prev) => ({ ...prev, [storyId]: "" }));
-    setIsInputActive(false);
-
-    try {
-      const savedComment = await addStoryComment(storyId, commentText);
-      dispatch({
-        type: "REPLACE_COMMENT",
+      const tempId = -Date.now();
+      const optimisticComment = {
+        id: tempId,
+        desc: commentText,
         storyId,
-        tempId,
-        comment: {
-          ...savedComment,
-          user: optimisticComment.user,
-          likes: savedComment.likes ?? [],
+        userId,
+        user: {
+          id: userId,
+          username: user?.username || "",
+          avatar: user?.imageUrl || "/noAvatar.png",
+          name: user?.firstName || "",
+          surname: user?.lastName || "",
+          createdAt: new Date(),
+          description: "",
+          cover: "",
+          city: "",
+          work: "",
+          school: "",
+          website: "",
         },
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  };
+        likes: [],
+      };
 
+      updatePendingAction("addingComments", storyId, true);
+
+      try {
+        dispatch({ type: "ADD_COMMENT", storyId, comment: optimisticComment });
+        setCommentMap((prev) => ({ ...prev, [storyId]: "" }));
+        setIsInputActive(false);
+
+        const savedComment = await addStoryComment(storyId, commentText);
+        dispatch({
+          type: "REPLACE_COMMENT",
+          storyId,
+          tempId,
+          comment: {
+            ...savedComment,
+            user: optimisticComment.user,
+            likes: savedComment.likes ?? [],
+          },
+        });
+      } catch (err) {
+        console.error("Failed to add comment:", err);
+        // Rollback
+        dispatch({
+          type: "DELETE_COMMENT",
+          storyId,
+          commentId: tempId,
+        });
+        // Restore comment text
+        setCommentMap((prev) => ({ ...prev, [storyId]: commentText }));
+        alert("Failed to add comment. Please try again.");
+      } finally {
+        updatePendingAction("addingComments", storyId, false);
+      }
+    },
+    [
+      commentMap,
+      pendingActions.addingComments,
+      canAddComment,
+      userId,
+      user,
+      updatePendingAction,
+      dispatch,
+    ]
+  );
+
+  // Story navigation callbacks
   const goNextStory = useCallback(() => {
     const activeGroup = optimisticStories.find(
       (group) => group.user.id === activeUserStoryId
@@ -423,102 +546,159 @@ const handleDeleteComment = async (commentId: number) => {
     if (activeIndex > 0) setActiveIndex(activeIndex - 1);
   }, [activeIndex]);
 
-  const handleLikeStory = (storyId: number) => {
-    const activeGroup = optimisticStories.find(
-      (group) => group.user.id === activeUserStoryId
-    );
-    const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
-    if (!currentStory) return;
-    const isLiking = !currentStory.likes.some((like) => like.userId === userId);
+  // Improved story liking with rate limiting and optimistic updates
+  const handleLikeStory = useCallback(
+    (storyId: number) => {
+      if (pendingActions.likingStories.has(storyId)) return;
 
-    startTransition(async () => {
-      dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking });
-      try {
-        await likeStory(storyId, isLiking);
-      } catch (err) {
-        console.error(err);
-        dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking: !isLiking });
+      if (!canLikeStory()) {
+        alert("Please wait before liking again");
+        return;
       }
-    });
-  };
 
-const handleLikeComment = (storyId: number, commentId: number) => {
-  if (likingComments.has(commentId)) return;
+      const activeGroup = optimisticStories.find(
+        (group) => group.user.id === activeUserStoryId
+      );
+      const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
+      if (!currentStory) return;
 
-  const activeGroup = optimisticStories.find(
-    (group) => group.user.id === activeUserStoryId
+      const isLiking = !currentStory.likes.some(
+        (like) => like.userId === userId
+      );
+
+      updatePendingAction("likingStories", storyId, true);
+
+      startTransition(async () => {
+        try {
+          dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking });
+          await likeStory(storyId, isLiking);
+        } catch (err) {
+          console.error("Failed to like story:", err);
+          // Rollback optimistic update
+          dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking: !isLiking });
+          alert("Failed to update like. Please try again.");
+        } finally {
+          updatePendingAction("likingStories", storyId, false);
+        }
+      });
+    },
+    [
+      pendingActions.likingStories,
+      canLikeStory,
+      optimisticStories,
+      activeUserStoryId,
+      userId,
+      updatePendingAction,
+      dispatch,
+    ]
   );
-  const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
 
-  if (!currentStory) return;
+  // Improved comment liking with better error handling
+  const handleLikeComment = useCallback(
+    (storyId: number, commentId: number) => {
+      if (
+        pendingActions.likingComments.has(commentId) ||
+        commentId < 0 // Don't allow liking temporary comments
+      )
+        return;
 
-  const currentComment = currentStory.comments?.find((c) => c.id === commentId);
-  if (!currentComment || currentComment.id < 0) return;
-
-  const isLiking = !currentComment.likes.some((like) => like.userId === userId);
-
-  setLikingComments((prev) => new Set(prev).add(commentId));
-
-  startTransition(async () => {
-    // Dispatch the optimistic update first
-    dispatch({ type: "TOGGLE_COMMENT_LIKE", storyId, commentId, isLiking });
-
-    try {
-      // Make the server call to update the database
-      await likeStoryComment(commentId, isLiking);
-    } catch (err) {
-      console.error("Failed to like comment:", err);
-      // Rollback the optimistic update on failure
-      dispatch({
-        type: "TOGGLE_COMMENT_LIKE",
-        storyId,
-        commentId,
-        isLiking: !isLiking,
-      });
-      alert("Failed to like/unlike comment. Please try again.");
-    } finally {
-      // Remove from the pending set regardless of success or failure
-      setLikingComments((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(commentId);
-        return newSet;
-      });
-    }
-  });
-};
-
-  const handleStoryBubbleClick = async (uId: string) => {
-    setActiveUserStoryId(uId);
-    setActiveIndex(0);
-    startTimeRef.current = Date.now();
-
-    const activeGroup = optimisticStories.find(
-      (group) => group.user.id === uId
-    );
-    if (activeGroup && activeGroup.stories.length > 0 && uId !== userId) {
-      try {
-        await recordStoryView(activeGroup.stories[0].id, userId);
-      } catch (err) {
-        console.error("Failed to record story view:", err);
+      if (!canLikeComment()) {
+        alert("Please wait before liking again");
+        return;
       }
-    }
-  };
 
-  // ✨ New function to handle story deletion
-  const handleDeleteStory = async (storyId: number) => {
-    startTransition(async () => {
-      dispatch({ type: "DELETE_STORY", storyId });
-      try {
-        await deleteStory(storyId);
-        setActiveUserStoryId(null);
-        setShowDeleteConfirm(false);
-        setShowStoryMenu(false);
-      } catch (err) {
-        console.error("Failed to delete story:", err);
+      const activeGroup = optimisticStories.find(
+        (group) => group.user.id === activeUserStoryId
+      );
+      const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
+      const currentComment = currentStory?.comments?.find(
+        (c) => c.id === commentId
+      );
+
+      if (!currentComment) return;
+
+      const isLiking = !currentComment.likes.some(
+        (like) => like.userId === userId
+      );
+
+      updatePendingAction("likingComments", commentId, true);
+
+      startTransition(async () => {
+        try {
+          dispatch({
+            type: "TOGGLE_COMMENT_LIKE",
+            storyId,
+            commentId,
+            isLiking,
+          });
+          await likeStoryComment(commentId, isLiking);
+        } catch (err) {
+          console.error("Failed to like comment:", err);
+          // Rollback optimistic update
+          dispatch({
+            type: "TOGGLE_COMMENT_LIKE",
+            storyId,
+            commentId,
+            isLiking: !isLiking,
+          });
+          alert("Failed to update like. Please try again.");
+        } finally {
+          updatePendingAction("likingComments", commentId, false);
+        }
+      });
+    },
+    [
+      pendingActions.likingComments,
+      canLikeComment,
+      optimisticStories,
+      activeUserStoryId,
+      userId,
+      updatePendingAction,
+      dispatch,
+    ]
+  );
+
+  // Story bubble click handler with improved view tracking
+  const handleStoryBubbleClick = useCallback(
+    async (uId: string) => {
+      setActiveUserStoryId(uId);
+      setActiveIndex(0);
+      startTimeRef.current = Date.now();
+
+      const activeGroup = optimisticStories.find(
+        (group) => group.user.id === uId
+      );
+      if (activeGroup && activeGroup.stories.length > 0 && uId !== userId) {
+        try {
+          await recordStoryView(activeGroup.stories[0].id, userId);
+        } catch (err) {
+          console.error("Failed to record story view:", err);
+        }
       }
-    });
-  };
+    },
+    [optimisticStories, userId]
+  );
 
+  // Story deletion handler
+  const handleDeleteStory = useCallback(
+    async (storyId: number) => {
+      startTransition(async () => {
+        try {
+          dispatch({ type: "DELETE_STORY", storyId });
+          await deleteStory(storyId);
+          setActiveUserStoryId(null);
+          setShowDeleteConfirm(false);
+          setShowStoryMenu(false);
+        } catch (err) {
+          console.error("Failed to delete story:", err);
+          alert("Failed to delete story. Please try again.");
+        }
+      });
+    },
+    [dispatch]
+  );
+
+  // Timer management for story progression
   useEffect(() => {
     if (!activeUserStoryId) return;
 
@@ -527,7 +707,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
 
     timerRef.current = window.setInterval(() => {
       const elapsed = Date.now() - startTimeRef.current;
-      setProgress(Math.min((elapsed / 10000) * 100, 100)); // ⏳ 10 sec each
+      setProgress(Math.min((elapsed / 10000) * 100, 100));
       if (elapsed >= 10000) {
         startTimeRef.current = Date.now();
         goNextStory();
@@ -546,11 +726,13 @@ const handleLikeComment = (storyId: number, commentId: number) => {
     goNextStory,
   ]);
 
+  // Reset progress on story change
   useEffect(() => {
     setProgress(0);
     startTimeRef.current = Date.now();
   }, [activeIndex, activeUserStoryId]);
 
+  // View tracking for story progression
   useEffect(() => {
     if (!activeUserStoryId) return;
 
@@ -559,26 +741,22 @@ const handleLikeComment = (storyId: number, commentId: number) => {
     );
     const currentStory = activeGroup?.stories[activeIndex];
     if (!currentStory) return;
-    if (currentStory.userId === userId) return; // don't track owner
-    if (lastTrackedRef.current === currentStory.id) return; // already tracked
+    if (currentStory.userId === userId) return;
+    if (lastTrackedRef.current === currentStory.id) return;
 
     lastTrackedRef.current = currentStory.id;
 
-    (async () => {
-      try {
-        await recordStoryView(currentStory.id, userId);
-      } catch (err) {
-        console.error("Failed to record story view:", err);
-      }
-    })();
+    recordStoryView(currentStory.id, userId).catch((err) => {
+      console.error("Failed to record story view:", err);
+    });
   }, [activeUserStoryId, activeIndex, optimisticStories, userId]);
+
   if (!isLoaded || !user) return null;
 
   const activeGroup = optimisticStories.find(
     (group) => group.user.id === activeUserStoryId
   );
   const currentStory = activeGroup?.stories[activeIndex];
-
   const hasLiked =
     currentStory?.likes.some((like) => like.userId === userId) || false;
   const isOwner = currentStory?.userId === userId;
@@ -635,7 +813,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
         </CldUploadWidget>
       )}
 
-      {/* ✨ Preview Modal */}
+      {/* Preview Modal */}
       {media.length > 0 && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4"
@@ -647,7 +825,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
           >
             <h3 className="text-xl font-semibold mb-2">Preview Stories</h3>
 
-            {/* Media grid */}
             <div className="flex flex-wrap gap-4 overflow-y-auto max-h-96 justify-center">
               {media.map((item, index) => (
                 <div
@@ -670,7 +847,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                       />
                     </div>
                   )}
-                  {/* Remove button */}
                   <button
                     onClick={() =>
                       setMedia((prev) => prev.filter((_, i) => i !== index))
@@ -683,7 +859,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
               ))}
             </div>
 
-            {/* ✨ Toggle for showing likes */}
             <div className="flex items-center justify-between w-full mt-4 px-2">
               <span className="text-sm font-medium">Show likes to others?</span>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -702,7 +877,6 @@ const handleLikeComment = (storyId: number, commentId: number) => {
               </label>
             </div>
 
-            {/* Action buttons */}
             <div className="flex gap-4 w-full mt-4">
               <button
                 onClick={() => setMedia([])}
@@ -713,9 +887,16 @@ const handleLikeComment = (storyId: number, commentId: number) => {
               <button
                 onClick={handleAddStory}
                 disabled={isPending}
-                className="flex-1 text-sm bg-blue-500 p-2 rounded-md text-white font-semibold disabled:bg-opacity-50 transition-all duration-200"
+                className="flex-1 text-sm bg-blue-500 p-2 rounded-md text-white font-semibold disabled:bg-opacity-50 transition-all duration-200 flex items-center justify-center gap-2"
               >
-                {isPending ? "Sending..." : "Send"}
+                {isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  "Send"
+                )}
               </button>
             </div>
           </div>
@@ -754,6 +935,8 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                 className="rounded-lg"
               />
             )}
+
+            {/* Video mute/unmute button */}
             {isStoryVideo(currentStory) && (
               <button
                 onClick={(e) => {
@@ -765,6 +948,8 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                 {isMuted ? "🔇" : "🔊"}
               </button>
             )}
+
+            {/* Top bar with progress and user info */}
             <div className="absolute top-0 left-0 w-full p-2 flex flex-col gap-2 z-20">
               <div className="flex gap-1">
                 {activeGroup.stories.map((_, idx) => (
@@ -793,7 +978,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                     alt="User avatar"
                     width={32}
                     height={32}
-                    className="rounded-full object-cover  w-8 h-8 border-2 border-white"
+                    className="rounded-full object-cover w-8 h-8 border-2 border-white"
                   />
                   <span className="text-white text-sm font-semibold">
                     {activeGroup.user.name || activeGroup.user.username}
@@ -801,6 +986,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                 </div>
               </Link>
             </div>
+
             {/* Comments section */}
             <div className="absolute bottom-16 left-4 right-4 z-30 max-h-48 overflow-y-auto flex flex-col gap-2 px-2 py-1">
               {currentStory.comments && currentStory.comments.length > 0 ? (
@@ -808,10 +994,17 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                   const hasLikedByAuthor =
                     c.likes.some((l) => l.userId === activeGroup.user.id) ||
                     false;
+                  const isDeleting = pendingActions.deletingComments.has(c.id);
+                  const isLikingComment = pendingActions.likingComments.has(
+                    c.id
+                  );
+
                   return (
                     <div
                       key={c.id}
-                      className="flex items-start gap-2 p-2 rounded-lg bg-black bg-opacity-40 hover:bg-opacity-60 transition-colors"
+                      className={`flex items-start gap-2 p-2 rounded-lg bg-black bg-opacity-40 hover:bg-opacity-60 transition-colors ${
+                        isDeleting ? "opacity-50" : ""
+                      }`}
                     >
                       <Link href={`/profile/${c.user.username}`}>
                         <Image
@@ -837,36 +1030,54 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                           </div>
                         )}
                       </div>
-                      {userId === activeGroup.user.id && (
+
+                      {/* Comment like button for story owner */}
+                      {userId === activeGroup.user.id && c.id > 0 && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleLikeComment(currentStory.id, c.id);
                           }}
+                          disabled={isLikingComment}
+                          className="disabled:opacity-50"
                         >
-                          <Heart
-                            size={16}
-                            className={`transition-colors duration-200 ${
-                              c.likes.some((l) => l.userId === userId)
-                                ? "text-red-500 fill-red-500"
-                                : "text-white"
-                            }`}
-                          />
+                          {isLikingComment ? (
+                            <Loader2
+                              size={16}
+                              className="animate-spin text-white"
+                            />
+                          ) : (
+                            <Heart
+                              size={16}
+                              className={`transition-colors duration-200 ${
+                                c.likes.some((l) => l.userId === userId)
+                                  ? "text-red-500 fill-red-500"
+                                  : "text-white"
+                              }`}
+                            />
+                          )}
                         </button>
                       )}
 
+                      {/* Delete button for comment owner or story owner */}
                       {(userId === activeGroup.user.id ||
-                        userId === c.user.id) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteComment(c.id);
-                          }}
-                          className="ml-2 text-sm text-red-500 hover:text-red-700"
-                        >
-                          Delete
-                        </button>
-                      )}
+                        userId === c.user.id) &&
+                        c.id > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteComment(c.id);
+                            }}
+                            disabled={isDeleting}
+                            className="ml-2 text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
+                          >
+                            {isDeleting ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              "Delete"
+                            )}
+                          </button>
+                        )}
                     </div>
                   );
                 })
@@ -876,6 +1087,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                 </span>
               )}
             </div>
+
             {/* Bottom actions */}
             <div className="absolute bottom-4 left-4 right-4 z-40 flex items-center gap-2">
               <button
@@ -883,14 +1095,19 @@ const handleLikeComment = (storyId: number, commentId: number) => {
                   e.stopPropagation();
                   handleLikeStory(currentStory.id);
                 }}
-                className="flex items-center gap-1 bg-black bg-opacity-50 rounded-full p-2 hover:scale-110 transition-transform"
+                disabled={pendingActions.likingStories.has(currentStory.id)}
+                className="flex items-center gap-1 bg-black bg-opacity-50 rounded-full p-2 hover:scale-110 transition-transform disabled:opacity-50"
               >
-                <Heart
-                  size={24}
-                  className={`transition-colors duration-200 ${
-                    hasLiked ? "text-red-500 fill-red-500" : "text-white"
-                  }`}
-                />
+                {pendingActions.likingStories.has(currentStory.id) ? (
+                  <Loader2 size={24} className="animate-spin text-white" />
+                ) : (
+                  <Heart
+                    size={24}
+                    className={`transition-colors duration-200 ${
+                      hasLiked ? "text-red-500 fill-red-500" : "text-white"
+                    }`}
+                  />
+                )}
                 {(currentStory.showLikes || userId === currentStory.userId) && (
                   <span className="text-white font-semibold">
                     {currentStory.likes.length}
@@ -901,33 +1118,44 @@ const handleLikeComment = (storyId: number, commentId: number) => {
               <input
                 type="text"
                 value={commentMap[currentStory.id] || ""}
-                onChange={(e) =>
-                  setCommentMap((prev) => ({
-                    ...prev,
-                    [currentStory.id]: e.target.value,
-                  }))
-                }
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value.length <= 500) {
+                    setCommentMap((prev) => ({
+                      ...prev,
+                      [currentStory.id]: value,
+                    }));
+                  }
+                }}
                 onFocus={() => setIsInputActive(true)}
                 onBlur={() => setIsInputActive(false)}
                 placeholder="Add a comment..."
                 className="flex-1 rounded-full px-3 py-1 text-sm outline-none bg-black bg-opacity-40 text-white placeholder-gray-300"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     handleAddComment(currentStory.id);
                   }
                 }}
+                disabled={pendingActions.addingComments.has(currentStory.id)}
               />
+
               {commentMap[currentStory.id]?.trim() && (
                 <button
                   onClick={() => handleAddComment(currentStory.id)}
-                  className="bg-blue-500 text-white rounded-full p-2 h-8 w-8 flex items-center justify-center transition-transform hover:scale-110"
+                  disabled={pendingActions.addingComments.has(currentStory.id)}
+                  className="bg-blue-500 text-white rounded-full p-2 h-8 w-8 flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50"
                 >
-                  ➔
+                  {pendingActions.addingComments.has(currentStory.id) ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    "➔"
+                  )}
                 </button>
               )}
             </div>
+
             {/* Close button */}
             <button
               onClick={() => setActiveUserStoryId(null)}
@@ -935,8 +1163,8 @@ const handleLikeComment = (storyId: number, commentId: number) => {
             >
               ✕
             </button>
-            
-            {/* ✨ Story menu button - only show for story owner */}
+
+            {/* Story menu button - only show for story owner */}
             {isOwner && (
               <div className="absolute top-4 right-16 z-40">
                 <button
@@ -1000,7 +1228,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
         </div>
       )}
 
-      {/* ✨ Story Activity Modal */}
+      {/* Story Activity Modal */}
       {showActivityModal && currentStory && (
         <StoryActivityModal
           storyId={currentStory.id}
@@ -1008,7 +1236,7 @@ const handleLikeComment = (storyId: number, commentId: number) => {
         />
       )}
 
-      {/* ✨ Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       {showDeleteConfirm && currentStory && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-5"
@@ -1035,9 +1263,16 @@ const handleLikeComment = (storyId: number, commentId: number) => {
               <button
                 onClick={() => handleDeleteStory(currentStory.id)}
                 disabled={isPending}
-                className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-md font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-md font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isPending ? "Deleting..." : "Delete"}
+                {isPending ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
               </button>
             </div>
           </div>
