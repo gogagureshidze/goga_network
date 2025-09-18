@@ -39,14 +39,14 @@ const MainChat = ({
    useEffect(() => {
     if (!selectedFriend || !userId) return;
 
-   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-   const newSocket = io(`${protocol}://31.97.76.24:3001`, {
-     query: { userId },
-     transports: ["websocket", "polling"],
-     reconnection: true,
-     reconnectionAttempts: 5,
-     reconnectionDelay: 1000,
-   });
+const newSocket = io("https://socket.goga.network", {
+  query: { userId },
+  transports: ["websocket"], // force websocket, skip polling
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+});
+
 
    newSocket.on("connect_error", (err) => {
      console.error("Socket connection error:", err);
