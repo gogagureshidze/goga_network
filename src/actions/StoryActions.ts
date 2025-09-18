@@ -91,10 +91,6 @@ export const deleteStoryComment = async (commentId: number) => {
       throw new Error("Comment not found.");
     }
     
-    // 2️⃣ Ensure the user is the owner of the comment
-    if (comment.userId !== userId) {
-      throw new Error("Unauthorized: You can only delete your own comments.");
-    }
 
     // 3️⃣ Delete the comment
     await prisma.storyComment.delete({

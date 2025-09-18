@@ -1,13 +1,33 @@
 "use client";
+
 import { Heart, MessageSquareText, ExternalLink } from "lucide-react";
-import { useState, useTransition, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { switchLike } from "@/actions/switchLike";
 
 interface PostInteractionsProps {
   postId: number;
-  likes: Array<{ userId: string }> | string[]; // Support both formats
+  likes: Array<{ userId: string }> | string[];
   commentNumber?: number;
+}
+
+// Rate limiting hook
+function useRateLimit(maxCalls: number, timeWindow: number) {
+  const callsRef = useRef<number[]>([]);
+
+  return useCallback(() => {
+    const now = Date.now();
+    const cutoff = now - timeWindow;
+
+    callsRef.current = callsRef.current.filter((time) => time > cutoff);
+
+    if (callsRef.current.length >= maxCalls) {
+      return false;
+    }
+
+    callsRef.current.push(now);
+    return true;
+  }, [maxCalls, timeWindow]);
 }
 
 const PostInteractions = ({
@@ -15,20 +35,23 @@ const PostInteractions = ({
   likes,
   commentNumber = 0,
 }: PostInteractionsProps) => {
-  const { user } = useUser(); // Use useUser instead of useAuth
+  const { user } = useUser();
   const userId = user?.id;
-  const [isPending, startTransition] = useTransition();
 
-  // Convert likes to simple array format if needed
-  const likesArray = Array.isArray(likes)
+  // Rate limiting - prevent spam clicking
+  const canLike = useRateLimit(10, 5000); // 10 likes per 5 seconds
+
+  // Convert likes to simple array format
+  const normalizedLikes = Array.isArray(likes)
     ? likes.map((like) => (typeof like === "string" ? like : like.userId))
     : [];
 
-  // Simple state management
-  const [currentLikes, setCurrentLikes] = useState<string[]>(likesArray);
+  // Local state for instant updates
+  const [currentLikes, setCurrentLikes] = useState<string[]>(normalizedLikes);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [isPending, setIsPending] = useState(false);
 
-  // Update currentLikes when props change (for server updates)
+  // Sync with server data when props change (handles page refreshes)
   useEffect(() => {
     const newLikesArray = Array.isArray(likes)
       ? likes.map((like) => (typeof like === "string" ? like : like.userId))
@@ -38,50 +61,53 @@ const PostInteractions = ({
 
   const isLiked = userId ? currentLikes.includes(userId) : false;
 
-  // Debug - remove this after fixing
-  console.log("Debug info:", {
-    userId,
-    currentLikes,
-    isLiked,
-    originalLikes: likes,
-    userExists: !!user,
-  });
-
-  const handleLike = async () => {
-    if (!userId || isPending) {
+  const handleLike = useCallback(async () => {
+    if (!userId || isPending || !canLike()) {
       return;
     }
 
-    // Immediate visual feedback
-    setIsAnimating(true);
+    const wasLiked = isLiked;
+    const originalLikes = [...currentLikes];
 
-    // Update UI immediately
-    const newLikes = isLiked
+    // Instant UI update
+    setIsAnimating(true);
+    setIsPending(true);
+
+    const newLikes = wasLiked
       ? currentLikes.filter((id) => id !== userId)
       : [...currentLikes, userId];
 
     setCurrentLikes(newLikes);
 
-    startTransition(async () => {
-      try {
-        const result = await switchLike(postId);
+    try {
+      // Fire background request - don't await to keep UI snappy
+      switchLike(postId)
+        .then((result) => {
+          if (result.success) {
+            // Update with server data to stay in sync
+            setCurrentLikes(result.likeUserIds);
+          } else {
+            // Rollback on server failure
+            setCurrentLikes(originalLikes);
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to like/unlike post:", error);
+          // Rollback on error
+          setCurrentLikes(originalLikes);
+        })
+        .finally(() => {
+          setIsPending(false);
+        });
+    } catch (error) {
+      console.error("Like error:", error);
+      setCurrentLikes(originalLikes);
+      setIsPending(false);
+    }
 
-        if (result.success) {
-          // Update with server data to stay in sync
-          setCurrentLikes(result.likeUserIds);
-        } else {
-          // Revert on failure
-          setCurrentLikes(likesArray);
-        }
-      } catch (error) {
-        console.error("Failed to like/unlike post:", error);
-        // Revert on error
-        setCurrentLikes(likesArray);
-      } finally {
-        setTimeout(() => setIsAnimating(false), 300);
-      }
-    });
-  };
+    // Clear animation quickly for responsive feel
+    setTimeout(() => setIsAnimating(false), 200);
+  }, [userId, isPending, canLike, isLiked, currentLikes, postId]);
 
   return (
     <div className="flex items-center justify-between text-sm my-2">
@@ -90,17 +116,18 @@ const PostInteractions = ({
         <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl">
           <button
             onClick={handleLike}
-            disabled={isPending || !userId}
-            className={`transition-transform duration-150 ${
+            disabled={!userId}
+            className={`transition-all duration-150 ${
               isAnimating ? "scale-125" : "scale-100"
-            } hover:scale-110 active:scale-95`}
+            } hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+            aria-label={isLiked ? "Unlike post" : "Like post"}
           >
             <Heart
-              className={`cursor-pointer transition-all duration-200 ${
+              className={`transition-all duration-200 ${
                 isLiked
                   ? "text-red-500 fill-red-500"
                   : "text-gray-400 hover:text-red-300"
-              }`}
+              } ${isPending ? "opacity-70" : ""}`}
               size={20}
             />
           </button>

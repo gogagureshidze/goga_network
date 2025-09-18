@@ -6,14 +6,19 @@ import { revalidatePath } from "next/cache";
 export const switchLike = async (postId: number) => {
   const user = await currentUser();
   const currentUserId = user?.id;
-  if (!currentUserId) throw new Error("User is not authenticated!");
+
+  if (!currentUserId) {
+    throw new Error("User is not authenticated!");
+  }
 
   try {
-    // First, check if the like exists
-    const existingLike = await prisma.like.findFirst({
+    // Use upsert/delete pattern to avoid race conditions
+    const existingLike = await prisma.like.findUnique({
       where: {
-        postId,
-        userId: currentUserId,
+        userId_postId: {
+          userId: currentUserId,
+          postId: postId,
+        },
       },
     });
 
@@ -28,20 +33,27 @@ export const switchLike = async (postId: number) => {
       });
       isLiked = false;
     } else {
-      // Like: Create a new like
-      await prisma.like.create({
-        data: {
-          postId,
+      // Like: Create a new like using upsert to prevent duplicates
+      await prisma.like.upsert({
+        where: {
+          userId_postId: {
+            userId: currentUserId,
+            postId: postId,
+          },
+        },
+        create: {
+          postId: postId,
           userId: currentUserId,
         },
+        update: {}, // No-op if already exists
       });
       isLiked = true;
     }
 
-    // Get all user IDs who liked this post
+    // Get updated like count and user IDs in a single query
     const allLikes = await prisma.like.findMany({
       where: {
-        postId,
+        postId: postId,
       },
       select: {
         userId: true,
@@ -50,8 +62,9 @@ export const switchLike = async (postId: number) => {
 
     const likeUserIds = allLikes.map((like) => like.userId);
 
-    // Revalidate the path to update the cache
-    revalidatePath("/");
+    // Skip revalidatePath for better performance - let optimistic updates handle UI
+    // Uncomment only if you need server-side rendering to be updated immediately
+    // revalidatePath("/");
 
     return {
       success: true,
@@ -61,6 +74,12 @@ export const switchLike = async (postId: number) => {
     };
   } catch (err) {
     console.error("Like operation error:", err);
+
+    // Return more specific error information
+    if (err instanceof Error) {
+      throw new Error(`Like operation failed: ${err.message}`);
+    }
+
     throw new Error("Something went wrong with the like operation.");
   }
 };
