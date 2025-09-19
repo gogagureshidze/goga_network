@@ -1,7 +1,7 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { HandHeart, SendHorizonal, MoreVertical } from "lucide-react";
+import { Heart, SendHorizonal, MoreVertical } from "lucide-react";
 import Image from "next/image";
 import {
   useOptimistic,
@@ -78,7 +78,6 @@ const removeCommentFromTree = (
 };
 
 // --- CommentItem Component (Memoized) ---
-// Memoization is crucial here. This component will only re-render if its props change.
 const CommentItem = memo(function CommentItem({
   comment,
   user,
@@ -92,7 +91,7 @@ const CommentItem = memo(function CommentItem({
 }: {
   comment: CommentWithUser;
   user: any;
-  handleLike: (commentId: number) => Promise<void>;
+  handleLike: (commentId: number) => void;
   setReplyingTo: (id: number | null) => void;
   replyingTo: number | null;
   isPending: boolean;
@@ -131,15 +130,24 @@ const CommentItem = memo(function CommentItem({
           <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
             <button
               onClick={() => handleLike(comment.id)}
-              className="flex items-center gap-1"
+              className="flex items-center gap-1 transition-colors"
               disabled={isPending}
             >
-              <HandHeart
-                className={`cursor-pointer ${
-                  hasLiked ? "text-red-500" : "text-gray-400"
+              <Heart
+                className={`cursor-pointer transition-all duration-200 ${
+                  hasLiked
+                    ? "text-red-500 fill-red-500 scale-110"
+                    : "text-gray-400 hover:text-red-400 hover:scale-105"
                 }`}
+                size={14}
               />
-              <span>{comment.likes?.length || 0} Likes</span>
+              <span
+                className={
+                  hasLiked ? "text-red-500 font-medium" : "text-gray-500"
+                }
+              >
+                {comment.likes?.length || 0}
+              </span>
             </button>
             <button
               className="hover:underline"
@@ -207,7 +215,6 @@ const CommentItem = memo(function CommentItem({
                 ).value;
                 if (!desc.trim()) return;
 
-                // Unique ID for optimistic update
                 const newCommentId = Date.now();
                 const newComment: CommentWithUser = {
                   id: newCommentId,
@@ -347,39 +354,40 @@ function CommentList({
         case "like":
           const { commentId: likedId, userId: likedUserId } =
             action.likedComment!;
-          const findAndToggleLike = (
-            comments: CommentWithUser[],
-            targetId: number,
-            targetUserId: string
+
+          const toggleLikeRecursive = (
+            comments: CommentWithUser[]
           ): CommentWithUser[] => {
             return comments.map((comment) => {
-              if (comment.id === targetId) {
-                const hasLiked = comment.likes.some(
-                  (like) => like.userId === targetUserId
+              if (comment.id === likedId) {
+                const currentLikes = comment.likes || [];
+                const hasLiked = currentLikes.some(
+                  (like) => like.userId === likedUserId
                 );
+
+                const newLikes = hasLiked
+                  ? currentLikes.filter((like) => like.userId !== likedUserId)
+                  : [...currentLikes, { userId: likedUserId }];
+
                 return {
                   ...comment,
-                  likes: hasLiked
-                    ? comment.likes.filter(
-                        (like) => like.userId !== targetUserId
-                      )
-                    : [...comment.likes, { userId: targetUserId }],
+                  likes: newLikes,
                 };
               }
+
+              // Check replies recursively
               if (comment.replies && comment.replies.length > 0) {
                 return {
                   ...comment,
-                  replies: findAndToggleLike(
-                    comment.replies,
-                    targetId,
-                    targetUserId
-                  ),
+                  replies: toggleLikeRecursive(comment.replies),
                 };
               }
+
               return comment;
             });
           };
-          return findAndToggleLike(state, likedId, likedUserId);
+
+          return toggleLikeRecursive(state);
 
         case "delete":
           return removeCommentFromTree(state, action.deletedComment!.commentId);
@@ -390,20 +398,21 @@ function CommentList({
     }
   );
 
-  // Use useCallback to memoize these functions. They will not be recreated on every render.
-  // This is a major performance boost for the CommentItem component.
+  // FIXED: Lightning fast like handler - NO transitions, pure optimistic
   const handleLike = useCallback(
-    async (commentId: number) => {
-      if (!user) return;
-      startTransition(() => {
-        addOptimisticComment({
-          type: "like",
-          likedComment: { commentId, userId: user.id },
-        });
+    (commentId: number) => {
+      if (!user || isPending) return;
+
+      // Fire the optimistic update IMMEDIATELY
+      addOptimisticComment({
+        type: "like",
+        likedComment: { commentId, userId: user.id },
       });
-      await likeComment(commentId);
+
+      // Background server update - don't await, don't care about response
+      likeComment(commentId).catch(console.error);
     },
-    [user, startTransition, addOptimisticComment]
+    [user, addOptimisticComment, isPending]
   );
 
   const handleDeleteComment = useCallback(
@@ -421,7 +430,6 @@ function CommentList({
       e.preventDefault();
       if (!desc.trim() || !user) return;
 
-      // A more reliable way to get a temporary ID for optimistic update
       const newCommentId = Date.now();
 
       const newComment: CommentWithUser = {

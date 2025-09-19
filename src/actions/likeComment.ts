@@ -21,14 +21,14 @@ export async function likeComment(commentId: number) {
     });
 
     if (existingLike) {
-      // If like exists, remove it (unlike)
+      // Unlike
       await prisma.like.delete({
         where: {
           id: existingLike.id,
         },
       });
     } else {
-      // If like doesn't exist, create it (like)
+      // Like
       await prisma.like.create({
         data: {
           commentId,
@@ -36,8 +36,7 @@ export async function likeComment(commentId: number) {
         },
       });
     }
-
-    revalidatePath("/");
+    revalidatePath('/')
   } catch (error) {
     console.error("Error liking comment:", error);
     throw error;
