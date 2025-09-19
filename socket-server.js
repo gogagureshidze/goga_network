@@ -21,13 +21,13 @@ const io = new Server(httpServer, {
   transports: ["websocket", "polling"],
 });
 
-// Track online users (unique IDs)
-const onlineUsers = new Set();
+// Track online users with socket mapping for proper cleanup
+const onlineUsers = new Map(); // userId -> Set of socketIds
 
 const broadcastOnlineCount = () => {
   const count = onlineUsers.size;
   io.emit("onlineCount", count);
-  console.log(`📡 Broadcast online count: ${count}`);
+  console.log(`📡 Broadcast online count: ${count} users`);
 };
 
 io.on("connection", (socket) => {
@@ -37,14 +37,32 @@ io.on("connection", (socket) => {
   );
 
   if (userId) {
-    onlineUsers.add(userId);
+    // Add user to online tracking
+    if (!onlineUsers.has(userId)) {
+      onlineUsers.set(userId, new Set());
+    }
+    onlineUsers.get(userId).add(socket.id);
+
+    // Join user to their own room for targeted messaging
+    socket.join(userId);
+
+    console.log(
+      `👤 User ${userId} now has ${
+        onlineUsers.get(userId).size
+      } active connections`
+    );
     broadcastOnlineCount();
   } else {
     console.warn("⚠️ No userId provided in handshake query.");
   }
 
+  // Send current online count immediately to new connection
+  socket.emit("onlineCount", onlineUsers.size);
+
   socket.on("sendMessage", async (data) => {
     try {
+      console.log("💬 Sending message:", data);
+
       const conversation =
         (await prisma.conversation.findFirst({
           where: {
@@ -67,24 +85,66 @@ io.on("connection", (socket) => {
         },
       });
 
+      // Send to receiver's room (all their active connections)
       io.to(data.receiverId).emit("receiveMessage", newMessage);
+
+      console.log(
+        `✉️ Message sent from ${data.senderId} to ${data.receiverId}`
+      );
     } catch (err) {
       console.error("❌ Error saving message:", err);
+      socket.emit("messageError", { error: "Failed to send message" });
     }
   });
 
   socket.on("disconnect", () => {
-    console.log(
-      `❌ User ${userId || "unknown"} disconnected (socket: ${socket.id})`
-    );
+    console.log(`❌ Socket ${socket.id} disconnected`);
+
     if (userId) {
-      onlineUsers.delete(userId);
-      broadcastOnlineCount();
+      const userSockets = onlineUsers.get(userId);
+      if (userSockets) {
+        userSockets.delete(socket.id);
+
+        // If user has no more active connections, remove them completely
+        if (userSockets.size === 0) {
+          onlineUsers.delete(userId);
+          console.log(`👋 User ${userId} is now offline`);
+        } else {
+          console.log(
+            `🔌 User ${userId} still has ${userSockets.size} active connections`
+          );
+        }
+
+        broadcastOnlineCount();
+      }
     }
+  });
+
+  // Handle connection errors
+  socket.on("error", (error) => {
+    console.error("🚨 Socket error:", error);
   });
 });
 
-const PORT = 3001;
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, shutting down gracefully...");
+  httpServer.close(() => {
+    prisma.$disconnect();
+    process.exit(0);
+  });
+});
+
+process.on("SIGINT", () => {
+  console.log("🛑 SIGINT received, shutting down gracefully...");
+  httpServer.close(() => {
+    prisma.$disconnect();
+    process.exit(0);
+  });
+});
+
+const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 WebSocket server running on port ${PORT}`);
+  console.log(`🌐 CORS origins configured for multiple domains`);
 });
