@@ -26,8 +26,19 @@ const onlineUsers = new Map(); // userId -> Set of socketIds
 
 const broadcastOnlineCount = () => {
   const count = onlineUsers.size;
+  const userList = Array.from(onlineUsers.keys());
   io.emit("onlineCount", count);
   console.log(`📡 Broadcast online count: ${count} users`);
+  console.log(`👥 Online users: [${userList.join(", ")}]`);
+
+  // Log all socket connections per user
+  for (const [userId, sockets] of onlineUsers.entries()) {
+    console.log(
+      `   - User ${userId}: ${sockets.size} connections [${Array.from(
+        sockets
+      ).join(", ")}]`
+    );
+  }
 };
 
 io.on("connection", (socket) => {

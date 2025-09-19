@@ -25,11 +25,10 @@ const OnlineUsers = () => {
 
     const socket: Socket = io(SOCKET_SERVER_URL, {
       query: { userId: user.id },
-      transports: ["websocket", "polling"],
+      transports: ["websocket"], // Match MainChat - force websocket only
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      timeout: 20000,
     });
 
     socketRef.current = socket;
