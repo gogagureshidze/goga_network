@@ -1,6 +1,7 @@
 import AddPost from "@/components/AddPost";
 import Feed from "@/components/Feed";
 import LeftMenu from "@/components/LeftMenu";
+import OnlineUsers from "@/components/OnlineUsers";
 import RightMenu from "@/components/RightMenu";
 import Stories from "@/components/Stories";
 import { currentUser } from "@clerk/nextjs/server";
@@ -21,6 +22,9 @@ const Homepage = async () => {
         <div className="flex flex-col gap-6">
           <Stories />
           <AddPost />
+          <div className="block lg:hidden">
+            <OnlineUsers />
+          </div>
           <Feed />
         </div>
       </div>
