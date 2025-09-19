@@ -28,12 +28,12 @@ const Ad = ({ size }: { size: "sm" | "md" | "lg" }) => {
         <div className="flex items-center gap-4 cursor-pointer">
           <CodeXml className="text-indigo-600 h-10 w-10" />
           <span className="text-blue-500 font-medium">
-            Tech Interview AI voice assistant
+            Tech Interview AI voice assistant (SOON)!
           </span>
         </div>
         <p className={size === "sm" ? "text-xs" : "text-sm"}>
           {size === "sm"
-            ? "Get ready for your next tech interview with our AI voice assistant."
+            ? "Get ready for your next tech interview with our AI voice assistant.)"
             : size === "md"
             ? "Prepare for your tech interview with our AI assistant. Practice coding and get instant feedback."
             : "Crush your next tech interview with our AI voice assistant. Practice coding questions, get graded feedback, and gain the confidence to succeed."}

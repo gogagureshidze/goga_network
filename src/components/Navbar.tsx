@@ -146,7 +146,6 @@ function Navbar({ users }: { users: User[] }) {
         </div>
 
         {/* Search (Desktop) */}
-        {/* Search (Desktop) */}
         {user && isLoaded && (
           <div
             onClick={toggleSearch}
@@ -190,7 +189,6 @@ function Navbar({ users }: { users: User[] }) {
               <Link href="/chat">
                 <MessagesSquare className="hidden sm:inline-flex text-orange-300 cursor-pointer hover:text-rose-400 transition-all duration-300" />
               </Link>
-              <BellRing className="hidden sm:inline-flex text-orange-300 cursor-pointer hover:text-rose-400 transition-all duration-300" />
               <UserButton
                 appearance={{ elements: { avatarBox: "w-8 h-8" } }}
                 //? deprecated unlucky me idk what to use| afterSignOutUrl="/"
