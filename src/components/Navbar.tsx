@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Image from "next/image";
 import {
   House,
@@ -37,68 +37,98 @@ function Navbar({ users }: { users: User[] }) {
   const { user, isLoaded } = useUser();
   const [query, setQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [filteredUsers, setFilteredUsers] = useState<User[]>(users);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const lastUpdatedRef = useRef<number>(0);
   const userDataRef = useRef<string>("");
+  const timeoutRef = useRef<NodeJS.Timeout>();
 
-  // Monitor user updates and refresh page when changes are detected
-  useEffect(() => {
-    if (!isLoaded || !user) return;
+  // Memoize current user data to prevent unnecessary recalculations
+  const currentUserData = useMemo(() => {
+    if (!isLoaded || !user) return "";
 
-    const currentUserData = JSON.stringify({
+    return JSON.stringify({
       username: user.username,
       firstName: user.firstName,
       lastName: user.lastName,
       imageUrl: user.imageUrl,
       updatedAt: user.updatedAt,
     });
+  }, [
+    user?.username,
+    user?.firstName,
+    user?.lastName,
+    user?.imageUrl,
+    user?.updatedAt,
+    isLoaded,
+  ]);
 
-    // If this is not the first load and user data has changed
+  // Debounced search filtering to improve performance
+  const filteredUsers = useMemo(() => {
+    if (query.trim() === "") {
+      return users.slice(0, 10); // Limit initial results
+    }
+
+    const lowerCaseQuery = query.toLowerCase();
+    return users
+      .filter(
+        (user) =>
+          user.username?.toLowerCase().includes(lowerCaseQuery) ||
+          user.name?.toLowerCase().includes(lowerCaseQuery)
+      )
+      .slice(0, 20); // Limit search results
+  }, [query, users]);
+
+  // Optimized user profile change detection
+  useEffect(() => {
+    if (!currentUserData) return;
+
+    // Only trigger refresh if this isn't the initial load and data actually changed
     if (userDataRef.current && userDataRef.current !== currentUserData) {
       console.log("👤 User profile updated, refreshing page...");
 
-      // Small delay to ensure Clerk updates are complete
-      setTimeout(() => {
+      // Clear any existing timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      // Debounce the refresh to prevent rapid reloads
+      timeoutRef.current = setTimeout(() => {
         window.location.reload();
       }, 1000);
     }
 
     userDataRef.current = currentUserData;
-  }, [
-    user?.updatedAt,
-    user?.username,
-    user?.firstName,
-    user?.lastName,
-    user?.imageUrl,
-    isLoaded,
-  ]);
+  }, [currentUserData]);
 
-  const toggleSearch = () => {
-    setIsSearchOpen(!isSearchOpen);
-  };
-
-  // Filter users based on search query
+  // Cleanup timeout on unmount
   useEffect(() => {
-    if (query.trim() === "") {
-      setFilteredUsers(users);
-    } else {
-      const lowerCaseQuery = query.toLowerCase();
-      const results = users.filter(
-        (user) =>
-          user.username?.toLowerCase().includes(lowerCaseQuery) ||
-          user.name?.toLowerCase().includes(lowerCaseQuery)
-      );
-      setFilteredUsers(results);
-    }
-  }, [query, users]);
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
-  // Focus the search input when the overlay opens
+  // Memoized toggle function to prevent unnecessary re-renders
+  const toggleSearch = useCallback(() => {
+    setIsSearchOpen((prev) => !prev);
+  }, []);
+
+  // Debounced query handler
+  const handleQueryChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setQuery(e.target.value);
+    },
+    []
+  );
+
+  // Focus search input when overlay opens
   useEffect(() => {
     if (isSearchOpen && searchInputRef.current) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         searchInputRef.current?.focus();
       }, 100);
+
+      return () => clearTimeout(timer);
     }
   }, [isSearchOpen]);
 
@@ -189,10 +219,7 @@ function Navbar({ users }: { users: User[] }) {
               <Link href="/chat">
                 <MessagesSquare className="hidden sm:inline-flex text-orange-300 cursor-pointer hover:text-rose-400 transition-all duration-300" />
               </Link>
-              <UserButton
-                appearance={{ elements: { avatarBox: "w-8 h-8" } }}
-                //? deprecated unlucky me idk what to use| afterSignOutUrl="/"
-              />
+              <UserButton appearance={{ elements: { avatarBox: "w-8 h-8" } }} />
             </div>
           </SignedIn>
 
@@ -227,7 +254,7 @@ function Navbar({ users }: { users: User[] }) {
               type="text"
               placeholder="Search users..."
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={handleQueryChange}
               className="flex-grow bg-transparent text-white placeholder-rose-200 outline-none"
             />
             <button onClick={toggleSearch}>

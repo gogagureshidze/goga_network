@@ -8,26 +8,73 @@ import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+
+// Cache user data for 5 minutes to reduce DB hits
+const getCachedUser = unstable_cache(
+  async (username: string) => {
+    return await prisma.user.findFirst({
+      where: { username },
+      include: {
+        _count: { select: { posts: true, followers: true, followings: true } },
+      },
+    });
+  },
+  ["user-profile"],
+  {
+    revalidate: 300, // 5 minutes
+    tags: ["user-profile"],
+  }
+);
+
+// Cache relationship data for 2 minutes (more dynamic)
+const getCachedRelationships = unstable_cache(
+  async (loggedInUserId: string, targetUserId: string) => {
+    const [isFollowing, isFollowingSent, isBlockedByViewer, isBlockedByUser] =
+      await Promise.all([
+        prisma.follower.count({
+          where: { followerId: loggedInUserId, followingId: targetUserId },
+        }),
+        prisma.followRequest.count({
+          where: { senderId: loggedInUserId, receiverId: targetUserId },
+        }),
+        prisma.block.count({
+          where: { blockerId: loggedInUserId, blockedId: targetUserId },
+        }),
+        prisma.block.count({
+          where: { blockerId: targetUserId, blockedId: loggedInUserId },
+        }),
+      ]);
+
+    return {
+      isFollowing: !!isFollowing,
+      isFollowingSent: !!isFollowingSent,
+      isBlockedByViewer: !!isBlockedByViewer,
+      isBlockedByUser: !!isBlockedByUser,
+    };
+  },
+  ["user-relationships"],
+  {
+    revalidate: 120, // 2 minutes
+    tags: ["user-relationships"],
+  }
+);
 
 async function ProfilePage({ params }: { params: any }) {
   const loggedInUser = await currentUser();
   const loggedInUserId = loggedInUser?.id;
   const clerkUsername = loggedInUser?.username ?? undefined;
 
-  if (!loggedInUser) {
+  if (!loggedInUser || !loggedInUserId) {
     redirect("/sign-in");
   }
-  if (!loggedInUserId) return notFound();
-  const { username } = await params; // ✅ await params
 
-  // ✅ Fetch user + counts in one query
-  let user = await prisma.user.findFirst({
-    where: { username: username },
-    include: {
-      _count: { select: { posts: true, followers: true, followings: true } },
-    },
-  });
+  const { username } = await params;
 
+  // Try to get user from cache first
+  let user = await getCachedUser(username);
+
+  // Fallback to logged-in user if profile not found
   if (!user && clerkUsername) {
     user = await prisma.user.findFirst({
       where: { id: loggedInUserId },
@@ -36,39 +83,42 @@ async function ProfilePage({ params }: { params: any }) {
       },
     });
   }
+
   if (!user) return notFound();
 
   const isOwner = user.id === loggedInUserId;
 
-  // ✅ Sync Clerk username with DB
+  // Handle username sync (only for owner)
   if (isOwner && clerkUsername && user.username !== clerkUsername) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { username: clerkUsername },
-    });
+    // Update in background, don't await
+    prisma.user
+      .update({
+        where: { id: user.id },
+        data: { username: clerkUsername },
+      })
+      .catch(console.error);
+
     if (params.username !== clerkUsername) {
       redirect(`/profile/${clerkUsername}`);
     }
   }
 
-  // ✅ Run relational checks in parallel (faster)
-  const [isFollowing, isFollowingSent, isBlockedByViewer, isBlockedByUser] =
-    await Promise.all([
-      prisma.follower.count({
-        where: { followerId: loggedInUserId, followingId: user.id },
-      }),
-      prisma.followRequest.count({
-        where: { senderId: loggedInUserId, receiverId: user.id },
-      }),
-      prisma.block.count({
-        where: { blockerId: loggedInUserId, blockedId: user.id },
-      }),
-      prisma.block.count({
-        where: { blockerId: user.id, blockedId: loggedInUserId },
-      }),
-    ]);
+  // Get relationships (cached)
+  let relationships = {
+    isFollowing: false,
+    isFollowingSent: false,
+    isBlockedByViewer: false,
+    isBlockedByUser: false,
+  };
 
-  if (isBlockedByUser) return notFound();
+  if (!isOwner) {
+    relationships = await getCachedRelationships(loggedInUserId, user.id);
+
+    // If blocked by user, show 404
+    if (relationships.isBlockedByUser) {
+      return notFound();
+    }
+  }
 
   const formatedDate = new Date(user.createdAt).toLocaleDateString("en-US", {
     year: "numeric",
@@ -92,8 +142,8 @@ async function ProfilePage({ params }: { params: any }) {
               alt="Banner"
               fill
               className="object-cover rounded-lg"
-              priority={isOwner} // only priority for your own profile
-              sizes="100vw"
+              priority={isOwner}
+              sizes="(max-width: 1024px) 100vw, 50vw"
             />
             <div className="absolute bottom-[-3rem] left-1/2 transform -translate-x-1/2 z-10">
               <Image
@@ -103,6 +153,7 @@ async function ProfilePage({ params }: { params: any }) {
                 height={160}
                 className="rounded-full ring-2 ring-white object-cover aspect-square"
                 sizes="160px"
+                priority={isOwner}
               />
             </div>
           </div>
@@ -130,35 +181,35 @@ async function ProfilePage({ params }: { params: any }) {
             ))}
           </div>
 
-          {/* 👇 Mobile Interaction Section */}
+          {/* Mobile Interaction Section */}
           {!isOwner && (
             <div className="px-4 lg:hidden">
               <UserInfoCardInteraction
                 formatedDate={formatedDate}
-                isUserBlocked={!!isBlockedByViewer}
-                isFollowing={!!isFollowing}
-                isFollowingSent={!!isFollowingSent}
+                isUserBlocked={relationships.isBlockedByViewer}
+                isFollowing={relationships.isFollowing}
+                isFollowingSent={relationships.isFollowingSent}
                 userId={user.id}
                 currentUserId={loggedInUserId}
               />
             </div>
           )}
 
-          {/* 👇 Mobile Bio Section */}
+          {/* Mobile Bio Section */}
           <div className="px-4 lg:hidden">
             <UserInfoCard
               user={user}
               username={user.username!}
               isOwner={isOwner}
-              isFollowing={!!isFollowing}
-              isFollowingSent={!!isFollowingSent}
-              isBlockedByViewer={!!isBlockedByViewer}
+              isFollowing={relationships.isFollowing}
+              isFollowingSent={relationships.isFollowingSent}
+              isBlockedByViewer={relationships.isBlockedByViewer}
               hideInteraction
             />
           </div>
 
-          {/* Feed */}
-          <Feed username={user.username ?? undefined} />
+          {/* Feed - Pass user data to avoid refetch */}
+          <Feed username={user.username ?? undefined} userId={user.id} />
         </div>
       </div>
 
@@ -169,9 +220,9 @@ async function ProfilePage({ params }: { params: any }) {
             user={user}
             username={user.username!}
             isOwner={isOwner}
-            isFollowing={!!isFollowing}
-            isFollowingSent={!!isFollowingSent}
-            isBlockedByViewer={!!isBlockedByViewer}
+            isFollowing={relationships.isFollowing}
+            isFollowingSent={relationships.isFollowingSent}
+            isBlockedByViewer={relationships.isBlockedByViewer}
           />
           <UserMediaCard user={user} username={user.username!} />
         </RightMenu>
