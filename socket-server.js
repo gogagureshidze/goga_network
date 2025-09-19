@@ -10,7 +10,7 @@ const io = new Server(httpServer, {
     origin: [
       "http://localhost:3000",
       "https://f69f1cfbb69b.ngrok-free.app",
-      "goga-network-ahy0nnnnb-gogagureshidzes-projects.vercel.app",
+      "https://goga-network-ahy0nnnnb-gogagureshidzes-projects.vercel.app",
       "https://goga-network.vercel.app",
       "https://goga-network.onrender.com",
       "https://goganetwork.netlify.app",
@@ -21,24 +21,26 @@ const io = new Server(httpServer, {
   transports: ["websocket", "polling"],
 });
 
-// Create a Set to store unique online user IDs
+// Track online users (unique IDs)
 const onlineUsers = new Set();
 
-// Function to broadcast the current online user count
 const broadcastOnlineCount = () => {
-  io.emit("onlineCount", onlineUsers.size);
-  console.log(`Current online users: ${onlineUsers.size}`);
+  const count = onlineUsers.size;
+  io.emit("onlineCount", count);
+  console.log(`📡 Broadcast online count: ${count}`);
 };
 
 io.on("connection", (socket) => {
-  const userId = socket.handshake.query.userId;
-  console.log(`User ${userId} connected with socket ID ${socket.id}`);
+  const userId = socket.handshake.query.userId?.toString();
+  console.log(
+    `✅ User ${userId || "unknown"} connected (socket: ${socket.id})`
+  );
 
   if (userId) {
-    socket.join(userId);
-    // Add the user to our online set and broadcast the new count
     onlineUsers.add(userId);
     broadcastOnlineCount();
+  } else {
+    console.warn("⚠️ No userId provided in handshake query.");
   }
 
   socket.on("sendMessage", async (data) => {
@@ -67,19 +69,22 @@ io.on("connection", (socket) => {
 
       io.to(data.receiverId).emit("receiveMessage", newMessage);
     } catch (err) {
-      console.error("Error saving message:", err);
+      console.error("❌ Error saving message:", err);
     }
   });
 
   socket.on("disconnect", () => {
-    console.log(`User ${userId} disconnected`);
-    // Remove the user from our online set and broadcast the new count
-    onlineUsers.delete(userId);
-    broadcastOnlineCount();
+    console.log(
+      `❌ User ${userId || "unknown"} disconnected (socket: ${socket.id})`
+    );
+    if (userId) {
+      onlineUsers.delete(userId);
+      broadcastOnlineCount();
+    }
   });
 });
 
 const PORT = 3001;
-httpServer.listen(PORT, "0.0.0.0", () =>
-  console.log(`WebSocket server listening on port ${PORT}`)
-);
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 WebSocket server running on port ${PORT}`);
+});
