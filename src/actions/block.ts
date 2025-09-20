@@ -20,7 +20,7 @@ export const switchBlock = async (userId: string) => {
       // Revalidate caches
       revalidateTag("blocked-users");
       revalidateTag("user-relationships");
-      revalidateTag("user-profile");
+      revalidateTag("profile-posts");
       revalidateTag("feed-posts");
 
       return { action: "unblocked" };
@@ -43,7 +43,7 @@ export const switchBlock = async (userId: string) => {
       // Revalidate caches
       revalidateTag("blocked-users");
       revalidateTag("user-relationships");
-      revalidateTag("user-profile");
+      revalidateTag("profile-posts");
       revalidateTag("feed-posts");
 
       return { action: "blocked" };
