@@ -1,7 +1,9 @@
 "use server";
+
 import prisma from "@/lib/client";
 import { z } from "zod";
 import { currentUser } from "@clerk/nextjs/server";
+import { revalidateTag } from "next/cache";
 
 async function UpdateProfile(formData: FormData, cover?: string) {
   const user = await currentUser();
@@ -16,8 +18,6 @@ async function UpdateProfile(formData: FormData, cover?: string) {
     Object.entries(fields).filter(([_, value]) => value !== "")
   );
 
-  console.log(cover)
-  
   // Add cover if provided
   if (cover) {
     filteredFields.cover = cover;
@@ -36,7 +36,7 @@ async function UpdateProfile(formData: FormData, cover?: string) {
   });
 
   const validatedFields = Profile.safeParse(filteredFields);
-console.log(validatedFields);
+
   if (!validatedFields.success) {
     console.log(validatedFields.error.flatten().fieldErrors);
     return; // stop if validation fails
@@ -47,6 +47,9 @@ console.log(validatedFields);
       where: { id: currentUserId },
       data: validatedFields.data,
     });
+
+    // 🔥 Invalidate the cached user so profile shows fresh data instantly
+    revalidateTag("user-profile");
   } catch (error) {
     console.log(error);
   }

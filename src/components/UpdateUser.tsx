@@ -43,25 +43,35 @@ function UpdateUser({ user }: { user: User }) {
     setTimeout(() => setToast(null), 6000);
   };
 
-  const handleSubmit = async (formData: FormData) => {
-    try {
-      await UpdateProfile(formData, cover?.secure_url);
-      setToast({
-        message: "Profile updated! Reloading...",
-        type: "success",
-      });
-      setTimeout(() => {
-        window.location.reload(); // reload the page after 2s
-      }, 2000);
-    } catch (error: any) {
-      console.error("UpdateProfile error:", error);
-      setToast({
-        message: error?.message || "Update failed! Please try again.",
-        type: "error",
-      });
-      setTimeout(() => setToast(null), 5000);
-    }
-  };
+const handleSubmit = async (formData: FormData) => {
+  try {
+    await UpdateProfile(formData, cover?.secure_url);
+
+    // ✅ Show success toast
+    setToast({
+      message: "Profile updated!",
+      type: "success",
+    });
+
+    // ✅ Close modal after short delay (so they see the toast first)
+    setTimeout(() => {
+      setOpen(false);
+    }, 500); // half a second feels smooth
+
+    // ✅ Hide toast after 3s
+    setTimeout(() => {
+      setToast(null);
+    }, 3000);
+  } catch (error: any) {
+    console.error("UpdateProfile error:", error);
+    setToast({
+      message: error?.message || "Update failed! Please try again.",
+      type: "error",
+    });
+    setTimeout(() => setToast(null), 5000);
+  }
+};
+
   return (
     <div>
       <span
