@@ -1,6 +1,7 @@
 "use server";
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
+import { revalidatePath } from "next/cache";
 
 export const switchLike = async (postId: number) => {
   const user = await currentUser();
@@ -11,51 +12,91 @@ export const switchLike = async (postId: number) => {
   }
 
   try {
-    const existingLike = await prisma.like.findFirst({
-      where: {
-        userId: currentUserId,
-        postId: postId,
-      },
-    });
-
-    if (existingLike) {
-      // Unlike
-      await prisma.like.delete({
+    // Use a transaction to ensure data consistency
+    const result = await prisma.$transaction(async (tx) => {
+      // Check current state
+      const existingLike = await tx.like.findFirst({
         where: {
-          id: existingLike.id,
-        },
-      });
-    } else {
-      // Like
-      await prisma.like.create({
-        data: {
-          postId: postId,
           userId: currentUserId,
+          postId: postId,
         },
       });
-    }
 
-    // Get updated like user IDs for optimistic update sync
-    const allLikes = await prisma.like.findMany({
-      where: {
-        postId: postId,
-      },
-      select: {
-        userId: true,
-      },
+      let isLiked: boolean;
+
+      if (existingLike) {
+        // Unlike - delete the like
+        await tx.like.delete({
+          where: {
+            id: existingLike.id,
+          },
+        });
+        isLiked = false;
+      } else {
+        // Like - create new like with upsert to prevent duplicates
+        await tx.like.upsert({
+          where: {
+            userId_postId: {
+              userId: currentUserId,
+              postId: postId,
+            },
+          },
+          create: {
+            userId: currentUserId,
+            postId: postId,
+          },
+          update: {}, // No-op if exists
+        });
+        isLiked = true;
+      }
+
+      // Get final state from database
+      const finalLikes = await tx.like.findMany({
+        where: {
+          postId: postId,
+        },
+        select: {
+          userId: true,
+        },
+      });
+
+      return {
+        isLiked,
+        likeUserIds: finalLikes.map((like) => like.userId),
+        likeCount: finalLikes.length,
+      };
     });
 
-    const likeUserIds = allLikes.map((like) => like.userId);
-
-    // REMOVED revalidatePath - optimistic updates handle UI!
+    // Force revalidation to ensure consistency
+    revalidatePath("/");
 
     return {
       success: true,
-      likeUserIds,
-      likeCount: likeUserIds.length,
+      ...result,
     };
   } catch (err) {
     console.error("Like operation error:", err);
-    throw new Error("Like operation failed");
+
+    // Return current state on error
+    try {
+      const currentLikes = await prisma.like.findMany({
+        where: { postId: postId },
+        select: { userId: true },
+      });
+
+      return {
+        success: false,
+        error: err || "Like operation failed",
+        likeUserIds: currentLikes.map((like) => like.userId),
+        likeCount: currentLikes.length,
+      };
+    } catch (fallbackErr) {
+      return {
+        success: false,
+        error: "Database error",
+        likeUserIds: [],
+        likeCount: 0,
+      };
+    }
   }
 };

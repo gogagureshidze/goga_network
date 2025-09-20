@@ -38,8 +38,8 @@ const PostInteractions = ({
   const isLiked = userId ? currentLikes.includes(userId) : false;
   const likeCount = currentLikes.length;
 
-  // EPIC like handler with INSANE animations
-  const handleLike = useCallback(() => {
+  // EPIC like handler with BULLETPROOF server sync
+  const handleLike = useCallback(async () => {
     if (!userId) return;
 
     // Simple rate limiting - prevent spam (300ms cooldown)
@@ -48,45 +48,54 @@ const PostInteractions = ({
     lastLikeTime.current = now;
 
     const wasLiked = isLiked;
+    const originalLikes = [...currentLikes];
 
     // INSTANT UI update
-    const newLikes = wasLiked
+    const optimisticLikes = wasLiked
       ? currentLikes.filter((id) => id !== userId)
       : [...currentLikes, userId];
 
-    setCurrentLikes(newLikes);
+    setCurrentLikes(optimisticLikes);
     setCountAnimation(true);
 
+    // Trigger animations
     if (!wasLiked) {
-      // LIKING - EXPLOSIVE animations! 💥
       setIsLiking(true);
       setShowSparkles(true);
-
-      // Create the epic floating effects
       createEpicEffects();
-
-      // Clear animations faster - no lag
       setTimeout(() => setIsLiking(false), 400);
       setTimeout(() => setShowSparkles(false), 600);
     } else {
-      // UNLIKING - Dramatic bounce out
       setIsUnliking(true);
       setTimeout(() => setIsUnliking(false), 400);
     }
 
-    // Clear count animation
     setTimeout(() => setCountAnimation(false), 400);
 
-    // Background server sync - fire and forget
-    switchLike(postId).catch((error) => {
-      console.error("Like sync failed:", error);
-      // Rollback on error
-      setCurrentLikes(
-        wasLiked
-          ? [...currentLikes, userId]
-          : currentLikes.filter((id) => id !== userId)
+    // CRITICAL: Await server response and sync properly
+    try {
+      console.log(
+        `Attempting to ${wasLiked ? "unlike" : "like"} post ${postId}`
       );
-    });
+
+      const result = await switchLike(postId);
+
+      console.log("Server response:", result);
+
+      if (result.success) {
+        // SUCCESS: Update with actual server state
+        console.log("Like operation successful, syncing with server state");
+        setCurrentLikes(result.likeUserIds);
+      } else {
+        // SERVER ERROR: Rollback to original state
+        console.error("Server like failed:", result.error);
+        setCurrentLikes(originalLikes);
+      }
+    } catch (error) {
+      // NETWORK ERROR: Rollback to original state
+      console.error("Network error during like operation:", error);
+      setCurrentLikes(originalLikes);
+    }
   }, [userId, isLiked, currentLikes, postId]);
 
   // Create CLEAN floating hearts + sparkles - simple and smooth
