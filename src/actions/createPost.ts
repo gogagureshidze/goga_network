@@ -2,6 +2,7 @@
 
 import { currentUser } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
+import { revalidateTag } from "next/cache";
 
 export async function testAction(formData: FormData, media: any[]) {
   const user = await currentUser();
@@ -18,7 +19,7 @@ export async function testAction(formData: FormData, media: any[]) {
           createMany: {
             data: media.map((file) => ({
               url: file.secure_url,
-              safeUrl: file.playback_url ?? null, // never undefined, null is fine
+              safeUrl: file.playback_url ?? null, // null is valid if no playback url
               type: file.resource_type === "video" ? "video" : "photo",
             })),
           },
@@ -30,6 +31,11 @@ export async function testAction(formData: FormData, media: any[]) {
     });
 
     console.log("✅ Post created:", res);
+
+    // 🔥 Invalidate cached feeds & profiles
+    revalidateTag("feed-posts");
+    revalidateTag("profile-posts");
+
     return res;
   } catch (error) {
     console.error("❌ Prisma error creating post:", error);

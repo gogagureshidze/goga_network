@@ -55,7 +55,7 @@ const getCachedRelationships = unstable_cache(
   },
   ["user-relationships"],
   {
-    revalidate: 120, // 2 minutes
+    revalidate: 30, 
     tags: ["user-relationships"],
   }
 );
