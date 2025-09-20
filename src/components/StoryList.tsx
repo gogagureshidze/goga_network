@@ -700,34 +700,48 @@ const handleDeleteComment = useCallback(
     },
     [dispatch]
   );
-
+const getStoryDuration = (story: { img: string }) => {
+  // Videos can play for up to 60 seconds (1 minute)
+  // Photos get 10 seconds
+  return isStoryVideo(story) ? 60000 : 10000; // milliseconds
+};
   // Timer management for story progression
-  useEffect(() => {
-    if (!activeUserStoryId) return;
+ useEffect(() => {
+   if (!activeUserStoryId) return;
 
-    const shouldPause = isInputActive || showActivityModal || showDeleteConfirm;
-    if (shouldPause) return;
+   const shouldPause = isInputActive || showActivityModal || showDeleteConfirm;
+   if (shouldPause) return;
 
-    timerRef.current = window.setInterval(() => {
-      const elapsed = Date.now() - startTimeRef.current;
-      setProgress(Math.min((elapsed / 10000) * 100, 100));
-      if (elapsed >= 10000) {
-        startTimeRef.current = Date.now();
-        goNextStory();
-      }
-    }, 100);
+   const activeGroup = optimisticStories.find(
+     (group) => group.user.id === activeUserStoryId
+   );
+   const currentStory = activeGroup?.stories[activeIndex];
+   if (!currentStory) return;
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [
-    activeUserStoryId,
-    activeIndex,
-    isInputActive,
-    showActivityModal,
-    showDeleteConfirm,
-    goNextStory,
-  ]);
+   const storyDuration = getStoryDuration(currentStory);
+
+   timerRef.current = window.setInterval(() => {
+     const elapsed = Date.now() - startTimeRef.current;
+     setProgress(Math.min((elapsed / storyDuration) * 100, 100));
+
+     if (elapsed >= storyDuration) {
+       startTimeRef.current = Date.now();
+       goNextStory();
+     }
+   }, 100);
+
+   return () => {
+     if (timerRef.current) clearInterval(timerRef.current);
+   };
+ }, [
+   activeUserStoryId,
+   activeIndex,
+   isInputActive,
+   showActivityModal,
+   showDeleteConfirm,
+   goNextStory,
+   optimisticStories, // Add this dependency
+ ]);
 
   // Reset progress on story change
   useEffect(() => {
@@ -924,8 +938,17 @@ const handleDeleteComment = useCallback(
                 muted={isMuted}
                 className="absolute inset-0 w-full h-full object-contain rounded-lg"
                 onEnded={() => {
+                  // Only auto-advance if not interacting with comments
                   if (!isInputActive) {
                     goNextStory();
+                  }
+                }}
+                onLoadedMetadata={(e) => {
+                  // Optional: Cap video duration at 1 minute for display
+                  const video = e.target as HTMLVideoElement;
+                  if (video.duration > 60) {
+                    // If video is longer than 1 minute, we'll still advance after 1 minute
+                    // The timer will handle this automatically
                   }
                 }}
               />
