@@ -2,7 +2,7 @@
 
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 export async function likeComment(commentId: number) {
   const user = await currentUser();
@@ -36,6 +36,9 @@ export async function likeComment(commentId: number) {
         },
       });
     }
+          revalidateTag("feed-posts");
+                revalidateTag("profile-posts");
+    
     revalidatePath('/')
   } catch (error) {
     console.error("Error liking comment:", error);

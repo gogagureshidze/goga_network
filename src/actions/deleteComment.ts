@@ -2,7 +2,7 @@
 
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 export const deleteComment = async (commentId: number) => {
 const user = await currentUser();
@@ -35,8 +35,11 @@ const userId = user?.id;
         where: { id: commentId },
       }),
     ]);
+      revalidateTag("feed-posts");
+            revalidateTag("profile-posts");
 
     revalidatePath("/");
+    
   } catch (err) {
     console.error(err);
     throw new Error("Something went wrong while deleting the comment.");

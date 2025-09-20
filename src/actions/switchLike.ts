@@ -1,7 +1,7 @@
 "use server";
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 export const switchLike = async (postId: number) => {
   const user = await currentUser();
@@ -59,6 +59,8 @@ export const switchLike = async (postId: number) => {
           userId: true,
         },
       });
+      revalidateTag("feed-posts");
+            revalidateTag("profile-posts");
 
       return {
         isLiked,

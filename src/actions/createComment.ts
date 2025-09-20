@@ -1,7 +1,7 @@
 "use server";
 
 import { currentUser } from "@clerk/nextjs/server";
-import { revalidatePath } from "next/cache"; // 👈 Don't forget this import
+import { revalidatePath, revalidateTag } from "next/cache"; // 👈 Don't forget this import
 import prisma from "@/lib/client";
 
 export const addComment = async (postId: number, desc: string) => {
@@ -26,6 +26,9 @@ export const addComment = async (postId: number, desc: string) => {
 
     // THIS IS THE CRITICAL LINE OF CODE
     // It tells Next.js to re-fetch the data for the current page.
+          revalidateTag("feed-posts");
+                revalidateTag("profile-posts");
+    
     revalidatePath("/");
 
     return createdComment;

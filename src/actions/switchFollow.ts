@@ -2,6 +2,7 @@
 
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
+import { revalidateTag } from "next/cache";
 
 export const switchFollow = async (userId: string) => {
   const user = await currentUser();
@@ -12,61 +13,57 @@ export const switchFollow = async (userId: string) => {
   }
 
   try {
+    // 🔹 Check if already following
     const existingFollow = await prisma.follower.findFirst({
-      where: {
-        followerId: currentUserId,
-        followingId: userId,
-      },
+      where: { followerId: currentUserId, followingId: userId },
     });
 
     if (existingFollow) {
-      // 🔹 Unfollow: remove both directions
+      // 🔹 Unfollow: remove both directions (mutual follow system)
       await prisma.follower.deleteMany({
         where: {
           OR: [
-            {
-              followerId: currentUserId,
-              followingId: userId,
-            },
-            {
-              followerId: userId,
-              followingId: currentUserId,
-            },
+            { followerId: currentUserId, followingId: userId },
+            { followerId: userId, followingId: currentUserId },
           ],
         },
       });
 
+      // 🔹 Revalidate caches immediately
+      revalidateTag("user-relationships");
+      revalidateTag("feed-posts");
+      revalidateTag("profile-posts");
+      revalidateTag("user-profile");
+
       return { action: "unfollowed" };
     } else {
-      // 🔹 Try to follow
+      // 🔹 Not following: check if a follow request exists
       const existingFollowRequest = await prisma.followRequest.findFirst({
-        where: {
-          senderId: currentUserId,
-          receiverId: userId,
-        },
+        where: { senderId: currentUserId, receiverId: userId },
       });
 
       if (existingFollowRequest) {
-        // Cancel follow request
+        // Cancel pending follow request
         await prisma.followRequest.delete({
-          where: {
-            id: existingFollowRequest.id,
-          },
+          where: { id: existingFollowRequest.id },
         });
+
+        revalidateTag("user-relationships");
+
         return { action: "request-cancelled" };
       } else {
         // Create new follow request
         await prisma.followRequest.create({
-          data: {
-            senderId: currentUserId,
-            receiverId: userId,
-          },
+          data: { senderId: currentUserId, receiverId: userId },
         });
+
+        revalidateTag("user-relationships");
+
         return { action: "requested" };
       }
     }
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error in switchFollow:", error);
     throw new Error("Error switching follow status");
   }
 };

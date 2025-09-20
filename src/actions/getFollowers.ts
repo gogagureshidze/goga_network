@@ -2,13 +2,14 @@
 
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
+import { revalidateTag } from "next/cache";
 
 export async function getFollowers() {
   try {
     const user = await currentUser();
     if (!user) {
       console.log("No authenticated user");
-      return []; // don't redirect, just return empty
+      return [];
     }
 
     const dbUser = await prisma.user.findFirst({
@@ -41,6 +42,9 @@ export async function getFollowers() {
     console.log(
       `Followers fetched for ${user.id}: ${filteredFollowers.length}`
     );
+
+    // Revalidate followers/relationship cache so UI updates
+    revalidateTag("user-relationships");
 
     return filteredFollowers;
   } catch (err) {

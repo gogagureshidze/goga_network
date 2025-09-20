@@ -1,38 +1,36 @@
 "use server";
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
-import { revalidatePath } from "next/cache";
+import { revalidateTag } from "next/cache";
 
 export const switchBlock = async (userId: string) => {
   const user = await currentUser();
   const currentUserId = user?.id;
-  if (!currentUserId) {
-    throw new Error("User not authenticated.");
-  }
+  if (!currentUserId) throw new Error("User not authenticated.");
+
   try {
     const blocUser = await prisma.block.findFirst({
-      where: {
-        blockerId: currentUserId,
-        blockedId: userId,
-      },
+      where: { blockerId: currentUserId, blockedId: userId },
     });
+
     if (blocUser) {
       // Unblock
-      await prisma.block.delete({
-        where: {
-          id: blocUser.id,
-        },
-      });
+      await prisma.block.delete({ where: { id: blocUser.id } });
+
+      // Revalidate caches
+      revalidateTag("blocked-users");
+      revalidateTag("user-relationships");
+      revalidateTag("user-profile");
+      revalidateTag("feed-posts");
+
       return { action: "unblocked" };
     } else {
       // Block
       await prisma.block.create({
-        data: {
-          blockerId: currentUserId,
-          blockedId: userId,
-        },
+        data: { blockerId: currentUserId, blockedId: userId },
       });
-      // Also delete any follower/following relationship when blocking
+
+      // Remove follower/following relationships
       await prisma.follower.deleteMany({
         where: {
           OR: [
@@ -41,6 +39,13 @@ export const switchBlock = async (userId: string) => {
           ],
         },
       });
+
+      // Revalidate caches
+      revalidateTag("blocked-users");
+      revalidateTag("user-relationships");
+      revalidateTag("user-profile");
+      revalidateTag("feed-posts");
+
       return { action: "blocked" };
     }
   } catch (error) {

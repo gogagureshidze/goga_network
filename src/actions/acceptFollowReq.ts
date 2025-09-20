@@ -1,7 +1,7 @@
 "use server";
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 async function acceptFollowReq(senderId: string) {
   const user = await currentUser();
@@ -32,13 +32,17 @@ async function acceptFollowReq(senderId: string) {
     // 3️⃣ Create mutual following entries
     await prisma.follower.createMany({
       data: [
-        { followerId: senderId, followingId: currentUserId }, // sender follows current
-        { followerId: currentUserId, followingId: senderId }, // current follows sender
+        { followerId: senderId, followingId: currentUserId },
+        { followerId: currentUserId, followingId: senderId },
       ],
-      skipDuplicates: true, // prevents error if one already exists
+      skipDuplicates: true,
     });
-        revalidatePath("/requests");
 
+    // 4️⃣ Revalidate UI
+    revalidatePath("/requests"); // refresh requests page
+    revalidateTag("user-relationships"); // refresh profile buttons
+    revalidateTag("feed-posts");
+    revalidateTag("user-profile"); // refresh feed to show new posts
   } catch (error) {
     console.error(error);
     throw new Error("Error accepting follow request.");

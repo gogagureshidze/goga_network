@@ -1,5 +1,5 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidateTag } from "next/cache";
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 
@@ -7,20 +7,14 @@ export const removeFollowing = async (followerId: string) => {
   const user = await currentUser();
   const currentUserId = user?.id;
 
-  if (!currentUserId) {
-    throw new Error("User not authenticated.");
-  }
+  if (!currentUserId) throw new Error("User not authenticated.");
 
   try {
     const following = await prisma.follower.findFirst({
-      where: {
-        followerId: currentUserId,
-        followingId: followerId,
-      },
+      where: { followerId: currentUserId, followingId: followerId },
     });
 
     if (following) {
-      // Delete both the "follower" and "following" relationships
       await prisma.follower.deleteMany({
         where: {
           OR: [
@@ -30,13 +24,14 @@ export const removeFollowing = async (followerId: string) => {
         },
       });
 
-      // Revalidate the followers page to show the updated list
-      revalidatePath("/profile/followers");
+      // Revalidate relevant caches
+      revalidateTag("user-relationships"); // for buttons/UI
+      revalidateTag("feed-posts"); // to update feed immediately
 
       return { action: "unfollowed" };
     }
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error removing follower:", error);
     throw new Error("Error removing follower");
   }
 };

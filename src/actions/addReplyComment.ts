@@ -2,7 +2,7 @@
 
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 
 export async function addReplyComment(
@@ -26,6 +26,8 @@ const userId = user?.id;
         parentId,
       },
     });
+      revalidateTag("feed-posts");
+            revalidateTag("profile-posts");
 
     // Revalidate the path to fetch the new comment data from the server.
     revalidatePath("/");
