@@ -25,7 +25,7 @@ const getCachedBlockedUsers = unstable_cache(
   },
   ["blocked-users"],
   {
-    revalidate: 600, // 10 minutes
+    revalidate: 100, // 10 minutes
     tags: ["blocked-users"],
   }
 );
