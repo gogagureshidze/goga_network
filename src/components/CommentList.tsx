@@ -103,6 +103,7 @@ const CommentItem = memo(function CommentItem({
   const isReplyingToThisComment = replyingTo === comment.id;
   const [showAllReplies, setShowAllReplies] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [isReplying, setIsReplying] = useState(false);
   const isCommentOwner = user?.id === comment.userId;
 
   const repliesToDisplay = showAllReplies
@@ -213,8 +214,9 @@ const CommentItem = memo(function CommentItem({
                     "reply-input"
                   ) as HTMLInputElement
                 ).value;
-                if (!desc.trim()) return;
+                if (!desc.trim() || isReplying) return;
 
+                setIsReplying(true);
                 const newCommentId = Date.now();
                 const newComment: CommentWithUser = {
                   id: newCommentId,
@@ -238,6 +240,7 @@ const CommentItem = memo(function CommentItem({
                     newComment: newComment,
                   });
                   setReplyingTo(null);
+                  setIsReplying(false);
                   (
                     e.currentTarget.elements.namedItem(
                       "reply-input"
@@ -252,10 +255,19 @@ const CommentItem = memo(function CommentItem({
                 className="w-full pr-10 bg-transparent outline-none"
                 type="text"
                 name="reply-input"
-                placeholder={`Replying to ${comment.user.username}...`}
+                placeholder={
+                  isReplying
+                    ? "Sending reply..."
+                    : `Replying to ${comment.user.username}...`
+                }
+                disabled={isReplying}
               />
-              <button type="submit">
-                <SendHorizonal className="absolute right-3 top-1/2 -translate-y-1/2 text-orange-300 cursor-pointer" />
+              <button type="submit" disabled={isReplying}>
+                <SendHorizonal
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${
+                    isReplying ? "text-gray-300" : "text-orange-300"
+                  }`}
+                />
               </button>
             </form>
           </div>
@@ -311,6 +323,7 @@ function CommentList({
   const [isPending, startTransition] = useTransition();
   const [showAll, setShowAll] = useState(false);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
+  const [isCommenting, setIsCommenting] = useState(false);
 
   const [optimisticComments, addOptimisticComment] = useOptimistic(
     comments,
@@ -428,8 +441,9 @@ function CommentList({
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      if (!desc.trim() || !user) return;
+      if (!desc.trim() || !user || isCommenting) return;
 
+      setIsCommenting(true);
       const newCommentId = Date.now();
 
       const newComment: CommentWithUser = {
@@ -454,6 +468,7 @@ function CommentList({
       });
       setDesc("");
       setReplyingTo(null);
+      setIsCommenting(false);
 
       startTransition(() => {
         if (replyingTo) {
@@ -471,6 +486,7 @@ function CommentList({
       replyingTo,
       startTransition,
       addOptimisticComment,
+      isCommenting,
     ]
   );
 
@@ -501,12 +517,19 @@ function CommentList({
             <input
               className="w-full pr-10 bg-transparent outline-none"
               type="text"
-              placeholder="Write a comment..."
+              placeholder={
+                isCommenting ? "Posting comment..." : "Write a comment..."
+              }
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
+              disabled={isCommenting}
             />
-            <button type="submit">
-              <SendHorizonal className="absolute right-3 top-1/2 -translate-y-1/2 text-orange-300 cursor-pointer" />
+            <button type="submit" disabled={isCommenting}>
+              <SendHorizonal
+                className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${
+                  isCommenting ? "text-gray-300" : "text-orange-300"
+                }`}
+              />
             </button>
           </form>
         </div>
