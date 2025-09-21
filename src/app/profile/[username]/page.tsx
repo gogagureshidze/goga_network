@@ -268,6 +268,7 @@ async function ProfilePage({ params }: { params: any }) {
                 isFollowingSent={relationships.isFollowingSent}
                 userId={user.id}
                 currentUserId={loggedInUserId}
+                isBlockedByViewer={relationships.isBlockedByViewer}
               />
             </div>
           )}
