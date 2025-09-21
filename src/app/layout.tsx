@@ -1,12 +1,14 @@
+// src/app/layout.tsx
+
 import type { Metadata } from "next";
-import { Funnel_Display } from "next/font/google"; // Import the Funnel_Display font
+import { Funnel_Display } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
-import GlobalLoader from "@/components/GlobalLoader";
 import PageTransition from "@/components/PageTransition";
 import prisma from "@/lib/client";
 import Providers from "./providers";
 import Footer from "@/components/Footer";
+import GlobalLoader from "@/components/GlobalLoader";
 
 // Define the Funnel Display font with the variable property
 const funnel_display = Funnel_Display({
@@ -24,6 +26,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Your data fetching is fine and can remain here
   const rawUsers = await prisma.user.findMany({
     select: {
       id: true,
@@ -43,13 +46,11 @@ export default async function RootLayout({
   return (
     <html lang="en" className={funnel_display.variable}>
       <head>
-        {/* ADD THIS HERE: PRECONNECT HINTS */}
         <link rel="preconnect" href="https://img.clerk.com" />
         <link
           rel="preconnect"
           href="https://faithful-goblin-72.clerk.accounts.dev"
         />
-        {/* END OF ADDITION */}
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
@@ -61,6 +62,7 @@ export default async function RootLayout({
             <Navbar users={users} />
           </div>
           <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
+            {/* The new wrapper component handles the dynamic import */}
             <GlobalLoader />
             <PageTransition>{children}</PageTransition>
           </div>
