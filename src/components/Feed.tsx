@@ -4,7 +4,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
 import { unstable_cache } from "next/cache";
 
-// Cache blocked users for 10 minutes (doesn't change often)
+// Cache blocked users for 30 minutes
 const getCachedBlockedUsers = unstable_cache(
   async (userId: string) => {
     const [blockedUsers, usersWhoBlockedMe] = await Promise.all([
@@ -18,19 +18,16 @@ const getCachedBlockedUsers = unstable_cache(
       }),
     ]);
 
-    const blockedUserIds = blockedUsers.map((b) => b.blockedId);
-    const usersWhoBlockedMeIds = usersWhoBlockedMe.map((b) => b.blockerId);
-
-    return [...blockedUserIds, ...usersWhoBlockedMeIds];
+    return [
+      ...blockedUsers.map((b) => b.blockedId),
+      ...usersWhoBlockedMe.map((b) => b.blockerId),
+    ];
   },
   ["blocked-users"],
-  {
-    revalidate: 100, // 10 minutes
-    tags: ["blocked-users"],
-  }
+  { revalidate: 1800, tags: ["blocked-users"] }
 );
 
-// Cache following list for 5 minutes
+// Cache following list for 15 minutes
 const getCachedFollowing = unstable_cache(
   async (userId: string) => {
     const following = await prisma.follower.findMany({
@@ -40,68 +37,201 @@ const getCachedFollowing = unstable_cache(
     return following.map((f) => f.followingId);
   },
   ["following-list"],
-  {
-    revalidate: 300, // 5 minutes
-    tags: ["following-list"],
-  }
+  { revalidate: 900, tags: ["following-list"] }
 );
 
-// Cache posts for 2 minutes (more dynamic content)
+// Optimized profile posts with minimal data
 const getCachedProfilePosts = unstable_cache(
   async (username: string, excludedUserIds: string[]) => {
     return await prisma.post.findMany({
       where: {
         user: { username },
-        NOT: { userId: { in: excludedUserIds } },
+        ...(excludedUserIds.length > 0 && {
+          NOT: { userId: { in: excludedUserIds } },
+        }),
       },
-      include: {
-        user: true,
-        media: true,
-        likes: { select: { userId: true } },
-        comments: true,
-        _count: { select: { comments: true } },
+      select: {
+        id: true,
+        desc: true,
+        createdAt: true,
+        userId: true,
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+            name: true,
+            surname: true,
+          },
+        },
+        media: {
+          select: {
+            id: true,
+            url: true,
+            safeUrl: true,
+            type: true,
+          },
+        },
+        _count: {
+          select: {
+            likes: true,
+            comments: true,
+          },
+        },
+        likes: {
+          select: { userId: true },
+          take: 3, // Only get first few likes
+        },
       },
       orderBy: { createdAt: "desc" },
-      take: 20, // Reduced from 50 for better performance
+      take: 15, // Reduced from 20
     });
   },
   ["profile-posts"],
-  {
-    revalidate: 120, // 2 minutes
-    tags: ["profile-posts"],
-  }
+  { revalidate: 300, tags: ["profile-posts"] }
 );
 
+// Optimized feed posts
 const getCachedFeedPosts = unstable_cache(
-  async (followingIds: string[], excludedUserIds: string[]) => {
+  async (
+    followingIds: string[],
+    excludedUserIds: string[],
+    currentUserId: string
+  ) => {
+    if (followingIds.length === 0) {
+      // Only explore posts if no following
+      return await prisma.post.findMany({
+        where: {
+          ...(excludedUserIds.length > 0
+            ? { userId: { notIn: [...excludedUserIds, currentUserId] } }
+            : { userId: { not: currentUserId } }),
+        },
+        select: {
+          id: true,
+          desc: true,
+          createdAt: true,
+          userId: true,
+          user: {
+            select: {
+              id: true,
+              username: true,
+              avatar: true,
+              name: true,
+              surname: true,
+            },
+          },
+          media: {
+            select: {
+              id: true,
+              url: true,
+              safeUrl: true,
+              type: true,
+            },
+          },
+          _count: {
+            select: {
+              likes: true,
+              comments: true,
+            },
+          },
+          likes: {
+            select: { userId: true },
+            take: 3,
+          },
+        },
+        take: 12,
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
     const [followingPosts, explorePosts] = await Promise.all([
       prisma.post.findMany({
         where: {
           userId: { in: followingIds },
-          NOT: { userId: { in: excludedUserIds } },
+          ...(excludedUserIds.length > 0 && {
+            NOT: { userId: { in: excludedUserIds } },
+          }),
         },
-        include: {
-          user: true,
-          media: true,
-          likes: { select: { userId: true } },
-          comments: true,
-          _count: { select: { comments: true } },
+        select: {
+          id: true,
+          desc: true,
+          createdAt: true,
+          userId: true,
+          user: {
+            select: {
+              id: true,
+              username: true,
+              avatar: true,
+              name: true,
+              surname: true,
+            },
+          },
+          media: {
+            select: {
+              id: true,
+              url: true,
+              safeUrl: true,
+              type: true,
+            },
+          },
+          _count: {
+            select: {
+              likes: true,
+              comments: true,
+            },
+          },
+          likes: {
+            select: { userId: true },
+            take: 3,
+          },
         },
-        take: 20, // Reduced from 30
+        take: 10,
         orderBy: { createdAt: "desc" },
       }),
       prisma.post.findMany({
         where: {
-          userId: { notIn: [...followingIds, ...excludedUserIds] },
+          ...(excludedUserIds.length > 0
+            ? {
+                userId: {
+                  notIn: [...followingIds, ...excludedUserIds, currentUserId],
+                },
+              }
+            : { userId: { notIn: [...followingIds, currentUserId] } }),
         },
-        include: {
-          user: true,
-          media: true,
-          likes: { select: { userId: true } },
-          comments: true,
-          _count: { select: { comments: true } },
+        select: {
+          id: true,
+          desc: true,
+          createdAt: true,
+          userId: true,
+          user: {
+            select: {
+              id: true,
+              username: true,
+              avatar: true,
+              name: true,
+              surname: true,
+            },
+          },
+          media: {
+            select: {
+              id: true,
+              url: true,
+              safeUrl: true,
+              type: true,
+            },
+          },
+          _count: {
+            select: {
+              likes: true,
+              comments: true,
+            },
+          },
+          likes: {
+            select: { userId: true },
+            take: 3,
+          },
         },
-        take: 5, // Reduced from 10
+        take: 3,
         orderBy: { createdAt: "desc" },
       }),
     ]);
@@ -109,10 +239,7 @@ const getCachedFeedPosts = unstable_cache(
     return [...followingPosts, ...explorePosts];
   },
   ["feed-posts"],
-  {
-    revalidate: 120, // 2 minutes
-    tags: ["feed-posts"],
-  }
+  { revalidate: 180, tags: ["feed-posts"] }
 );
 
 async function Feed({
@@ -120,7 +247,7 @@ async function Feed({
   userId,
 }: {
   username?: string;
-  userId?: string; // Optional: passed from ProfilePage to avoid extra queries
+  userId?: string;
 }) {
   const user = await currentUser();
   const currentUserId = user?.id;
@@ -135,42 +262,49 @@ async function Feed({
     );
   }
 
-  // Get blocked users (cached)
-  const excludedUserIds = await getCachedBlockedUsers(currentUserId);
-
   let posts: any[] = [];
 
   try {
+    // Get blocked users first (cached)
+    const excludedUserIds = await getCachedBlockedUsers(currentUserId);
+
     if (username) {
-      // Profile posts (cached)
+      // Profile posts
       posts = await getCachedProfilePosts(username, excludedUserIds);
     } else {
-      // Homepage feed (cached)
+      // Feed posts
       const followingIds = await getCachedFollowing(currentUserId);
-      posts = await getCachedFeedPosts(followingIds, excludedUserIds);
+      posts = await getCachedFeedPosts(
+        followingIds,
+        excludedUserIds,
+        currentUserId
+      );
     }
 
-    // Simplified scoring logic (moved to client-side for better performance)
-    const scoredPosts = posts.map((post) => {
-      const likes = post.likes?.length || 0;
-      const comments = post.comments?.length || 0;
-      const ageHours =
-        (Date.now() - new Date(post.createdAt).getTime()) / (1000 * 60 * 60);
+    // Simple scoring for feed only (not profile)
+    if (!username && posts.length > 0) {
+      const now = Date.now();
 
-      // Simplified scoring
-      const recencyBoost = ageHours < 24 ? 2 : 0;
-      const score = likes + comments + recencyBoost;
+      posts = posts
+        .map((post) => {
+          const likes = post._count?.likes || 0;
+          const comments = post._count?.comments || 0;
+          const ageHours = (now - new Date(post.createdAt).getTime()) / 3600000;
 
-      return { ...post, score };
-    });
+          let score = likes + comments * 2;
+          if (ageHours < 2) score += 10;
+          else if (ageHours < 12) score += 5;
+          else if (ageHours < 24) score += 2;
 
-    // Sort by score
-    scoredPosts.sort((a, b) => b.score - a.score);
+          return { ...post, score };
+        })
+        .sort((a, b) => b.score - a.score);
+    }
 
     return (
       <div className="bg-rose-50 shadow-md rounded-lg flex flex-col gap-12 p-4">
-        {scoredPosts.length > 0 ? (
-          scoredPosts.map((post) => <Post key={post.id} post={post} />)
+        {posts.length > 0 ? (
+          posts.map((post) => <Post key={post.id} post={post} />)
         ) : (
           <p className="text-center text-gray-500">No posts found.</p>
         )}

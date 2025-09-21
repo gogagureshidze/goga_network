@@ -25,11 +25,10 @@ async function acceptFollowReq(userId: string) {
         },
       });
     }
-revalidateTag("user-relationships"); // refresh profile buttons
+    revalidateTag("user-relationships"); // refresh profile buttons
     revalidateTag("feed-posts");
     revalidateTag("user-profile");
     revalidatePath("/requests");
-
   } catch (error) {
     console.log(error);
     throw new Error("Error Something Went Wrong!w");

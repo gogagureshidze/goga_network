@@ -10,39 +10,58 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
 
-// Cache user data for 5 minutes to reduce DB hits
+// Cache user data for 10 minutes with minimal fields
 const getCachedUser = unstable_cache(
   async (username: string) => {
     return await prisma.user.findFirst({
       where: { username },
-      include: {
-        _count: { select: { posts: true, followers: true, followings: true } },
+      select: {
+        id: true,
+        username: true,
+        avatar: true,
+        cover: true,
+        name: true,
+        surname: true,
+        description: true,
+        city: true,
+        school: true,
+        work: true,
+        website: true,
+        createdAt: true,
+        _count: {
+          select: {
+            posts: true,
+            followers: true,
+            followings: true,
+          },
+        },
       },
     });
   },
   ["user-profile"],
-  {
-    revalidate: 300, // 5 minutes
-    tags: ["user-profile"],
-  }
+  { revalidate: 600, tags: ["user-profile"] }
 );
 
-// Cache relationship data for 2 minutes (more dynamic)
+// Cache relationships for 1 minute using findFirst instead of count
 const getCachedRelationships = unstable_cache(
   async (loggedInUserId: string, targetUserId: string) => {
     const [isFollowing, isFollowingSent, isBlockedByViewer, isBlockedByUser] =
       await Promise.all([
-        prisma.follower.count({
+        prisma.follower.findFirst({
           where: { followerId: loggedInUserId, followingId: targetUserId },
+          select: { id: true },
         }),
-        prisma.followRequest.count({
+        prisma.followRequest.findFirst({
           where: { senderId: loggedInUserId, receiverId: targetUserId },
+          select: { id: true },
         }),
-        prisma.block.count({
+        prisma.block.findFirst({
           where: { blockerId: loggedInUserId, blockedId: targetUserId },
+          select: { id: true },
         }),
-        prisma.block.count({
+        prisma.block.findFirst({
           where: { blockerId: targetUserId, blockedId: loggedInUserId },
+          select: { id: true },
         }),
       ]);
 
@@ -54,10 +73,7 @@ const getCachedRelationships = unstable_cache(
     };
   },
   ["user-relationships"],
-  {
-    revalidate: 30, 
-    tags: ["user-relationships"],
-  }
+  { revalidate: 60, tags: ["user-relationships"] }
 );
 
 async function ProfilePage({ params }: { params: any }) {
@@ -71,15 +87,33 @@ async function ProfilePage({ params }: { params: any }) {
 
   const { username } = await params;
 
-  // Try to get user from cache first
+  // Get user from cache first
   let user = await getCachedUser(username);
 
   // Fallback to logged-in user if profile not found
   if (!user && clerkUsername) {
     user = await prisma.user.findFirst({
       where: { id: loggedInUserId },
-      include: {
-        _count: { select: { posts: true, followers: true, followings: true } },
+      select: {
+        id: true,
+        username: true,
+        avatar: true,
+        cover: true,
+        name: true,
+        surname: true,
+        description: true,
+        city: true,
+        school: true,
+        work: true,
+        website: true,
+        createdAt: true,
+        _count: {
+          select: {
+            posts: true,
+            followers: true,
+            followings: true,
+          },
+        },
       },
     });
   }
@@ -88,22 +122,21 @@ async function ProfilePage({ params }: { params: any }) {
 
   const isOwner = user.id === loggedInUserId;
 
-  // Handle username sync (only for owner)
+  // Handle username sync (non-blocking background update)
   if (isOwner && clerkUsername && user.username !== clerkUsername) {
-    // Update in background, don't await
     prisma.user
       .update({
         where: { id: user.id },
         data: { username: clerkUsername },
       })
-      .catch(console.error);
+      .catch(() => {}); // Silent fail
 
     if (params.username !== clerkUsername) {
       redirect(`/profile/${clerkUsername}`);
     }
   }
 
-  // Get relationships (cached)
+  // Get relationships only if not owner
   let relationships = {
     isFollowing: false,
     isFollowingSent: false,
@@ -114,7 +147,6 @@ async function ProfilePage({ params }: { params: any }) {
   if (!isOwner) {
     relationships = await getCachedRelationships(loggedInUserId, user.id);
 
-    // If blocked by user, show 404
     if (relationships.isBlockedByUser) {
       return notFound();
     }
@@ -208,7 +240,7 @@ async function ProfilePage({ params }: { params: any }) {
             />
           </div>
 
-          {/* Feed - Pass user data to avoid refetch */}
+          {/* Feed */}
           <Feed username={user.username ?? undefined} userId={user.id} />
         </div>
       </div>
