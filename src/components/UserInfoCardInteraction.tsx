@@ -13,7 +13,7 @@ type UserInfoCardInteractionProps = {
   isFollowing: boolean;
   isFollowingSent: boolean;
   userId: string;
-  isBlockedByViewer: boolean;
+  isBlockedByViewer?: boolean;
 };
 
 function UserInfoCardInteraction({
@@ -22,7 +22,7 @@ function UserInfoCardInteraction({
   isFollowing,
   isFollowingSent,
   userId,
-  isBlockedByViewer,
+  isBlockedByViewer = false,
 }: UserInfoCardInteractionProps) {
   const router = useRouter();
 
