@@ -13,7 +13,7 @@ export default function PageTransition({
       key="page-content"
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 1, ease: "easeOut", delay: 0.8 }}
+      transition={{ duration: 1, ease: "easeOut", delay: 0.9 }}
     >
       {children}
     </motion.div>

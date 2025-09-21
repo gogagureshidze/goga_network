@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import prisma from "@/lib/client";
 import Providers from "./providers";
-import ClientWrapper from "../components/GlobalLoader";
+import ClientWrapper from "@/components/ClientWrapper"; // Correct import
 
 // Define the Funnel Display font with the variable property
 const funnel_display = Funnel_Display({
@@ -55,12 +55,13 @@ export default async function RootLayout({
       </head>
       <body className="font-sans">
         <Providers>
+          {/* Navbar with server-side users */}
           <div className="w-full px-4 text-orange-50 bg-rose-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64">
             <Navbar users={users} />
           </div>
 
+          {/* Client-side wrapper for loader and page transitions */}
           <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
-            {/* ClientWrapper handles all client-only components */}
             <ClientWrapper>{children}</ClientWrapper>
           </div>
 
