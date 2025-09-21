@@ -4,7 +4,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
 import { unstable_cache } from "next/cache";
 
-// Cache blocked users for 30 minutes
+// Aggressive caching for stable data
 const getCachedBlockedUsers = unstable_cache(
   async (userId: string) => {
     const [blockedUsers, usersWhoBlockedMe] = await Promise.all([
@@ -24,23 +24,22 @@ const getCachedBlockedUsers = unstable_cache(
     ];
   },
   ["blocked-users"],
-  { revalidate: 1800, tags: ["blocked-users"] }
+  { revalidate: 3600, tags: ["blocked-users"] }
 );
 
-// Cache following list for 15 minutes
 const getCachedFollowing = unstable_cache(
   async (userId: string) => {
     const following = await prisma.follower.findMany({
       where: { followerId: userId },
       select: { followingId: true },
+      take: 100,
     });
     return following.map((f) => f.followingId);
   },
   ["following-list"],
-  { revalidate: 900, tags: ["following-list"] }
+  { revalidate: 1800, tags: ["following-list"] }
 );
 
-// Optimized profile posts with minimal data
 const getCachedProfilePosts = unstable_cache(
   async (username: string, excludedUserIds: string[]) => {
     return await prisma.post.findMany({
@@ -80,18 +79,30 @@ const getCachedProfilePosts = unstable_cache(
         },
         likes: {
           select: { userId: true },
-          take: 3, // Only get first few likes
+        },
+        comments: {
+          select: {
+            id: true,
+            desc: true,
+            createdAt: true,
+            userId: true,
+            user: {
+              select: {
+                avatar: true,
+                username: true,
+              },
+            },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
-      take: 15, // Reduced from 20
+      take: 10,
     });
   },
   ["profile-posts"],
-  { revalidate: 300, tags: ["profile-posts"] }
+  { revalidate: 600, tags: ["profile-posts"] }
 );
 
-// Optimized feed posts
 const getCachedFeedPosts = unstable_cache(
   async (
     followingIds: string[],
@@ -99,7 +110,6 @@ const getCachedFeedPosts = unstable_cache(
     currentUserId: string
   ) => {
     if (followingIds.length === 0) {
-      // Only explore posts if no following
       return await prisma.post.findMany({
         where: {
           ...(excludedUserIds.length > 0
@@ -136,18 +146,31 @@ const getCachedFeedPosts = unstable_cache(
           },
           likes: {
             select: { userId: true },
-            take: 3,
+          },
+          comments: {
+            select: {
+              id: true,
+              desc: true,
+              createdAt: true,
+              userId: true,
+              user: {
+                select: {
+                  avatar: true,
+                  username: true,
+                },
+              },
+            },
           },
         },
-        take: 12,
+        take: 8,
         orderBy: { createdAt: "desc" },
       });
     }
 
-    const [followingPosts, explorePosts] = await Promise.all([
+    const queryPromise = Promise.all([
       prisma.post.findMany({
         where: {
-          userId: { in: followingIds },
+          userId: { in: followingIds.slice(0, 50) },
           ...(excludedUserIds.length > 0 && {
             NOT: { userId: { in: excludedUserIds } },
           }),
@@ -182,10 +205,23 @@ const getCachedFeedPosts = unstable_cache(
           },
           likes: {
             select: { userId: true },
-            take: 3,
+          },
+          comments: {
+            select: {
+              id: true,
+              desc: true,
+              createdAt: true,
+              userId: true,
+              user: {
+                select: {
+                  avatar: true,
+                  username: true,
+                },
+              },
+            },
           },
         },
-        take: 10,
+        take: 8,
         orderBy: { createdAt: "desc" },
       }),
       prisma.post.findMany({
@@ -193,10 +229,18 @@ const getCachedFeedPosts = unstable_cache(
           ...(excludedUserIds.length > 0
             ? {
                 userId: {
-                  notIn: [...followingIds, ...excludedUserIds, currentUserId],
+                  notIn: [
+                    ...followingIds.slice(0, 50),
+                    ...excludedUserIds,
+                    currentUserId,
+                  ],
                 },
               }
-            : { userId: { notIn: [...followingIds, currentUserId] } }),
+            : {
+                userId: {
+                  notIn: [...followingIds.slice(0, 50), currentUserId],
+                },
+              }),
         },
         select: {
           id: true,
@@ -228,7 +272,20 @@ const getCachedFeedPosts = unstable_cache(
           },
           likes: {
             select: { userId: true },
-            take: 3,
+          },
+          comments: {
+            select: {
+              id: true,
+              desc: true,
+              createdAt: true,
+              userId: true,
+              user: {
+                select: {
+                  avatar: true,
+                  username: true,
+                },
+              },
+            },
           },
         },
         take: 3,
@@ -236,10 +293,24 @@ const getCachedFeedPosts = unstable_cache(
       }),
     ]);
 
-    return [...followingPosts, ...explorePosts];
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Query timeout")), 5000)
+    );
+
+    try {
+      const [followingPosts, explorePosts] = (await Promise.race([
+        queryPromise,
+        timeoutPromise,
+      ])) as any;
+
+      return [...followingPosts, ...explorePosts];
+    } catch (error) {
+      console.error("Query timeout, returning empty array");
+      return [];
+    }
   },
   ["feed-posts"],
-  { revalidate: 180, tags: ["feed-posts"] }
+  { revalidate: 300, tags: ["feed-posts"] }
 );
 
 async function Feed({
@@ -254,7 +325,7 @@ async function Feed({
 
   if (!currentUserId) {
     return (
-      <div className="bg-rose-50 shadow-md rounded-lg flex flex-col gap-12 p-4">
+      <div className="bg-rose-50 shadow-md rounded-lg flex flex-col gap-8 p-4">
         <p className="text-center text-gray-500">
           Please log in to see your feed.
         </p>
@@ -262,18 +333,18 @@ async function Feed({
     );
   }
 
-  let posts: any[] = [];
-
   try {
-    // Get blocked users first (cached)
-    const excludedUserIds = await getCachedBlockedUsers(currentUserId);
+    let posts: any[] = [];
 
     if (username) {
-      // Profile posts
+      const excludedUserIds = await getCachedBlockedUsers(currentUserId);
       posts = await getCachedProfilePosts(username, excludedUserIds);
     } else {
-      // Feed posts
-      const followingIds = await getCachedFollowing(currentUserId);
+      const [followingIds, excludedUserIds] = await Promise.all([
+        getCachedFollowing(currentUserId),
+        getCachedBlockedUsers(currentUserId),
+      ]);
+
       posts = await getCachedFeedPosts(
         followingIds,
         excludedUserIds,
@@ -281,7 +352,7 @@ async function Feed({
       );
     }
 
-    // Simple scoring for feed only (not profile)
+    // Simple scoring for feed only
     if (!username && posts.length > 0) {
       const now = Date.now();
 
@@ -302,21 +373,34 @@ async function Feed({
     }
 
     return (
-      <div className="bg-rose-50 shadow-md rounded-lg flex flex-col gap-12 p-4">
+      <div className="bg-rose-50 shadow-md rounded-lg flex flex-col gap-8 p-4">
         {posts.length > 0 ? (
           posts.map((post) => <Post key={post.id} post={post} />)
         ) : (
-          <p className="text-center text-gray-500">No posts found.</p>
+          <div className="text-center py-8">
+            <p className="text-gray-500">No posts yet.</p>
+            {!username && (
+              <p className="text-gray-400 text-sm mt-2">
+                Follow some users to see their posts!
+              </p>
+            )}
+          </div>
         )}
       </div>
     );
   } catch (error) {
     console.error("Feed error:", error);
     return (
-      <div className="bg-rose-50 shadow-md rounded-lg flex flex-col gap-12 p-4">
-        <p className="text-center text-gray-500">
-          Unable to load posts. Please try again later.
-        </p>
+      <div className="bg-rose-50 shadow-md rounded-lg flex flex-col gap-8 p-4">
+        <div className="text-center py-8">
+          <p className="text-gray-500">Something went wrong.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-blue-500 text-sm mt-2 hover:underline"
+          >
+            Try again
+          </button>
+        </div>
       </div>
     );
   }

@@ -10,7 +10,7 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
 
-// Cache user data for 10 minutes with minimal fields
+// Super aggressive caching for user data
 const getCachedUser = unstable_cache(
   async (username: string) => {
     return await prisma.user.findFirst({
@@ -39,45 +39,72 @@ const getCachedUser = unstable_cache(
     });
   },
   ["user-profile"],
-  { revalidate: 600, tags: ["user-profile"] }
+  { revalidate: 1800, tags: ["user-profile"] } // 30 minutes
 );
 
-// Cache relationships for 1 minute using findFirst instead of count
+// Very fast relationship check
 const getCachedRelationships = unstable_cache(
   async (loggedInUserId: string, targetUserId: string) => {
-    const [isFollowing, isFollowingSent, isBlockedByViewer, isBlockedByUser] =
-      await Promise.all([
-        prisma.follower.findFirst({
-          where: { followerId: loggedInUserId, followingId: targetUserId },
-          select: { id: true },
-        }),
-        prisma.followRequest.findFirst({
-          where: { senderId: loggedInUserId, receiverId: targetUserId },
-          select: { id: true },
-        }),
-        prisma.block.findFirst({
-          where: { blockerId: loggedInUserId, blockedId: targetUserId },
-          select: { id: true },
-        }),
-        prisma.block.findFirst({
-          where: { blockerId: targetUserId, blockedId: loggedInUserId },
-          select: { id: true },
-        }),
-      ]);
+    // Timeout after 1 second
+    const queryPromise = Promise.all([
+      prisma.follower.findFirst({
+        where: { followerId: loggedInUserId, followingId: targetUserId },
+        select: { id: true },
+      }),
+      prisma.followRequest.findFirst({
+        where: { senderId: loggedInUserId, receiverId: targetUserId },
+        select: { id: true },
+      }),
+      prisma.block.findFirst({
+        where: { blockerId: loggedInUserId, blockedId: targetUserId },
+        select: { id: true },
+      }),
+      prisma.block.findFirst({
+        where: { blockerId: targetUserId, blockedId: loggedInUserId },
+        select: { id: true },
+      }),
+    ]);
 
-    return {
-      isFollowing: !!isFollowing,
-      isFollowingSent: !!isFollowingSent,
-      isBlockedByViewer: !!isBlockedByViewer,
-      isBlockedByUser: !!isBlockedByUser,
-    };
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Relationship query timeout")), 1000)
+    );
+
+    try {
+      const [isFollowing, isFollowingSent, isBlockedByViewer, isBlockedByUser] =
+        (await Promise.race([queryPromise, timeoutPromise])) as any;
+
+      return {
+        isFollowing: !!isFollowing,
+        isFollowingSent: !!isFollowingSent,
+        isBlockedByViewer: !!isBlockedByViewer,
+        isBlockedByUser: !!isBlockedByUser,
+      };
+    } catch (error) {
+      // Return safe defaults on timeout
+      return {
+        isFollowing: false,
+        isFollowingSent: false,
+        isBlockedByViewer: false,
+        isBlockedByUser: false,
+      };
+    }
   },
   ["user-relationships"],
-  { revalidate: 60, tags: ["user-relationships"] }
+  { revalidate: 300, tags: ["user-relationships"] } // 5 minutes
 );
 
 async function ProfilePage({ params }: { params: any }) {
-  const loggedInUser = await currentUser();
+  const startTime = Date.now();
+
+  // Get user immediately, don't await params
+  const loggedInUserPromise = currentUser();
+  const paramsPromise = params;
+
+  const [loggedInUser, resolvedParams] = await Promise.all([
+    loggedInUserPromise,
+    paramsPromise,
+  ]);
+
   const loggedInUserId = loggedInUser?.id;
   const clerkUsername = loggedInUser?.username ?? undefined;
 
@@ -85,13 +112,13 @@ async function ProfilePage({ params }: { params: any }) {
     redirect("/sign-in");
   }
 
-  const { username } = await params;
+  const { username } = resolvedParams;
 
-  // Get user from cache first
+  // Fast user lookup with fallback
   let user = await getCachedUser(username);
 
-  // Fallback to logged-in user if profile not found
-  if (!user && clerkUsername) {
+  if (!user && clerkUsername === username) {
+    // Direct query for own profile
     user = await prisma.user.findFirst({
       where: { id: loggedInUserId },
       select: {
@@ -121,22 +148,23 @@ async function ProfilePage({ params }: { params: any }) {
   if (!user) return notFound();
 
   const isOwner = user.id === loggedInUserId;
+  const loadTime = Date.now() - startTime;
 
-  // Handle username sync (non-blocking background update)
+  // Background username sync - don't block render
   if (isOwner && clerkUsername && user.username !== clerkUsername) {
     prisma.user
       .update({
         where: { id: user.id },
         data: { username: clerkUsername },
       })
-      .catch(() => {}); // Silent fail
+      .catch(() => {});
 
-    if (params.username !== clerkUsername) {
+    if (resolvedParams.username !== clerkUsername) {
       redirect(`/profile/${clerkUsername}`);
     }
   }
 
-  // Get relationships only if not owner
+  // Default relationships - fast path for owner
   let relationships = {
     isFollowing: false,
     isFollowingSent: false,
@@ -144,6 +172,7 @@ async function ProfilePage({ params }: { params: any }) {
     isBlockedByUser: false,
   };
 
+  // Only check relationships for non-owners
   if (!isOwner) {
     relationships = await getCachedRelationships(loggedInUserId, user.id);
 
@@ -157,9 +186,14 @@ async function ProfilePage({ params }: { params: any }) {
     month: "short",
   });
 
+  // Log performance in development
+  if (process.env.NODE_ENV === "development") {
+    console.log(`Profile loaded in ${loadTime}ms`);
+  }
+
   return (
     <div className="flex gap-6 pt-6">
-      {/* Left sidebar (desktop only) */}
+      {/* Left sidebar */}
       <div className="hidden xl:block w-[20%]">
         <LeftMenu type="profile" />
       </div>
@@ -167,53 +201,64 @@ async function ProfilePage({ params }: { params: any }) {
       {/* Center content */}
       <div className="w-full lg:w-[60%] xl:w-[50%]">
         <div className="flex flex-col gap-6">
-          {/* Banner + Avatar */}
+          {/* Critical path - Banner + Avatar with optimized images */}
           <div className="relative w-full h-64">
             <Image
               src={user.cover || "/noCover.png"}
-              alt="Banner"
+              alt=""
               fill
               className="object-cover rounded-lg"
-              priority={isOwner}
-              sizes="(max-width: 1024px) 100vw, 50vw"
+              priority={true}
+              quality={75}
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 60vw, 50vw"
+              placeholder="blur"
+              blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
             />
             <div className="absolute bottom-[-3rem] left-1/2 transform -translate-x-1/2 z-10">
               <Image
                 src={user.avatar || "/noAvatar.png"}
-                alt="Avatar"
+                alt=""
                 width={160}
                 height={160}
                 className="rounded-full ring-2 ring-white object-cover aspect-square"
-                sizes="160px"
-                priority={isOwner}
+                priority={true}
+                quality={75}
+                placeholder="blur"
+                blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
               />
             </div>
           </div>
 
-          {/* Name */}
+          {/* Name - immediate render */}
           <h1 className="text-center text-2xl font-medium mt-[45px]">
             {user.name && user.surname
               ? `${user.name} ${user.surname}`
               : user.username}
           </h1>
 
-          {/* Stats */}
+          {/* Stats - immediate render */}
           <div className="flex items-center justify-center gap-12 mb-4">
-            {[
-              { label: "Posts", count: user._count.posts },
-              { label: "Followers", count: user._count.followers },
-              { label: "Following", count: user._count.followings },
-            ].map((stat) => (
-              <div key={stat.label} className="flex flex-col items-center">
-                <span className="font-medium text-orange-400">
-                  {stat.count}
-                </span>
-                <span className="text-sm">{stat.label}</span>
-              </div>
-            ))}
+            <div className="flex flex-col items-center">
+              <span className="font-medium text-orange-400">
+                {user._count.posts}
+              </span>
+              <span className="text-sm">Posts</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="font-medium text-orange-400">
+                {user._count.followers}
+              </span>
+              <span className="text-sm">Followers</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="font-medium text-orange-400">
+                {user._count.followings}
+              </span>
+              <span className="text-sm">Following</span>
+            </div>
           </div>
 
-          {/* Mobile Interaction Section */}
+          {/* Mobile sections - non-critical */}
           {!isOwner && (
             <div className="px-4 lg:hidden">
               <UserInfoCardInteraction
@@ -227,7 +272,6 @@ async function ProfilePage({ params }: { params: any }) {
             </div>
           )}
 
-          {/* Mobile Bio Section */}
           <div className="px-4 lg:hidden">
             <UserInfoCard
               user={user}
@@ -240,12 +284,12 @@ async function ProfilePage({ params }: { params: any }) {
             />
           </div>
 
-          {/* Feed */}
+          {/* Feed - render immediately */}
           <Feed username={user.username ?? undefined} userId={user.id} />
         </div>
       </div>
 
-      {/* Right sidebar (desktop only) */}
+      {/* Right sidebar - non-critical */}
       <div className="hidden lg:block w-[30%]">
         <RightMenu>
           <UserInfoCard
