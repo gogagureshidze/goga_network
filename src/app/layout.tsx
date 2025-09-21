@@ -1,14 +1,11 @@
-// src/app/layout.tsx
-
 import type { Metadata } from "next";
 import { Funnel_Display } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
-import PageTransition from "@/components/PageTransition";
+import Footer from "@/components/Footer";
 import prisma from "@/lib/client";
 import Providers from "./providers";
-import Footer from "@/components/Footer";
-import GlobalLoader from "@/components/GlobalLoader";
+import ClientWrapper from "../components/GlobalLoader";
 
 // Define the Funnel Display font with the variable property
 const funnel_display = Funnel_Display({
@@ -26,7 +23,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Your data fetching is fine and can remain here
+  // Fetch users on the server
   const rawUsers = await prisma.user.findMany({
     select: {
       id: true,
@@ -61,11 +58,12 @@ export default async function RootLayout({
           <div className="w-full px-4 text-orange-50 bg-rose-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64">
             <Navbar users={users} />
           </div>
+
           <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
-            {/* The new wrapper component handles the dynamic import */}
-            <GlobalLoader />
-            <PageTransition>{children}</PageTransition>
+            {/* ClientWrapper handles all client-only components */}
+            <ClientWrapper>{children}</ClientWrapper>
           </div>
+
           <Footer />
         </Providers>
       </body>
