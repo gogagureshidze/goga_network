@@ -41,7 +41,7 @@ model User {
 
 model Post {
   id        Int       @id @default(autoincrement())
-  desc      String    @db.VarChar(1000)
+  desc      String    @db.VarChar(1500)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   userId    String
