@@ -63,7 +63,7 @@ const Owner = params?.username === user?.username;
                 name="desc"
                 value={desc}
                 onChange={(e) => {
-                  const maxLength = 1500; // match your Prisma schema
+                  const maxLength = 2000; // match your Prisma schema
                   if (e.target.value.length <= maxLength) {
                     setDesc(e.target.value);
                   }
