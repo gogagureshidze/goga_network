@@ -28,6 +28,7 @@ const getCachedUser = unstable_cache(
         work: true,
         website: true,
         createdAt: true,
+        bioPattern: true,
         _count: {
           select: {
             posts: true,
@@ -134,6 +135,7 @@ async function ProfilePage({ params }: { params: any }) {
         work: true,
         website: true,
         createdAt: true,
+        bioPattern: true,
         _count: {
           select: {
             posts: true,

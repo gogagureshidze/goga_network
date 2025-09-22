@@ -6,6 +6,8 @@ const config: Config = {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  // Add this `safelist` array to ensure your dynamic color classes are included
+  safelist: ["text-purple-600", "text-green-400", "text-white"],
   theme: {
     extend: {
       colors: {

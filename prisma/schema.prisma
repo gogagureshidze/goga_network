@@ -20,6 +20,7 @@ model User {
   school                 String?
   work                   String?
   website                String?
+  bioPattern             String?
   createdAt              DateTime        @default(now())
   blockedBy              Block[]         @relation("BlocksReceived")
   blocks                 Block[]         @relation("BlocksSent")

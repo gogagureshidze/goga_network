@@ -10,17 +10,8 @@ interface MediaGridProps {
 
 // Simple spinner component
 const Spinner = () => (
-  <div className="relative w-[120px] h-[160px] mx-auto my-8 grid grid-cols-3 gap-1 perspective-[800px]">
-    {["0", "1", "0", "1", "1", "0", "0", "1"].map((digit, idx) => (
-      <div
-        key={idx}
-        className={`text-orange-300 font-mono text-lg text-center drop-shadow-[0_0_6px_theme(colors.orange.400)] animate-matrix-fall animate-matrix-flicker opacity-0`}
-        style={{ animationDelay: `${0.2 * idx}s` }}
-      >
-        {digit}
-      </div>
-    ))}
-    <div className="absolute inset-0 bg-radial-pulse pointer-events-none" />
+  <div className="absolute inset-0 flex items-center justify-center bg-gray-100/50">
+    <div className="w-6 h-6 border-4 border-orange-400 border-t-transparent rounded-full animate-spin" />
   </div>
 );
 

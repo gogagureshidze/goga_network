@@ -1,29 +1,34 @@
 "use server";
-
 import prisma from "@/lib/client";
 import { z } from "zod";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidateTag } from "next/cache";
 
-async function UpdateProfile(formData: FormData, cover?: string) {
+async function UpdateProfile(
+  formData: FormData,
+  cover?: string,
+  bioPattern?: string
+) {
   const user = await currentUser();
   if (!user) throw new Error("Error getting current user");
   const currentUserId = user.id;
 
-  // Convert formData to object
   const fields = Object.fromEntries(formData.entries());
 
-  // Filter out empty fields
   const filteredFields = Object.fromEntries(
     Object.entries(fields).filter(([_, value]) => value !== "")
   );
 
-  // Add cover if provided
+  console.log(cover);
+
   if (cover) {
     filteredFields.cover = cover;
   }
+  // << NEW CODE >>
+  if (bioPattern) {
+    filteredFields.bioPattern = bioPattern;
+  }
 
-  // Zod schema
   const Profile = z.object({
     name: z.string().optional(),
     surname: z.string().optional(),
@@ -33,13 +38,15 @@ async function UpdateProfile(formData: FormData, cover?: string) {
     work: z.string().optional(),
     website: z.string().optional(),
     cover: z.string().optional(),
+    // << NEW CODE >>
+    bioPattern: z.string().optional(),
   });
 
   const validatedFields = Profile.safeParse(filteredFields);
-
+  console.log(validatedFields);
   if (!validatedFields.success) {
     console.log(validatedFields.error.flatten().fieldErrors);
-    return; // stop if validation fails
+    return;
   }
 
   try {
@@ -47,8 +54,7 @@ async function UpdateProfile(formData: FormData, cover?: string) {
       where: { id: currentUserId },
       data: validatedFields.data,
     });
-
-    // 🔥 Invalidate the cached user so profile shows fresh data instantly
+    // Revalidating the user tag is crucial for a smooth UI update.
     revalidateTag("user-profile");
   } catch (error) {
     console.log(error);

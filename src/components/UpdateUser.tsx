@@ -5,10 +5,15 @@ import Image from "next/image";
 import { useState, useEffect } from "react";
 import { CldUploadWidget } from "next-cloudinary";
 import UpdateButton from "./UpdateButton";
+import PatternSelector from "./PatternSelector";
+import allPatterns from "../actions/allPaterns"; // Changed from '../actions/allPaterns'
 
 function UpdateUser({ user }: { user: User }) {
   const [open, setOpen] = useState(false);
   const [cover, setCover] = useState<any>();
+  const [selectedPattern, setSelectedPattern] = useState(
+    user.bioPattern || allPatterns[0].id
+  );
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error";
@@ -26,6 +31,9 @@ function UpdateUser({ user }: { user: User }) {
   }, [open]);
 
   const handleClose = () => {
+    // Reset temporary state when the modal is closed
+    setCover(undefined); // << NEW LINE >>
+    setSelectedPattern(user.bioPattern || allPatterns[0].id); // << NEW LINE >>
     setOpen(false);
   };
 
@@ -45,20 +53,17 @@ function UpdateUser({ user }: { user: User }) {
 
   const handleSubmit = async (formData: FormData) => {
     try {
-      await UpdateProfile(formData, cover?.secure_url);
+      await UpdateProfile(formData, cover?.secure_url, selectedPattern);
 
-      // ✅ Show success toast
       setToast({
         message: "Profile updated!",
         type: "success",
       });
 
-      // ✅ Close modal after short delay (so they see the toast first)
       setTimeout(() => {
         setOpen(false);
-      }, 500); // half a second feels smooth
+      }, 500);
 
-      // ✅ Hide toast after 3s
       setTimeout(() => {
         setToast(null);
       }, 3000);
@@ -96,7 +101,6 @@ function UpdateUser({ user }: { user: User }) {
               Use the navbar profile icon to update your avatar or username.
             </div>
 
-            {/* Cover Picture Preview */}
             <div className="relative w-full h-[150px] overflow-hidden rounded-md">
               <Image
                 src={cover?.secure_url || user.cover || "/noCover.png"}
@@ -106,7 +110,6 @@ function UpdateUser({ user }: { user: User }) {
               />
             </div>
 
-            {/* Cover Picture Upload Button */}
             <CldUploadWidget
               uploadPreset="social"
               options={{
@@ -135,7 +138,11 @@ function UpdateUser({ user }: { user: User }) {
               }}
             </CldUploadWidget>
 
-            {/* Input fields grid */}
+            <PatternSelector
+              onSelect={setSelectedPattern}
+              selectedPatternId={selectedPattern}
+            />
+
             <div className="flex flex-wrap gap-4">
               <div className="flex flex-col flex-1 min-w-[45%]">
                 <label className="text-xs text-gray-500">First Name</label>
@@ -208,7 +215,6 @@ function UpdateUser({ user }: { user: User }) {
               </div>
             </div>
 
-            {/* Buttons */}
             <div className="flex justify-end gap-4">
               <button
                 type="button"
@@ -220,7 +226,6 @@ function UpdateUser({ user }: { user: User }) {
               <UpdateButton></UpdateButton>
             </div>
 
-            {/* Close button */}
             <div
               className="cursor-pointer absolute text-xl top-3 right-3"
               onClick={handleClose}
