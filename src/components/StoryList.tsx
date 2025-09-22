@@ -236,6 +236,7 @@ export default function StoryList({
                   work: "",
                   school: "",
                   website: "",
+                  bioPattern: '',
                   createdAt: new Date(),
                 },
                 stories: action.stories,
@@ -372,6 +373,7 @@ useRateLimit
         work: "",
         school: "",
         website: "",
+        bioPattern: "",
         createdAt: new Date(),
       },
       likes: [],
@@ -479,6 +481,7 @@ const handleDeleteComment = useCallback(
           work: "",
           school: "",
           website: "",
+          bioPattern: ''
         },
         likes: [],
       };
