@@ -70,7 +70,7 @@ const Owner = params?.username === user?.username;
                 }}
                 disabled={isPending}
               />
-              <p className="text-sm text-gray-500">{desc.length}/1500</p>
+              <p className="text-xs text-gray-500">{desc.length}/2000</p>
 
               {/* <SmilePlus className="w-6 h-6 self-end text-orange-300 cursor-pointer" /> */}
               <button
