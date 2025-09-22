@@ -34,7 +34,7 @@ function UpdateUser({ user }: { user: User }) {
       setCover(result.info);
       setToast({
         message:
-          "Image uploaded successfully! Dont Forget To Press Update Button!",
+          "Image uploaded successfully! Don't Forget To Press Update Button!",
         type: "success",
       });
     } else {
@@ -43,34 +43,34 @@ function UpdateUser({ user }: { user: User }) {
     setTimeout(() => setToast(null), 6000);
   };
 
-const handleSubmit = async (formData: FormData) => {
-  try {
-    await UpdateProfile(formData, cover?.secure_url);
+  const handleSubmit = async (formData: FormData) => {
+    try {
+      await UpdateProfile(formData, cover?.secure_url);
 
-    // ✅ Show success toast
-    setToast({
-      message: "Profile updated!",
-      type: "success",
-    });
+      // ✅ Show success toast
+      setToast({
+        message: "Profile updated!",
+        type: "success",
+      });
 
-    // ✅ Close modal after short delay (so they see the toast first)
-    setTimeout(() => {
-      setOpen(false);
-    }, 500); // half a second feels smooth
+      // ✅ Close modal after short delay (so they see the toast first)
+      setTimeout(() => {
+        setOpen(false);
+      }, 500); // half a second feels smooth
 
-    // ✅ Hide toast after 3s
-    setTimeout(() => {
-      setToast(null);
-    }, 3000);
-  } catch (error: any) {
-    console.error("UpdateProfile error:", error);
-    setToast({
-      message: error?.message || "Update failed! Please try again.",
-      type: "error",
-    });
-    setTimeout(() => setToast(null), 5000);
-  }
-};
+      // ✅ Hide toast after 3s
+      setTimeout(() => {
+        setToast(null);
+      }, 3000);
+    } catch (error: any) {
+      console.error("UpdateProfile error:", error);
+      setToast({
+        message: error?.message || "Update failed! Please try again.",
+        type: "error",
+      });
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
 
   return (
     <div>
@@ -96,33 +96,36 @@ const handleSubmit = async (formData: FormData) => {
               Use the navbar profile icon to update your avatar or username.
             </div>
 
-            {/* Cover Picture */}
+            {/* Cover Picture Preview */}
+            <div className="relative w-full h-[150px] overflow-hidden rounded-md">
+              <Image
+                src={cover?.secure_url || user.cover || "/noCover.png"}
+                alt="Cover Preview"
+                fill
+                className="object-cover"
+              />
+            </div>
+
+            {/* Cover Picture Upload Button */}
             <CldUploadWidget
               uploadPreset="social"
               options={{
                 multiple: false,
-                resourceType: "image", // only allow images
-                clientAllowedFormats: ["jpg", "jpeg", "png", "gif", "webp"], // optional extra restriction
+                resourceType: "image",
+                clientAllowedFormats: ["jpg", "jpeg", "png", "gif", "webp"],
               }}
-              onSuccess={(result) => {
-                setCover(result.info);
-                handleUploadSuccess(result);
-              }}
+              onSuccess={handleUploadSuccess}
             >
               {({ open }) => {
                 return (
-                  <div className="flex flex-col gap-2" onClick={() => open()}>
+                  <div className="flex flex-col gap-2">
                     <label className="text-xs text-gray-500">
                       Cover Picture
                     </label>
-                    <div className="flex items-center gap-3 cursor-pointer">
-                      <Image
-                        className="w-16 h-10 rounded-md object-cover"
-                        src={user.cover || "/noCover.png"}
-                        alt=""
-                        width={64}
-                        height={40}
-                      />
+                    <div
+                      className="flex items-center gap-3 cursor-pointer"
+                      onClick={() => open()}
+                    >
                       <span className="text-sm underline text-orange-400">
                         Change
                       </span>

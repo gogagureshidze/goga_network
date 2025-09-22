@@ -10,8 +10,17 @@ interface MediaGridProps {
 
 // Simple spinner component
 const Spinner = () => (
-  <div className="absolute inset-0 flex items-center justify-center bg-gray-100/50">
-    <div className="w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+  <div className="relative w-[120px] h-[160px] mx-auto my-8 grid grid-cols-3 gap-1 perspective-[800px]">
+    {["0", "1", "0", "1", "1", "0", "0", "1"].map((digit, idx) => (
+      <div
+        key={idx}
+        className={`text-orange-300 font-mono text-lg text-center drop-shadow-[0_0_6px_theme(colors.orange.400)] animate-matrix-fall animate-matrix-flicker opacity-0`}
+        style={{ animationDelay: `${0.2 * idx}s` }}
+      >
+        {digit}
+      </div>
+    ))}
+    <div className="absolute inset-0 bg-radial-pulse pointer-events-none" />
   </div>
 );
 
@@ -24,7 +33,7 @@ export default function MediaGrid({ media }: MediaGridProps) {
     media.map(() => true)
   );
 
-  // Slider loading states (optional: initialize all true)
+  // Slider loading states
   const [sliderLoadingStates, setSliderLoadingStates] = useState<boolean[]>(
     media.map(() => true)
   );
@@ -104,7 +113,7 @@ export default function MediaGrid({ media }: MediaGridProps) {
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
           {/* Close */}
           <button
-            className="absolute top-4 right-4 text-white p-2 rounded-full bg-black/50"
+            className="absolute top-4 right-4 text-white p-2 rounded-full bg-black/50 z-50 hover:bg-black/70 transition"
             onClick={closeSlider}
           >
             <X size={24} />
@@ -114,13 +123,13 @@ export default function MediaGrid({ media }: MediaGridProps) {
           {media.length > 1 && (
             <>
               <button
-                className="absolute left-4 text-white p-2 rounded-full bg-black/50"
+                className="absolute left-2 sm:left-4 text-white p-2 rounded-full bg-black/40 hover:bg-black/60 z-50 transition"
                 onClick={prevSlide}
               >
                 <ChevronLeft size={32} />
               </button>
               <button
-                className="absolute right-4 text-white p-2 rounded-full bg-black/50"
+                className="absolute right-2 sm:right-4 text-white p-2 rounded-full bg-black/40 hover:bg-black/60 z-50 transition"
                 onClick={nextSlide}
               >
                 <ChevronRight size={32} />
