@@ -87,7 +87,7 @@ function UpdateUser({ user }: { user: User }) {
       </span>
 
       {open && (
-        <div className="fixed w-screen h-screen top-0 left-0 bg-black/50 z-50 flex items-center justify-center">
+        <div className="fixed w-screen h-screen top-0 left-0 bg-black/50 z-55 flex items-center justify-center">
           <form
             className="p-8 relative bg-white rounded-lg shadow-md flex flex-col gap-6 w-full md:w-2/3 xl:w-1/2 max-h-[90vh] overflow-y-auto"
             onSubmit={async (e) => {
@@ -97,17 +97,20 @@ function UpdateUser({ user }: { user: User }) {
             }}
           >
             <h1 className="text-lg font-bold">Update Profile</h1>
-            <div className="text-xs text-gray-500">
-              Use the navbar profile icon to update your avatar or username.
-            </div>
 
-            <div className="relative w-full h-[150px] overflow-hidden rounded-md">
+            <div className="relative w-full h-[120px] sm:h-[150px] min-h-[100px] overflow-hidden rounded-md">
               <Image
                 src={cover?.secure_url || user.cover || "/noCover.png"}
                 alt="Cover Preview"
                 fill
                 className="object-cover"
+                sizes="100vw"
+                priority
               />
+            </div>
+
+            <div className="text-xs text-gray-500 mt-2">
+              Use the navbar profile icon to update your avatar or username.
             </div>
 
             <CldUploadWidget
@@ -149,7 +152,7 @@ function UpdateUser({ user }: { user: User }) {
                 <input
                   type="text"
                   placeholder={user.name || "John"}
-                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm"
+                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm text-black"
                   name="name"
                 />
               </div>
@@ -159,7 +162,7 @@ function UpdateUser({ user }: { user: User }) {
                 <input
                   type="text"
                   placeholder={user.surname || "Doe"}
-                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm"
+                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm text-black"
                   name="surname"
                 />
               </div>
@@ -170,7 +173,7 @@ function UpdateUser({ user }: { user: User }) {
                   type="text"
                   name="description"
                   placeholder={user.description || "I miss my girlfriend..."}
-                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm"
+                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm text-black"
                 />
               </div>
 
@@ -180,7 +183,7 @@ function UpdateUser({ user }: { user: User }) {
                   name="city"
                   type="text"
                   placeholder={user.city || "London"}
-                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm"
+                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm text-black"
                 />
               </div>
 
@@ -190,7 +193,7 @@ function UpdateUser({ user }: { user: User }) {
                   name="school"
                   type="text"
                   placeholder={user.school || "MIT"}
-                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm"
+                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm text-black"
                 />
               </div>
 
@@ -200,7 +203,7 @@ function UpdateUser({ user }: { user: User }) {
                   type="text"
                   name="work"
                   placeholder={user.work || "Goga_Network Inc."}
-                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm"
+                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm text-black"
                 />
               </div>
 
@@ -210,7 +213,7 @@ function UpdateUser({ user }: { user: User }) {
                   type="text"
                   name="website"
                   placeholder={user.website || "goga_net.com"}
-                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm"
+                  className="ring-1 ring-gray-300 p-[13px] rounded-md text-sm text-black"
                 />
               </div>
             </div>

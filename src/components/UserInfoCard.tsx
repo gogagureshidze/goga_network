@@ -68,7 +68,7 @@ async function UserInfoCard({
       )}
 
       {/* This overlay ensures text is visible on top of the pattern */}
-      <div className="relative z-10 flex flex-col gap-4">
+      <div className="relative z-10 flex flex-col gap-4 cursor-pointer">
         <div
           className={`flex items-center justify-between font-medium ${textColorClass}`}
         >

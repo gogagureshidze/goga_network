@@ -6,6 +6,7 @@ import Cyber from "@/patterns/Cyber";
 import ShootingStars from "@/patterns/ShootingStars";
 import Seeker from "@/patterns/Seeker";
 import Rainbow from "@/patterns/Rainbow";
+import Orbies from "@/patterns/Orbies";
 
 // Define a type for your pattern objects.
 export interface CustomPattern {
@@ -66,6 +67,12 @@ const allPatterns: CustomPattern[] = [
     name: "Rainbow default",
     component: Rainbow,
     textColor: "text-black",
+  },
+  {
+    id: "orbies",
+    name: "Space Orbies",
+    component: Orbies,
+    textColor: "text-white",
   },
 ];
 
