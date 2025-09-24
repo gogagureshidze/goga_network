@@ -29,7 +29,7 @@ const allPatterns: CustomPattern[] = [
     id: "threads",
     name: "Threads",
     component: ThreadsPattern,
-    textColor: "text-black",
+    textColor: "text-white",
   },
   {
     id: "bluish",

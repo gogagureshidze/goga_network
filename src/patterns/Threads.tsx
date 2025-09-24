@@ -2,14 +2,7 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
-import { Renderer, Program, Mesh, Triangle, Color } from "ogl";
-
-interface ThreadsPatternProps {
-  color?: [number, number, number];
-  amplitude?: number;
-  distance?: number;
-  enableMouseInteraction?: boolean;
-}
+import { Renderer, Program, Mesh, Triangle } from "ogl";
 
 const vertexShader = `
 attribute vec2 position;
@@ -22,13 +15,10 @@ void main() {
 `;
 
 const fragmentShader = `
-precision highp float;
+precision mediump float;
 
 uniform float iTime;
 uniform vec3 iResolution;
-uniform vec3 uColor;
-uniform float uAmplitude;
-uniform float uDistance;
 uniform vec2 uMouse;
 
 #define PI 3.1415926538
@@ -58,23 +48,23 @@ float Perlin2D(vec2 P) {
 }
 
 float pixel(float count, vec2 resolution) {
-    return (1.0 / max(resolution.x, resolution.y)) * count;
+    return (1.0 / max(resolution.x, resolution.y)) * count * 2.0;
 }
 
-float lineFn(vec2 st, float width, float perc, float offset, vec2 mouse, float time, float amplitude, float distance) {
+float lineFn(vec2 st, float width, float perc, float offset, vec2 mouse, float time) {
     float split_offset = (perc * 0.4);
     float split_point = 0.1 + split_offset;
-    float amplitude_normal = smoothstep(split_point, 0.7, st.x);
-    float amplitude_strength = 0.5;
-    float finalAmplitude = amplitude_normal * amplitude_strength * amplitude * (1.0 + (mouse.y - 0.5) * 0.2);
-    float time_scaled = time / 10.0 + (mouse.x - 0.5) * 1.0;
+    float amplitude_strength = 0.8;
+    float finalAmplitude = amplitude_strength * (1.0 + (mouse.y - 0.5) * 0.4);
+    float time_scaled = time / 5.0 + (mouse.x - 0.5) * 1.0;
     float blur = smoothstep(split_point, split_point + 0.05, st.x) * perc;
     float xnoise = mix(
         Perlin2D(vec2(time_scaled, st.x + perc) * 2.5),
         Perlin2D(vec2(time_scaled, st.x + time_scaled) * 3.5) / 1.5,
         st.x * 0.3
     );
-    float y = 0.5 + (perc - 0.5) * distance + xnoise / 2.0 * finalAmplitude;
+    // Center vertically with fixed offset
+    float y = 0.65 + (perc - 0.5) * 0.1 + xnoise / 2.0 * finalAmplitude;
     float line_start = smoothstep(
         y + (width / 2.0) + (u_line_blur * pixel(1.0, iResolution.xy) * blur),
         y,
@@ -103,13 +93,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             p,
             (PI * 1.0) * p,
             uMouse,
-            iTime,
-            uAmplitude,
-            uDistance
+            iTime
         ));
     }
     float colorVal = 1.0 - line_strength;
-    fragColor = vec4(uColor * colorVal, colorVal);
+    fragColor = vec4(vec3(colorVal), 1.0);
 }
 
 void main() {
@@ -117,12 +105,7 @@ void main() {
 }
 `;
 
-const ThreadsPattern: React.FC<ThreadsPatternProps> = ({
-  color = [1, 1, 1],
-  amplitude = 1,
-  distance = 0,
-  enableMouseInteraction = true,
-}) => {
+const ThreadsPattern: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const animationFrameId = useRef<number>();
 
@@ -130,7 +113,7 @@ const ThreadsPattern: React.FC<ThreadsPatternProps> = ({
     if (!containerRef.current) return;
     const container = containerRef.current;
 
-    const renderer = new Renderer({ alpha: true });
+    const renderer = new Renderer({ alpha: false });
     const gl = renderer.gl;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -143,28 +126,30 @@ const ThreadsPattern: React.FC<ThreadsPatternProps> = ({
       uniforms: {
         iTime: { value: 0 },
         iResolution: {
-          value: new Color(
+          value: new Float32Array([
             gl.canvas.width,
             gl.canvas.height,
-            gl.canvas.width / gl.canvas.height
-          ),
+            gl.canvas.width / gl.canvas.height,
+          ]),
         },
-        uColor: { value: new Color(...color) },
-        uAmplitude: { value: amplitude },
-        uDistance: { value: distance },
         uMouse: { value: new Float32Array([0.5, 0.5]) },
       },
     });
-
     const mesh = new Mesh(gl, { geometry, program });
 
     const resize = () => {
       const { clientWidth, clientHeight } = container;
-      renderer.setSize(clientWidth, clientHeight);
-      program.uniforms.iResolution.value.r = clientWidth;
-      program.uniforms.iResolution.value.g = clientHeight;
-      program.uniforms.iResolution.value.b = clientWidth / clientHeight;
+      const dpr = window.devicePixelRatio || 1;
+      renderer.setSize(clientWidth * dpr, clientHeight * dpr);
+      gl.canvas.style.width = clientWidth + "px";
+      gl.canvas.style.height = clientHeight + "px";
+
+      program.uniforms.iResolution.value[0] = clientWidth * dpr;
+      program.uniforms.iResolution.value[1] = clientHeight * dpr;
+      program.uniforms.iResolution.value[2] =
+        (clientWidth / clientHeight) * dpr;
     };
+
     window.addEventListener("resize", resize);
     resize();
 
@@ -179,19 +164,33 @@ const ThreadsPattern: React.FC<ThreadsPatternProps> = ({
       ];
     };
 
-    const handleMouseLeave = () => {
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const touch = e.touches[0];
+      targetMouse = [
+        (touch.clientX - rect.left) / rect.width,
+        1.0 - (touch.clientY - rect.top) / rect.height,
+      ];
+    };
+
+    const handleLeave = () => {
       targetMouse = [0.5, 0.5];
     };
 
-    if (enableMouseInteraction) {
-      container.addEventListener("mousemove", handleMouseMove);
-      container.addEventListener("mouseleave", handleMouseLeave);
-    }
+    container.addEventListener("mousemove", handleMouseMove);
+    container.addEventListener("mouseleave", handleLeave);
+    container.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    container.addEventListener("touchend", handleLeave);
+    container.addEventListener("touchcancel", handleLeave);
 
     const update = (t: number) => {
       const smoothing = 0.05;
       currentMouse[0] += smoothing * (targetMouse[0] - currentMouse[0]);
       currentMouse[1] += smoothing * (targetMouse[1] - currentMouse[1]);
+
       program.uniforms.uMouse.value[0] = currentMouse[0];
       program.uniforms.uMouse.value[1] = currentMouse[1];
 
@@ -200,22 +199,24 @@ const ThreadsPattern: React.FC<ThreadsPatternProps> = ({
       renderer.render({ scene: mesh });
       animationFrameId.current = requestAnimationFrame(update);
     };
+
     animationFrameId.current = requestAnimationFrame(update);
 
     return () => {
       if (animationFrameId.current)
         cancelAnimationFrame(animationFrameId.current);
       window.removeEventListener("resize", resize);
-      if (enableMouseInteraction) {
-        container.removeEventListener("mousemove", handleMouseMove);
-        container.removeEventListener("mouseleave", handleMouseLeave);
-      }
+      container.removeEventListener("mousemove", handleMouseMove);
+      container.removeEventListener("mouseleave", handleLeave);
+      container.removeEventListener("touchmove", handleTouchMove);
+      container.removeEventListener("touchend", handleLeave);
+      container.removeEventListener("touchcancel", handleLeave);
       if (container.contains(gl.canvas)) container.removeChild(gl.canvas);
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-  }, [color, amplitude, distance, enableMouseInteraction]);
+  }, []);
 
-  return <div ref={containerRef} className="w-full h-full relative" />;
+  return <div ref={containerRef} className="w-full min-h-screen relative" />;
 };
 
 export default ThreadsPattern;
