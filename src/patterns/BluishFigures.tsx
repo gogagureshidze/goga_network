@@ -1,4 +1,5 @@
 "use client";
+
 import styled from "styled-components";
 
 const BluishFigures = () => {
@@ -11,12 +12,14 @@ const BluishFigures = () => {
 
 const StyledWrapper = styled.div`
   width: 100%;
-  height: 100vh; /* ✅ force full viewport height */
+  height: 100vh; /* full viewport height */
 
   .container {
     width: 100%;
     height: 100%;
     background-color: #102030;
+
+    /* seamless grid with radial + linear gradients */
     background-image: radial-gradient(
         circle at 15% 15%,
         rgba(255, 255, 255, 0.08) 2px,
@@ -31,10 +34,11 @@ const StyledWrapper = styled.div`
       linear-gradient(225deg, #2a5298 25%, transparent 25%),
       linear-gradient(315deg, #2a5298 25%, transparent 25%),
       linear-gradient(45deg, #2a5298 25%, transparent 25%);
-    background-size: 50px 50px, 50px 50px, 100px 100px, 100px 100px, 100px 100px,
-      100px 100px;
+    background-size: 50px 50px, 50px 50px, /* radial dots */ 100px 100px,
+      100px 100px, 100px 100px, 100px 100px; /* diagonal lines */
     background-position: 0 0, 0 0, 0 0, 0 0, 50px 50px, 50px 50px;
     animation: patternShift 60s infinite linear;
+
     position: relative;
     overflow: hidden;
   }
@@ -42,10 +46,7 @@ const StyledWrapper = styled.div`
   .container::before {
     content: "";
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     background: repeating-conic-gradient(
       from 0deg at 50% 50%,
       rgba(62, 155, 255, 0.1) 0deg 30deg,
@@ -55,7 +56,7 @@ const StyledWrapper = styled.div`
       rgba(41, 134, 234, 0.1) 180deg 270deg,
       rgba(58, 151, 251, 0.05) 270deg 360deg
     );
-    mask: radial-gradient(circle at center, transparent 30%, black 70%);
+    mask-image: radial-gradient(circle at center, transparent 30%, black 70%);
     opacity: 0.6;
     mix-blend-mode: overlay;
     pointer-events: none;
@@ -64,10 +65,7 @@ const StyledWrapper = styled.div`
   .container::after {
     content: "";
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     background-image: linear-gradient(
         45deg,
         rgba(255, 255, 255, 0.03) 25%,
@@ -91,8 +89,8 @@ const StyledWrapper = styled.div`
       background-position: 0 0, 0 0, 0 0, 0 0, 50px 50px, 50px 50px;
     }
     100% {
-      background-position: 100px 100px, -100px -100px, 100px 0px, 0px 100px,
-        150px 150px, -50px 0px;
+      background-position: 200px 200px, -200px -200px, 200px 0, 0 200px,
+        150px 150px, -50px 0;
     }
   }
 `;

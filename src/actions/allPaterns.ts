@@ -1,12 +1,12 @@
-import RadialGradient from "@/patterns/RadialGradient";
-import MatrixPattern from "../patterns/MatrixPattern";
-import BluishFigures from "../patterns/BluishFigures"; // Corrected import path
+import BluishFigures from "../patterns/BluishFigures";
 import Shenenigan from "@/patterns/Shenenigan";
 import Cyber from "@/patterns/Cyber";
 import ShootingStars from "@/patterns/ShootingStars";
 import Seeker from "@/patterns/Seeker";
-import Rainbow from "@/patterns/Rainbow";
-import Orbies from "@/patterns/Orbies";
+import FaultyTerminal from "../patterns/FaultyTerminalPattern";
+import AuroraPattern from "../patterns/Aurora";
+import ThreadsPattern from "@/patterns/Threads";
+import Matrix from "@/patterns/Matrix";
 
 // Define a type for your pattern objects.
 export interface CustomPattern {
@@ -19,23 +19,25 @@ export interface CustomPattern {
 // This array serves as your central registry of all available patterns.
 const allPatterns: CustomPattern[] = [
   {
-    id: "matrix",
-    name: "Matrix Rain",
-    component: MatrixPattern,
+    id: "aurora",
+    name: "Aurora",
+    component: AuroraPattern,
     textColor: "text-white",
   },
+
   {
-    id: "radial",
-    name: "Radial Gradient",
-    component: RadialGradient,
-    textColor: "text-white",
+    id: "threads",
+    name: "Threads",
+    component: ThreadsPattern,
+    textColor: "text-black",
   },
   {
     id: "bluish",
-    name: "Bluish Figures",
+    name: "BluishFigures",
     component: BluishFigures,
     textColor: "text-white",
   },
+
   {
     id: "shenenigan",
     name: "Gradient Shenenigan",
@@ -48,14 +50,18 @@ const allPatterns: CustomPattern[] = [
     component: Cyber,
     textColor: "text-white",
   },
-
   {
     id: "stars",
     name: "Shooting Stars",
     component: ShootingStars,
     textColor: "text-white",
   },
-
+  {
+    id: "matrix",
+    name: "Sakura Matrix",
+    component: Matrix,
+    textColor: "text-white",
+  },
   {
     id: "seeker",
     name: "Seeker",
@@ -63,15 +69,9 @@ const allPatterns: CustomPattern[] = [
     textColor: "text-white",
   },
   {
-    id: "rainbow",
-    name: "Rainbow default",
-    component: Rainbow,
-    textColor: "text-black",
-  },
-  {
-    id: "orbies",
-    name: "Space Orbies",
-    component: Orbies,
+    id: "faulty",
+    name: "Faulty Terminal",
+    component: FaultyTerminal,
     textColor: "text-white",
   },
 ];

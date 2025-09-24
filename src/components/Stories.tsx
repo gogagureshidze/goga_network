@@ -40,7 +40,6 @@ export default async function Stories() {
         },
       },
       comments: {
-        // ✅ use the correct field name
         include: {
           user: true,
           likes: true,

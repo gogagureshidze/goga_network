@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import React from "react";
 import styled from "styled-components";
@@ -257,18 +257,18 @@ const StyledWrapper = styled.div`
     left: 0;
     background: linear-gradient(
       to bottom,
-      #ffffff 0%,
-      #ffffff 5%,
-      #00ff41 10%,
-      #00ff41 20%,
-      #00dd33 30%,
-      #00bb22 40%,
-      #009911 50%,
-      #007700 60%,
-      #005500 70%,
-      #003300 80%,
-      rgba(0, 255, 65, 0.5) 90%,
-      transparent 100%
+      #fff0f5 0%,
+      /* very light pink */ #ffe4ec 5%,
+      /* soft pink */ #ffcad4 10%,
+      /* muted rose */ #ffb6c1 20%,
+      /* light pink */ #ff99aa 30%,
+      /* warm pastel pink */ #ff77a9 40%,
+      /* slightly deeper pink */ #ff6699 50%,
+      /* rose-pink */ #ff4d88 60%,
+      /* soft cherry blossom */ #ff3366 70%,
+      /* deeper pink accent */ #ff1a55 80%,
+      /* bold pink highlight */ rgba(255, 182, 193, 0.5) 90%,
+      /* semi-transparent pink */ transparent 100%
     );
     -webkit-background-clip: text;
     background-clip: text;

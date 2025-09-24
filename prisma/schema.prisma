@@ -34,7 +34,7 @@ model User {
   stories                Story[]
   storyComments          StoryComment[]
   storyViews             StoryView[]
-   conversations1         Conversation[] @relation("User1Conversations")
+  conversations1         Conversation[] @relation("User1Conversations")
   conversations2         Conversation[] @relation("User2Conversations")
   sentMessages           Message[]      @relation("SentMessages")
   receivedMessages       Message[]      @relation("ReceivedMessages")
