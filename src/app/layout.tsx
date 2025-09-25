@@ -3,6 +3,7 @@
 import type { Metadata } from "next";
 import { Funnel_Display } from "next/font/google";
 import "./globals.css";
+import ClickSpark from "@/components/ClickSpark";
 import Navbar from "@/components/Navbar";
 import PageTransition from "@/components/PageTransition";
 import prisma from "@/lib/client";
@@ -58,15 +59,22 @@ export default async function RootLayout({
       </head>
       <body className="font-sans">
         <Providers>
-          <div className="w-full px-4 text-orange-50 bg-rose-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64">
-            <Navbar users={users} />
-          </div>
-          <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
-            {/* The new wrapper component handles the dynamic import */}
-            <GlobalLoader />
-            <PageTransition>{children}</PageTransition>
-          </div>
-          <Footer />
+          <ClickSpark
+            sparkColor="#e65800ff"
+            sparkSize={10}
+            sparkRadius={15}
+            sparkCount={8}
+            duration={500}
+          >
+            <div className="w-full px-4 text-orange-50 bg-rose-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64">
+              <Navbar users={users} />
+            </div>
+            <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
+              <GlobalLoader />
+              <PageTransition>{children}</PageTransition>
+            </div>
+            <Footer />
+          </ClickSpark>
         </Providers>
       </body>
     </html>

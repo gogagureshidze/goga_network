@@ -79,7 +79,7 @@ function AddPost() {
                 className="bg-orange-300 hover:bg-rose-300 text-white font-semibold text-sm px-2 py-2 rounded-lg shadow-sm transition-all duration-200"
                 disabled={isPending}
               >
-                {isPending ? "Posting..." : "Post"}
+                {isPending ? ". . ." : "Post"}
               </button>
             </form>
           </div>

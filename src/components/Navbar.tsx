@@ -1,5 +1,5 @@
 "use client";
-
+import Shuffle from "../components/ShuffleText";
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Image from "next/image";
@@ -135,12 +135,26 @@ function Navbar({ users }: { users: User[] }) {
   return (
     <div className="h-24 flex justify-between items-center px-4 md:px-12 bg-rose-800 text-rose-100">
       {/* Logo */}
-      <div className="block md:hidden lg:block w-[30%]">
+      <div className="block md:hidden lg:block w-[30%] mt-2">
         <Link
           href="/"
-          className="font-bold uppercase text-xl text-orange-300 tracking-wide"
+          className="font-bold uppercase  text-orange-300 tracking-wide"
         >
-          Goga.Network
+          <Shuffle
+            text="Goga_Network"
+            className="text-lg md:text-lg lg:text-xl font-bold"
+            shuffleDirection="right"
+            duration={0.35}
+            animationMode="evenodd"
+            shuffleTimes={1}
+            ease="power3.out"
+            stagger={0.03}
+            threshold={0.1}
+            triggerOnce={true}
+            tag="h6"
+            triggerOnHover={true}
+            respectReducedMotion={true}
+          />
         </Link>
       </div>
 
