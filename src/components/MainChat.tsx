@@ -43,9 +43,9 @@ const MainChat = ({
     console.log("MainChat: Starting connection process for user:", userId);
     setConnectionStatus("Connecting...");
 
-    const newSocket = io("https://socket.goga.network", {
+    const newSocket = io("wss://socket.goga.network", {
       query: { userId },
-      transports: ["websocket", "polling"], // Allow both transports for production
+      transports: ["websocket",], // Allow both transports for production
       reconnection: true,
       reconnectionAttempts: 10, // More attempts for production
       reconnectionDelay: 1000,

@@ -4,7 +4,7 @@ import io, { Socket } from "socket.io-client";
 import { Users, Wifi, WifiOff } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 
-const SOCKET_SERVER_URL = "https://socket.goga.network";
+const SOCKET_SERVER_URL = "wss://socket.goga.network";
 
 const OnlineUsers = () => {
   const { user, isLoaded, isSignedIn } = useUser();
