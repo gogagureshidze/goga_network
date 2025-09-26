@@ -1,8 +1,7 @@
 "use client";
-
 import React, { useEffect, useState, useRef } from "react";
+import { useSocket } from "../context/SocketContext";
 import { Message } from "../app/chat/page";
-import { createSocket } from "@/lib/socket";
 
 type Friend = {
   id: string;
@@ -30,64 +29,47 @@ const MainChat = ({
   onBack,
   userId,
 }: Props) => {
+  const { socket, isConnected } = useSocket();
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState("Disconnected");
-  const [socket, setSocket] = useState<any>(null);
 
+  const connectionStatus = isConnected ? "Connected" : "Disconnected";
+
+  // Listen for incoming messages
   useEffect(() => {
-    if (!selectedFriend || !userId) return;
+    if (!socket) return;
 
-    const s = createSocket(userId);
-    setSocket(s);
+    const handleReceiveMessage = (message: Message) => {
+      const belongsToCurrentConversation =
+        (message.senderId === selectedFriend?.id &&
+          message.receiverId === userId) ||
+        (message.senderId === userId &&
+          message.receiverId === selectedFriend?.id);
 
-    s.on("connect", () => {
-      console.log("MainChat: Connected", s.id);
-      setIsConnected(true);
-      setConnectionStatus("Connected");
-    });
-
-    s.on("disconnect", (reason: string) => {
-      console.log("MainChat: Disconnected", reason);
-      setIsConnected(false);
-      setConnectionStatus(`Disconnected: ${reason}`);
-    });
-
-    s.on("connect_error", (err: Error) => {
-      console.error("MainChat: Connection error", err.message);
-      setIsConnected(false);
-      setConnectionStatus(`Error: ${err.message}`);
-    });
-
-    s.on("receiveMessage", (msg: Message) => {
-      const belongsToCurrent =
-        (msg.senderId === selectedFriend.id &&
-          msg.receiverId === userId) ||
-        (msg.senderId === userId && msg.receiverId === selectedFriend.id);
-
-      if (belongsToCurrent) {
+      if (belongsToCurrentConversation) {
         setMessages((prev) => [
           ...prev,
           {
-            ...msg,
-            isOwn: msg.senderId === userId,
-            createdAt: new Date(msg.createdAt).toLocaleTimeString([], {
+            ...message,
+            isOwn: message.senderId === userId,
+            createdAt: new Date(message.createdAt).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
             }),
           },
         ]);
       }
-    });
+    };
+
+    socket.on("receiveMessage", handleReceiveMessage);
 
     return () => {
-      s.disconnect();
+      socket.off("receiveMessage", handleReceiveMessage);
     };
-  }, [selectedFriend, userId, setMessages]);
+  }, [socket, selectedFriend, userId, setMessages]);
 
   const handleSendMessage = () => {
-    if (!input.trim() || !selectedFriend || !isConnected || !socket) return;
+    if (!input.trim() || !selectedFriend || !socket || !isConnected) return;
 
     const messageToSend = {
       senderId: userId,
@@ -98,6 +80,7 @@ const MainChat = ({
 
     socket.emit("sendMessage", messageToSend);
 
+    // Optimistic UI update
     setMessages((prev) => [
       ...prev,
       {
@@ -110,6 +93,7 @@ const MainChat = ({
         }),
       },
     ]);
+
     setInput("");
   };
 
@@ -121,7 +105,7 @@ const MainChat = ({
     <div className="flex-1 flex flex-col bg-white rounded-r-3xl overflow-hidden shadow-2xl">
       {selectedFriend ? (
         <>
-          {/* Chat Header with Debug Info */}
+          {/* Chat Header */}
           <div className="flex items-center gap-4 p-6 bg-white border-b border-gray-200 shadow-sm">
             {onBack && (
               <button

@@ -10,6 +10,7 @@ import prisma from "@/lib/client";
 import Providers from "./providers";
 import Footer from "@/components/Footer";
 import GlobalLoader from "@/components/GlobalLoader";
+import { SocketProvider } from "@/context/SocketContext";
 
 // Define the Funnel Display font with the variable property
 const funnel_display = Funnel_Display({
@@ -59,22 +60,24 @@ export default async function RootLayout({
       </head>
       <body className="font-sans">
         <Providers>
-          <ClickSpark
-            sparkColor="#e65800ff"
-            sparkSize={10}
-            sparkRadius={15}
-            sparkCount={8}
-            duration={500}
-          >
-            <div className="w-full px-4 text-orange-50 bg-rose-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64">
-              <Navbar users={users} />
-            </div>
-            <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
-              <GlobalLoader />
-              <PageTransition>{children}</PageTransition>
-            </div>
-            <Footer />
-          </ClickSpark>
+          <SocketProvider>
+            <ClickSpark
+              sparkColor="#e65800ff"
+              sparkSize={10}
+              sparkRadius={15}
+              sparkCount={8}
+              duration={500}
+            >
+              <div className="w-full px-4 text-orange-50 bg-rose-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64">
+                <Navbar users={users} />
+              </div>
+              <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
+                <GlobalLoader />
+                <PageTransition>{children}</PageTransition>
+              </div>
+              <Footer />
+            </ClickSpark>
+          </SocketProvider>
         </Providers>
       </body>
     </html>

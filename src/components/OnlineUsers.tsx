@@ -1,47 +1,23 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import { Users, Wifi, WifiOff } from "lucide-react";
-import { useUser } from "@clerk/nextjs";
-import { createSocket } from "@/lib/socket";
+import { useSocket } from "../context/SocketContext";
 
 const OnlineUsers = () => {
-  const { user, isLoaded, isSignedIn } = useUser();
-  const [onlineCount, setOnlineCount] = useState<number>(0);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const { socket, isConnected, connectionError } = useSocket();
+  const [onlineCount, setOnlineCount] = useState(0);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !user?.id) return;
+    if (!socket) return;
 
-    const socket = createSocket(user.id);
+    const handleOnlineCount = (count: number) => setOnlineCount(count);
 
-    socket.on("connect", () => {
-      console.log("OnlineUsers: Connected", socket.id);
-      setIsConnected(true);
-      setConnectionError(null);
-    });
-
-    socket.on("disconnect", (reason) => {
-      console.log("OnlineUsers: Disconnected", reason);
-      setIsConnected(false);
-    });
-
-    socket.on("connect_error", (err: Error) => {
-      console.error("OnlineUsers: Connection error", err.message);
-      setIsConnected(false);
-      setConnectionError(err.message);
-    });
-
-    socket.on("onlineCount", (count: number) => setOnlineCount(count));
+    socket.on("onlineCount", handleOnlineCount);
 
     return () => {
-      socket.disconnect();
+      socket.off("onlineCount", handleOnlineCount);
     };
-  }, [isLoaded, isSignedIn, user?.id]);
-
-  if (!isLoaded) return null;
-  if (!isSignedIn) return null;
+  }, [socket]);
 
   return (
     <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 border border-lime-200">
