@@ -45,7 +45,7 @@ const MainChat = ({
 
     const newSocket = io("wss://socket.goga.network", {
       query: { userId },
-      transports: ["websocket",], // Allow both transports for production
+      transports: ["websocket", "polling"], // allow both
       reconnection: true,
       reconnectionAttempts: 10, // More attempts for production
       reconnectionDelay: 1000,
