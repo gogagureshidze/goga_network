@@ -20,7 +20,7 @@ export const deletePost = async (postId: number) => {
     revalidateTag("feed-posts");
     revalidateTag("profile-posts");
 
-    return { success: true };
+    // ✅ The function now implicitly returns void
   } catch (error) {
     console.error("Failed to delete post:", error);
     throw new Error("Failed to delete post. Please try again.");
