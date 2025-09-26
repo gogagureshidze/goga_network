@@ -35,50 +35,79 @@ const MainChat = ({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState("Disconnected");
 
-  // 1. Establish WebSocket Connection and Listen for Messages
   useEffect(() => {
     if (!selectedFriend || !userId) return;
 
-    console.log("MainChat: Connecting to socket for conversation:", {
-      userId,
-      friendId: selectedFriend.id,
-    });
+    console.log("MainChat: Starting connection process for user:", userId);
+    setConnectionStatus("Connecting...");
 
     const newSocket = io("https://socket.goga.network", {
       query: { userId },
-      transports: ["websocket"], // force websocket, skip polling
+      transports: ["websocket", "polling"], // Allow both transports for production
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10, // More attempts for production
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
       timeout: 20000,
+      forceNew: true, // Force new connection
     });
 
-    // Connection events
     newSocket.on("connect", () => {
-      console.log("MainChat: Connected to socket. Socket ID:", newSocket.id);
+      console.log("MainChat: Successfully connected. Socket ID:", newSocket.id);
+      console.log("MainChat: Transport:", newSocket.io.engine.transport.name);
       setIsConnected(true);
+      setConnectionStatus("Connected");
     });
 
-    newSocket.on("connect_error", (err) => {
-      console.error("MainChat: Socket connection error:", err);
+    newSocket.on("connect_error", (error: any) => {
+      console.error("MainChat: Connection error:", error);
       setIsConnected(false);
+      setConnectionStatus(`Error: ${error.message || "Connection failed"}`);
     });
 
-    newSocket.on("disconnect", (reason) => {
-      console.log("MainChat: Disconnected:", reason);
+    newSocket.on("disconnect", (reason, details) => {
+      console.log("MainChat: Disconnected. Reason:", reason);
+      console.log("MainChat: Details:", details);
       setIsConnected(false);
+      setConnectionStatus(`Disconnected: ${reason}`);
+
+      // Auto-reconnect for certain disconnect reasons
+      if (reason === "io server disconnect" || reason === "transport close") {
+        console.log("MainChat: Attempting manual reconnection...");
+        setTimeout(() => {
+          if (newSocket && !newSocket.connected) {
+            newSocket.connect();
+          }
+        }, 1000);
+      }
     });
+
+    newSocket.on("reconnect", (attemptNumber) => {
+      console.log("MainChat: Reconnected after", attemptNumber, "attempts");
+      setIsConnected(true);
+      setConnectionStatus("Reconnected");
+    });
+
+    newSocket.on("reconnect_attempt", (attemptNumber) => {
+      console.log("MainChat: Reconnection attempt", attemptNumber);
+      setConnectionStatus(`Reconnecting... (${attemptNumber})`);
+    });
+
+    newSocket.on("reconnect_failed", () => {
+      console.error("MainChat: All reconnection attempts failed");
+      setConnectionStatus("Connection failed");
+    });
+
+    // Remove problematic transport listeners
 
     setSocket(newSocket);
 
-    // Listen for incoming messages
+    // Message handling
     newSocket.on("receiveMessage", (message: Message) => {
       console.log("MainChat: Received message:", message);
-      console.log("MainChat: Current userId:", userId);
-      console.log("MainChat: Selected friend ID:", selectedFriend.id);
 
-      // Check if this message belongs to the current conversation
       const belongsToCurrentConversation =
         (message.senderId === selectedFriend.id &&
           message.receiverId === userId) ||
@@ -87,12 +116,10 @@ const MainChat = ({
 
       if (belongsToCurrentConversation) {
         setMessages((prev) => {
-          // Check if message already exists
           const messageExists = prev.some((existingMsg) => {
             if (message.id && existingMsg.id) {
               return existingMsg.id === message.id;
             }
-            // Fallback: check by content and timing
             return (
               existingMsg.text === message.text &&
               existingMsg.senderId === message.senderId &&
@@ -104,11 +131,11 @@ const MainChat = ({
           });
 
           if (messageExists) {
-            console.log("MainChat: Message already exists, skipping");
+            console.log("MainChat: Duplicate message, skipping");
             return prev;
           }
 
-          console.log("MainChat: Adding new message to conversation");
+          console.log("MainChat: Adding message to conversation");
           return [
             ...prev,
             {
@@ -121,30 +148,30 @@ const MainChat = ({
             },
           ];
         });
-      } else {
-        console.log("MainChat: Message not for current conversation");
       }
     });
 
+    newSocket.on("messageError", (error) => {
+      console.error("MainChat: Message error:", error);
+      setConnectionStatus(`Message error: ${error.error}`);
+    });
+
     return () => {
-      console.log("MainChat: Cleaning up socket connection");
+      console.log("MainChat: Cleaning up connection");
+      newSocket.removeAllListeners();
       newSocket.disconnect();
     };
-  }, [selectedFriend, setMessages, userId]);
+  }, [selectedFriend, userId, setMessages]);
 
-  // 2. Handle Sending a Message via WebSocket
   const handleSendMessage = () => {
     if (!input.trim() || !selectedFriend || !socket || !isConnected) {
-      console.log("MainChat: Cannot send message - missing requirements");
+      console.log("MainChat: Cannot send - not ready:", {
+        hasInput: !!input.trim(),
+        hasSocket: !!socket,
+        isConnected,
+      });
       return;
     }
-
-    console.log(
-      "MainChat: Sending message from",
-      userId,
-      "to",
-      selectedFriend.id
-    );
 
     const messageToSend = {
       senderId: userId,
@@ -153,18 +180,16 @@ const MainChat = ({
       createdAt: new Date().toISOString(),
     };
 
-    // Emit the message to the server
+    console.log("MainChat: Sending message:", messageToSend);
     socket.emit("sendMessage", messageToSend);
-    console.log("MainChat: Message emitted to server");
 
-    // Optimistically add the message to the UI
+    // Optimistic update
     setMessages((prev) => [
       ...prev,
       {
         ...messageToSend,
         id: Date.now(),
         isOwn: true,
-        text: input.trim(),
         createdAt: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
@@ -182,7 +207,7 @@ const MainChat = ({
     <div className="flex-1 flex flex-col bg-white rounded-r-3xl overflow-hidden shadow-2xl">
       {selectedFriend ? (
         <>
-          {/* Chat Header */}
+          {/* Chat Header with Debug Info */}
           <div className="flex items-center gap-4 p-6 bg-white border-b border-gray-200 shadow-sm">
             {onBack && (
               <button
@@ -193,26 +218,42 @@ const MainChat = ({
               </button>
             )}
             <Avatar />
-            <div>
+            <div className="flex-1">
               <h2 className="font-semibold text-gray-900">
                 {selectedFriend.name}
               </h2>
               <div className="flex items-center gap-2">
                 <div
                   className={`w-2 h-2 rounded-full ${
-                    isConnected ? "bg-green-500" : "bg-gray-400"
+                    isConnected ? "bg-green-500" : "bg-red-500"
                   }`}
                 />
                 <p
                   className={`text-sm ${
-                    isConnected ? "text-green-500" : "text-gray-400"
+                    isConnected ? "text-green-500" : "text-red-500"
                   }`}
                 >
-                  {isConnected ? "Online" : "Connecting..."}
+                  {connectionStatus}
                 </p>
               </div>
             </div>
           </div>
+
+          {/* Connection Warning */}
+          {!isConnected && (
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+              <div className="flex">
+                <div className="ml-3">
+                  <p className="text-sm text-yellow-700">
+                    Connection issues detected. Messages may not be delivered.
+                  </p>
+                  <p className="text-xs text-yellow-600 mt-1">
+                    Status: {connectionStatus}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-rose-50">
@@ -224,7 +265,7 @@ const MainChat = ({
                 }`}
               >
                 <div
-                  className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm shadow-md transition-all duration-300 transform scale-100 ${
+                  className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm shadow-md transition-all duration-300 ${
                     msg.isOwn
                       ? "bg-rose-800 text-white rounded-br-md"
                       : "bg-orange-300 text-gray-900 rounded-bl-md"
@@ -242,11 +283,6 @@ const MainChat = ({
 
           {/* Input */}
           <div className="p-6 bg-white border-t border-gray-200 flex items-center gap-4">
-            {!isConnected && (
-              <div className="absolute top-0 left-0 right-0 bg-yellow-100 text-yellow-800 text-center py-2 text-sm">
-                Connecting to chat server...
-              </div>
-            )}
             <input
               type="text"
               placeholder={isConnected ? "Type a message..." : "Connecting..."}
@@ -259,7 +295,7 @@ const MainChat = ({
             <button
               onClick={handleSendMessage}
               disabled={!isConnected || !input.trim()}
-              className="p-3 rounded-full bg-rose-800 text-white hover:bg-rose-700 transition-colors duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-3 rounded-full bg-rose-800 text-white hover:bg-rose-700 transition-colors duration-200 shadow-lg disabled:opacity-50"
             >
               <SendIcon />
             </button>
