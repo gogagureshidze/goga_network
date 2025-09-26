@@ -16,7 +16,7 @@ const OnlineUsers = () => {
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user?.id) return;
 
-    console.log("🔌 Connecting to socket with userId:", user.id);
+    console.log("OnlineUsers: Connecting to socket with userId:", user.id);
 
     // Cleanup previous connection if exists
     if (socketRef.current) {
@@ -25,7 +25,7 @@ const OnlineUsers = () => {
 
     const socket: Socket = io(SOCKET_SERVER_URL, {
       query: { userId: user.id },
-      transports: ["websocket"], // Match MainChat - force websocket only
+      transports: ["websocket"],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
@@ -33,52 +33,50 @@ const OnlineUsers = () => {
 
     socketRef.current = socket;
 
-    // Connection successful
     socket.on("connect", () => {
-      console.log("✅ Connected to socket server. Socket ID:", socket.id);
+      console.log(
+        "OnlineUsers: Connected to socket server. Socket ID:",
+        socket.id
+      );
       setIsConnected(true);
       setConnectionError(null);
     });
 
-    // Receive online count updates
     socket.on("onlineCount", (count: number) => {
-      console.log("📡 Online count received:", count);
+      console.log("OnlineUsers: Online count received:", count);
       setOnlineCount(count);
     });
 
-    // Connection error
     socket.on("connect_error", (error: Error) => {
-      console.error("🚨 Connection error:", error.message);
+      console.error("OnlineUsers: Connection error:", error.message);
       setIsConnected(false);
       setConnectionError(error.message);
     });
 
-    // Disconnect
     socket.on("disconnect", (reason: string) => {
-      console.log("❌ Disconnected from socket server. Reason:", reason);
+      console.log(
+        "OnlineUsers: Disconnected from socket server. Reason:",
+        reason
+      );
       setIsConnected(false);
       if (reason === "io server disconnect") {
-        // Server disconnected the socket, reconnect manually
         socket.connect();
       }
     });
 
-    // Reconnection attempt
     socket.on("reconnect_attempt", (attempt: number) => {
-      console.log(`🔄 Reconnection attempt ${attempt}`);
+      console.log(`OnlineUsers: Reconnection attempt ${attempt}`);
       setConnectionError(`Reconnecting... (attempt ${attempt})`);
     });
 
-    // Reconnection successful
     socket.on("reconnect", (attempt: number) => {
-      console.log(`🎉 Reconnected after ${attempt} attempts`);
+      console.log(`OnlineUsers: Reconnected after ${attempt} attempts`);
       setIsConnected(true);
       setConnectionError(null);
     });
 
-    // Reconnection failed
     socket.on("reconnect_failed", () => {
-      console.error("💥 Reconnection failed");
+      console.error("OnlineUsers: Reconnection failed");
       setConnectionError("Failed to connect");
     });
 
