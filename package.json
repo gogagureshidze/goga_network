@@ -10,7 +10,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.31.6",
+    "@clerk/nextjs": "^6.32.2",
     "@gsap/react": "^2.1.2",
     "@prisma/client": "^6.11.0",
     "@vercel/speed-insights": "^1.2.0",
