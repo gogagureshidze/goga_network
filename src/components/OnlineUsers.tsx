@@ -1,52 +1,109 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import io, { Socket } from "socket.io-client";
 import { Users, Wifi, WifiOff } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
-import { getSocket } from "@/lib/socket";
+
+const SOCKET_SERVER_URL = "wss://socket.goga.network";
 
 const OnlineUsers = () => {
   const { user, isLoaded, isSignedIn } = useUser();
   const [onlineCount, setOnlineCount] = useState<number>(0);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user?.id) return;
 
-    const socket = getSocket(user.id);
+    console.log("OnlineUsers: Connecting to socket with userId:", user.id);
+
+    // Cleanup previous connection if exists
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
+
+    const socket: Socket = io(SOCKET_SERVER_URL, {
+      query: { userId: user.id },
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socketRef.current = socket;
 
     socket.on("connect", () => {
+      console.log(
+        "OnlineUsers: Connected to socket server. Socket ID:",
+        socket.id
+      );
       setIsConnected(true);
       setConnectionError(null);
     });
 
     socket.on("onlineCount", (count: number) => {
+      console.log("OnlineUsers: Online count received:", count);
       setOnlineCount(count);
     });
 
-    socket.on("disconnect", (reason) => {
-      setIsConnected(false);
-      setConnectionError(reason);
-    });
-
     socket.on("connect_error", (error: Error) => {
+      console.error("OnlineUsers: Connection error:", error.message);
       setIsConnected(false);
       setConnectionError(error.message);
     });
 
+    socket.on("disconnect", (reason: string) => {
+      console.log(
+        "OnlineUsers: Disconnected from socket server. Reason:",
+        reason
+      );
+      setIsConnected(false);
+      if (reason === "io server disconnect") {
+        socket.connect();
+      }
+    });
+
+    socket.on("reconnect_attempt", (attempt: number) => {
+      console.log(`OnlineUsers: Reconnection attempt ${attempt}`);
+      setConnectionError(`Reconnecting... (attempt ${attempt})`);
+    });
+
+    socket.on("reconnect", (attempt: number) => {
+      console.log(`OnlineUsers: Reconnected after ${attempt} attempts`);
+      setIsConnected(true);
+      setConnectionError(null);
+    });
+
+    socket.on("reconnect_failed", () => {
+      console.error("OnlineUsers: Reconnection failed");
+      setConnectionError("Failed to connect");
+    });
+
+    // Cleanup
     return () => {
-      socket.off("connect");
-      socket.off("onlineCount");
-      socket.off("disconnect");
-      socket.off("connect_error");
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
   }, [isLoaded, isSignedIn, user?.id]);
 
-  if (!isLoaded) return <div>Loading...</div>;
+  if (!isLoaded) {
+    return (
+      <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 border border-gray-200">
+        <div className="flex items-center justify-between font-medium animate-pulse">
+          <span className="text-gray-500">Loading...</span>
+          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
   if (!isSignedIn) return null;
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow-md flex flex-col gap-4 border border-lime-200">
+    <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 border border-lime-200">
       <div className="flex items-center justify-between font-medium">
         <span className="text-gray-500">Online Now</span>
         <div
