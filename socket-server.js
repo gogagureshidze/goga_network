@@ -16,6 +16,7 @@ const io = new Server(httpServer, {
       "https://goganetwork.netlify.app",
       "https://goga.network",
       "https://www.goga.network",
+      /\.vercel\.app$/,
     ],
     methods: ["GET", "POST"],
     credentials: true,

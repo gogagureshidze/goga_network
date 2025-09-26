@@ -1,9 +1,8 @@
-// src/components/MainChat.tsx
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Message } from "../app/chat/page";
-import { io, Socket } from "socket.io-client";
+import { createSocket } from "@/lib/socket";
 
 type Friend = {
   id: string;
@@ -33,146 +32,62 @@ const MainChat = ({
 }: Props) => {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("Disconnected");
+  const [socket, setSocket] = useState<any>(null);
 
   useEffect(() => {
     if (!selectedFriend || !userId) return;
 
-    console.log("MainChat: Starting connection process for user:", userId);
-    setConnectionStatus("Connecting...");
+    const s = createSocket(userId);
+    setSocket(s);
 
-    const newSocket = io("wss://socket.goga.network", {
-      query: { userId },
-      transports: ["websocket", "polling"], // allow both
-      reconnection: true,
-      reconnectionAttempts: 10, // More attempts for production
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
-      path: "/socket.io", 
-      forceNew: true, 
-    });
-
-    newSocket.on("connect", () => {
-      console.log("MainChat: Successfully connected. Socket ID:", newSocket.id);
-      console.log("MainChat: Transport:", newSocket.io.engine.transport.name);
+    s.on("connect", () => {
+      console.log("MainChat: Connected", s.id);
       setIsConnected(true);
       setConnectionStatus("Connected");
     });
 
-    newSocket.on("connect_error", (error: any) => {
-      console.error("MainChat: Connection error:", error);
-      setIsConnected(false);
-      setConnectionStatus(`Error: ${error.message || "Connection failed"}`);
-    });
-
-    newSocket.on("disconnect", (reason, details) => {
-      console.log("MainChat: Disconnected. Reason:", reason);
-      console.log("MainChat: Details:", details);
+    s.on("disconnect", (reason: string) => {
+      console.log("MainChat: Disconnected", reason);
       setIsConnected(false);
       setConnectionStatus(`Disconnected: ${reason}`);
+    });
 
-      // Auto-reconnect for certain disconnect reasons
-      if (reason === "io server disconnect" || reason === "transport close") {
-        console.log("MainChat: Attempting manual reconnection...");
-        setTimeout(() => {
-          if (newSocket && !newSocket.connected) {
-            newSocket.connect();
-          }
-        }, 1000);
+    s.on("connect_error", (err: Error) => {
+      console.error("MainChat: Connection error", err.message);
+      setIsConnected(false);
+      setConnectionStatus(`Error: ${err.message}`);
+    });
+
+    s.on("receiveMessage", (msg: Message) => {
+      const belongsToCurrent =
+        (msg.senderId === selectedFriend.id &&
+          msg.receiverId === userId) ||
+        (msg.senderId === userId && msg.receiverId === selectedFriend.id);
+
+      if (belongsToCurrent) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            ...msg,
+            isOwn: msg.senderId === userId,
+            createdAt: new Date(msg.createdAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          },
+        ]);
       }
-    });
-
-    newSocket.on("reconnect", (attemptNumber) => {
-      console.log("MainChat: Reconnected after", attemptNumber, "attempts");
-      setIsConnected(true);
-      setConnectionStatus("Reconnected");
-    });
-
-    newSocket.on("reconnect_attempt", (attemptNumber) => {
-      console.log("MainChat: Reconnection attempt", attemptNumber);
-      setConnectionStatus(`Reconnecting... (${attemptNumber})`);
-    });
-
-    newSocket.on("reconnect_failed", () => {
-      console.error("MainChat: All reconnection attempts failed");
-      setConnectionStatus("Connection failed");
-    });
-
-    // Remove problematic transport listeners
-
-    setSocket(newSocket);
-
-    // Message handling
-    newSocket.on("receiveMessage", (message: Message) => {
-      console.log("MainChat: Received message:", message);
-
-      const belongsToCurrentConversation =
-        (message.senderId === selectedFriend.id &&
-          message.receiverId === userId) ||
-        (message.senderId === userId &&
-          message.receiverId === selectedFriend.id);
-
-      if (belongsToCurrentConversation) {
-        setMessages((prev) => {
-          const messageExists = prev.some((existingMsg) => {
-            if (message.id && existingMsg.id) {
-              return existingMsg.id === message.id;
-            }
-            return (
-              existingMsg.text === message.text &&
-              existingMsg.senderId === message.senderId &&
-              Math.abs(
-                new Date(existingMsg.createdAt).getTime() -
-                  new Date(message.createdAt).getTime()
-              ) < 1000
-            );
-          });
-
-          if (messageExists) {
-            console.log("MainChat: Duplicate message, skipping");
-            return prev;
-          }
-
-          console.log("MainChat: Adding message to conversation");
-          return [
-            ...prev,
-            {
-              ...message,
-              isOwn: message.senderId === userId,
-              createdAt: new Date(message.createdAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-            },
-          ];
-        });
-      }
-    });
-
-    newSocket.on("messageError", (error) => {
-      console.error("MainChat: Message error:", error);
-      setConnectionStatus(`Message error: ${error.error}`);
     });
 
     return () => {
-      console.log("MainChat: Cleaning up connection");
-      newSocket.removeAllListeners();
-      newSocket.disconnect();
+      s.disconnect();
     };
   }, [selectedFriend, userId, setMessages]);
 
   const handleSendMessage = () => {
-    if (!input.trim() || !selectedFriend || !socket || !isConnected) {
-      console.log("MainChat: Cannot send - not ready:", {
-        hasInput: !!input.trim(),
-        hasSocket: !!socket,
-        isConnected,
-      });
-      return;
-    }
+    if (!input.trim() || !selectedFriend || !isConnected || !socket) return;
 
     const messageToSend = {
       senderId: userId,
@@ -181,10 +96,8 @@ const MainChat = ({
       createdAt: new Date().toISOString(),
     };
 
-    console.log("MainChat: Sending message:", messageToSend);
     socket.emit("sendMessage", messageToSend);
 
-    // Optimistic update
     setMessages((prev) => [
       ...prev,
       {
