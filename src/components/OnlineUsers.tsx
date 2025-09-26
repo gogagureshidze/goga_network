@@ -27,6 +27,7 @@ const OnlineUsers = () => {
       query: { userId: user.id },
       transports: ["websocket"],
       reconnection: true,
+      path: "/socket.io", // <--- add this
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
     });

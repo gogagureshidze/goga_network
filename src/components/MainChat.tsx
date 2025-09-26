@@ -51,7 +51,8 @@ const MainChat = ({
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
-      forceNew: true, // Force new connection
+      path: "/socket.io", 
+      forceNew: true, 
     });
 
     newSocket.on("connect", () => {
