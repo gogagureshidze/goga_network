@@ -36,6 +36,10 @@ const MainChat = ({
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("Disconnected");
+const SOCKET_SERVER_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://socket.goga.network"
+    : "http://localhost:3001";
 
   useEffect(() => {
     if (!selectedFriend || !userId) return;
@@ -43,7 +47,7 @@ const MainChat = ({
     console.log("MainChat: Starting connection process for user:", userId);
     setConnectionStatus("Connecting...");
 
-    const newSocket = io("wss://socket.goga.network", {
+    const newSocket = io(SOCKET_SERVER_URL, {
       query: { userId },
       transports: ["websocket"], // Allow both transports for production
       reconnection: true,
@@ -161,7 +165,7 @@ const MainChat = ({
       newSocket.removeAllListeners();
       newSocket.disconnect();
     };
-  }, [selectedFriend, userId, setMessages]);
+  }, [selectedFriend, userId, setMessages, SOCKET_SERVER_URL]);
 
   const handleSendMessage = () => {
     if (!input.trim() || !selectedFriend || !socket || !isConnected) {

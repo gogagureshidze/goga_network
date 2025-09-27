@@ -4,8 +4,10 @@ import io, { Socket } from "socket.io-client";
 import { Users, Wifi, WifiOff } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 
-const SOCKET_SERVER_URL = "https://socket.goga.network";
-
+const SOCKET_SERVER_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://socket.goga.network"
+    : "http://localhost:3001";
 const OnlineUsers = () => {
   const { user, isLoaded, isSignedIn } = useUser();
   const [onlineCount, setOnlineCount] = useState<number>(0);
