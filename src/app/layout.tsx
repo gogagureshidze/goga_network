@@ -60,7 +60,7 @@ export default async function RootLayout({
       </head>
       <body className="font-sans">
         <Providers>
-          <SocketProvider>
+          {/* <SocketProvider> */}
             <ClickSpark
               sparkColor="#e65800ff"
               sparkSize={10}
@@ -77,7 +77,7 @@ export default async function RootLayout({
               </div>
               <Footer />
             </ClickSpark>
-          </SocketProvider>
+          {/* </SocketProvider> */}
         </Providers>
       </body>
     </html>
