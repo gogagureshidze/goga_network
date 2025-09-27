@@ -38,7 +38,7 @@ const MainChat = ({
   const [connectionStatus, setConnectionStatus] = useState("Disconnected");
 const SOCKET_SERVER_URL =
   process.env.NODE_ENV === "production"
-    ? "https://socket.goga.network"
+    ? "wss://socket.goga.network"
     : "http://localhost:3001";
 
   useEffect(() => {
