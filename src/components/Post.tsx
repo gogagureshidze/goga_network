@@ -1,15 +1,20 @@
 // app/components/Post.tsx
+
 import Image from "next/image";
 import MediaGrid from "./MediaGrid";
 import Link from "next/link";
 import PostInfo from "./PostInfo";
 import Comments from "./Comments";
 import PostInteractions from "./PostInteractions";
+import EventCard from "./EventCard"; // Import the new component
 
 export default function Post({ post }: { post: any }) {
+  // A simple check to see if the post has event data
+  const isEventPost = !!post.event;
+
   return (
     <div className="flex flex-col gap-4 p-4 bg-white rounded-xl shadow-sm">
-      {/* Header */}
+      {/* Header (remains the same) */}
       <div className="flex items-center justify-between">
         <Link href={`/profile/${post.user?.username}`}>
           <div className="flex items-center gap-4">
@@ -28,14 +33,21 @@ export default function Post({ post }: { post: any }) {
         <PostInfo postId={post.id} postOwnerId={post.userId} />
       </div>
 
-      {/* Caption */}
+      {/* Caption (remains the same) */}
       {post.desc && (
         <p className="text-sm leading-relaxed text-gray-800 px-1">
           {post.desc}
         </p>
       )}
 
-      <MediaGrid media={post.media} />
+      {isEventPost ? (
+        // If it's an event post, show the EventCard
+        <EventCard event={post.event} />
+      ) : (
+        // Otherwise, show the MediaGrid for photos/videos
+        <MediaGrid media={post.media} />
+      )}
+
       <PostInteractions
         postId={post.id}
         likes={post.likes}

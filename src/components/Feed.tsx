@@ -4,6 +4,64 @@ import { currentUser } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
 import { unstable_cache } from "next/cache";
 
+// Post selection fields with event
+const postSelectFields = {
+  id: true,
+  desc: true,
+  createdAt: true,
+  userId: true,
+  user: {
+    select: {
+      id: true,
+      username: true,
+      avatar: true,
+      name: true,
+      surname: true,
+    },
+  },
+  media: {
+    select: {
+      id: true,
+      url: true,
+      safeUrl: true,
+      type: true,
+    },
+  },
+  event: {
+    select: {
+      id: true,
+      date: true,
+      endDate: true,
+      location: true,
+      latitude: true,
+      longitude: true,
+    },
+  },
+  _count: {
+    select: {
+      likes: true,
+      comments: true,
+    },
+  },
+  likes: {
+    select: { userId: true },
+  },
+  comments: {
+    select: {
+      id: true,
+      desc: true,
+      createdAt: true,
+      userId: true,
+      user: {
+        select: {
+          avatar: true,
+          username: true,
+        },
+      },
+    },
+  },
+};
+
 // Aggressive caching for stable data
 const getCachedBlockedUsers = unstable_cache(
   async (userId: string) => {
@@ -49,52 +107,7 @@ const getCachedProfilePosts = unstable_cache(
           NOT: { userId: { in: excludedUserIds } },
         }),
       },
-      select: {
-        id: true,
-        desc: true,
-        createdAt: true,
-        userId: true,
-        user: {
-          select: {
-            id: true,
-            username: true,
-            avatar: true,
-            name: true,
-            surname: true,
-          },
-        },
-        media: {
-          select: {
-            id: true,
-            url: true,
-            safeUrl: true,
-            type: true,
-          },
-        },
-        _count: {
-          select: {
-            likes: true,
-            comments: true,
-          },
-        },
-        likes: {
-          select: { userId: true },
-        },
-        comments: {
-          select: {
-            id: true,
-            desc: true,
-            createdAt: true,
-            userId: true,
-            user: {
-              select: {
-                avatar: true,
-                username: true,
-              },
-            },
-          },
-        },
-      },
+      select: postSelectFields,
       orderBy: { createdAt: "desc" },
       take: 10,
     });
@@ -116,52 +129,7 @@ const getCachedFeedPosts = unstable_cache(
             ? { userId: { notIn: [...excludedUserIds, currentUserId] } }
             : { userId: { not: currentUserId } }),
         },
-        select: {
-          id: true,
-          desc: true,
-          createdAt: true,
-          userId: true,
-          user: {
-            select: {
-              id: true,
-              username: true,
-              avatar: true,
-              name: true,
-              surname: true,
-            },
-          },
-          media: {
-            select: {
-              id: true,
-              url: true,
-              safeUrl: true,
-              type: true,
-            },
-          },
-          _count: {
-            select: {
-              likes: true,
-              comments: true,
-            },
-          },
-          likes: {
-            select: { userId: true },
-          },
-          comments: {
-            select: {
-              id: true,
-              desc: true,
-              createdAt: true,
-              userId: true,
-              user: {
-                select: {
-                  avatar: true,
-                  username: true,
-                },
-              },
-            },
-          },
-        },
+        select: postSelectFields,
         take: 8,
         orderBy: { createdAt: "desc" },
       });
@@ -175,52 +143,7 @@ const getCachedFeedPosts = unstable_cache(
             NOT: { userId: { in: excludedUserIds } },
           }),
         },
-        select: {
-          id: true,
-          desc: true,
-          createdAt: true,
-          userId: true,
-          user: {
-            select: {
-              id: true,
-              username: true,
-              avatar: true,
-              name: true,
-              surname: true,
-            },
-          },
-          media: {
-            select: {
-              id: true,
-              url: true,
-              safeUrl: true,
-              type: true,
-            },
-          },
-          _count: {
-            select: {
-              likes: true,
-              comments: true,
-            },
-          },
-          likes: {
-            select: { userId: true },
-          },
-          comments: {
-            select: {
-              id: true,
-              desc: true,
-              createdAt: true,
-              userId: true,
-              user: {
-                select: {
-                  avatar: true,
-                  username: true,
-                },
-              },
-            },
-          },
-        },
+        select: postSelectFields,
         take: 8,
         orderBy: { createdAt: "desc" },
       }),
@@ -242,52 +165,7 @@ const getCachedFeedPosts = unstable_cache(
                 },
               }),
         },
-        select: {
-          id: true,
-          desc: true,
-          createdAt: true,
-          userId: true,
-          user: {
-            select: {
-              id: true,
-              username: true,
-              avatar: true,
-              name: true,
-              surname: true,
-            },
-          },
-          media: {
-            select: {
-              id: true,
-              url: true,
-              safeUrl: true,
-              type: true,
-            },
-          },
-          _count: {
-            select: {
-              likes: true,
-              comments: true,
-            },
-          },
-          likes: {
-            select: { userId: true },
-          },
-          comments: {
-            select: {
-              id: true,
-              desc: true,
-              createdAt: true,
-              userId: true,
-              user: {
-                select: {
-                  avatar: true,
-                  username: true,
-                },
-              },
-            },
-          },
-        },
+        select: postSelectFields,
         take: 3,
         orderBy: { createdAt: "desc" },
       }),
@@ -366,6 +244,16 @@ async function Feed({
           if (ageHours < 2) score += 10;
           else if (ageHours < 12) score += 5;
           else if (ageHours < 24) score += 2;
+
+          // Boost event posts that are upcoming
+          if (post.event) {
+            const eventDate = new Date(post.event.date);
+            const daysUntil =
+              (eventDate.getTime() - now) / (1000 * 60 * 60 * 24);
+            if (daysUntil > 0 && daysUntil < 7) {
+              score += 15; // Boost events happening soon
+            }
+          }
 
           return { ...post, score };
         })

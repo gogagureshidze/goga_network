@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { useParams } from "next/navigation";
 import {
   ImagePlus,
   Clapperboard,
@@ -12,17 +11,19 @@ import {
 import { CldUploadWidget } from "next-cloudinary";
 import { useUser } from "@clerk/nextjs";
 import { testAction } from "@/actions/createPost";
+import { addEventPost } from "../actions/addPostEvent"; // ✅ FIXED
 import Link from "next/link";
 import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import EventPostModal, { EventData } from "./EventPostModal"; // ✅ FIXED
 
 function AddPost() {
   const [media, setMedia] = useState<any[]>([]);
   const { isLoaded, user } = useUser();
   const [desc, setDesc] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const router = useRouter();
-  const params = useParams();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -34,6 +35,25 @@ function AddPost() {
       router.refresh();
       setDesc("");
       setMedia([]);
+    });
+  };
+
+  const handleEventSubmit = async (eventData: EventData, eventDesc: string) => {
+    startTransition(async () => {
+      await addEventPost({
+        userId: user!.id,
+        desc: eventDesc,
+        media: media.map((m) => ({
+          url: m.secure_url,
+          type: m.resource_type === "video" ? "video" : "photo",
+        })),
+        event: eventData,
+      });
+
+      router.refresh();
+      setDesc("");
+      setMedia([]);
+      setIsEventModalOpen(false);
     });
   };
 
@@ -133,7 +153,11 @@ function AddPost() {
               )}
             </CldUploadWidget>
 
-            <button className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-amber-400 bg-amber-50/50 hover:bg-amber-100 transition-colors duration-200">
+            <button
+              type="button"
+              onClick={() => setIsEventModalOpen(true)}
+              className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-amber-400 bg-amber-50/50 hover:bg-amber-100 transition-colors duration-200"
+            >
               <CalendarArrowUp className="w-6 h-6" />
               <span className="font-medium text-sm hidden md:block">Event</span>
             </button>
@@ -144,38 +168,46 @@ function AddPost() {
             </button>
           </div>
 
-          <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-4">
-            {media.map((file, idx) => (
-              <div
-                key={idx}
-                className="relative overflow-hidden rounded-md aspect-square"
-              >
-                <button
-                  type="button"
-                  onClick={() => handleRemoveMedia(idx)}
-                  className="absolute top-1 right-1 bg-white rounded-full p-1 shadow-md hover:bg-gray-100 transition-all duration-200 z-10"
+          {media.length > 0 && (
+            <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-4">
+              {media.map((file, idx) => (
+                <div
+                  key={idx}
+                  className="relative overflow-hidden rounded-md aspect-square"
                 >
-                  <X className="w-4 h-4 text-gray-600" />
-                </button>
-                {file.resource_type === "image" ? (
-                  <Image
-                    src={file.secure_url}
-                    alt="uploaded"
-                    fill
-                    className="object-cover rounded-md"
-                  />
-                ) : (
-                  <video
-                    src={file.secure_url}
-                    controls
-                    className="w-full h-full object-cover rounded-md"
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveMedia(idx)}
+                    className="absolute top-1 right-1 bg-white rounded-full p-1 shadow-md hover:bg-gray-100 transition-all duration-200 z-10"
+                  >
+                    <X className="w-4 h-4 text-gray-600" />
+                  </button>
+                  {file.resource_type === "image" ? (
+                    <Image
+                      src={file.secure_url}
+                      alt="uploaded"
+                      fill
+                      className="object-cover rounded-md"
+                    />
+                  ) : (
+                    <video
+                      src={file.secure_url}
+                      controls
+                      className="w-full h-full object-cover rounded-md"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
+
+      <EventPostModal
+        isOpen={isEventModalOpen}
+        onClose={() => setIsEventModalOpen(false)}
+        onSubmit={handleEventSubmit}
+      />
     </>
   );
 }

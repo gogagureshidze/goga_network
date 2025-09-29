@@ -50,6 +50,8 @@ model Post {
   likes     Like[]
   media     Media[]
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  event     Event?
 }
 
 model Media {
@@ -154,7 +156,6 @@ model Story {
   comments  StoryComment[]  
 }
 
-
 model StoryComment {
   id        Int      @id @default(autoincrement())
   desc      String
@@ -223,3 +224,17 @@ model Message {
   @@index([receiverId])
 }
 
+
+
+model Event {
+  id          Int       @id @default(autoincrement())
+  postId      Int       @unique
+  date        DateTime  
+  endDate     DateTime? 
+  location    String?   
+  latitude    Float?    
+  longitude   Float?    
+  createdAt   DateTime  @default(now())
+
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+}

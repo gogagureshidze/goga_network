@@ -1,3 +1,4 @@
 node_modules
 .next
 socket-server.js
+next.config.mjs
