@@ -806,7 +806,17 @@ const getStoryDuration = (story: { img: string }) => {
             }
             widget.close();
           }}
-          options={{ multiple: true, resourceType: "auto" }}
+          options={{
+            multiple: false,
+            resourceType: "auto", // auto-detects image or video
+            clientAllowedFormats: [
+              "jpg",
+              "jpeg",
+              "png",
+              "mp4",
+              "mov",
+            ],
+          }}
         >
           {({ open }) => (
             <div
@@ -850,8 +860,7 @@ const getStoryDuration = (story: { img: string }) => {
                 <div>
                   <h3 className="text-2xl font-bold mb-1">Story Preview</h3>
                   <p className="text-orange-100 text-sm opacity-90">
-                   Item ready
-                    to share
+                    Item ready to share
                   </p>
                 </div>
                 <button
@@ -875,7 +884,6 @@ const getStoryDuration = (story: { img: string }) => {
               </div>
             </div>
 
-            {/* Media Grid with enhanced styling */}
             {/* Media Grid with enhanced styling */}
             <div className="flex-1 p-6 overflow-y-auto flex justify-center">
               <div className="grid grid-flow-row auto-rows-auto gap-4 justify-items-center">
