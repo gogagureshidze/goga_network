@@ -34,10 +34,11 @@ model User {
   stories                Story[]
   storyComments          StoryComment[]
   storyViews             StoryView[]
-  conversations1         Conversation[] @relation("User1Conversations")
-  conversations2         Conversation[] @relation("User2Conversations")
-  sentMessages           Message[]      @relation("SentMessages")
-  receivedMessages       Message[]      @relation("ReceivedMessages")
+  conversations1         Conversation[]  @relation("User1Conversations")
+  conversations2         Conversation[]  @relation("User2Conversations")
+  sentMessages           Message[]       @relation("SentMessages")
+  receivedMessages       Message[]       @relation("ReceivedMessages")
+  pollVotes              PollVote[]
 }
 
 model Post {
@@ -51,7 +52,8 @@ model Post {
   media     Media[]
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  event     Event?
+  event Event?
+  poll  Poll?
 }
 
 model Media {
@@ -83,21 +85,21 @@ model Comment {
 }
 
 model Like {
-  id            Int      @id @default(autoincrement())
-  createdAt     DateTime @default(now())
-  userId        String
-  postId        Int?
-  commentId     Int?
-  storyId       Int?
+  id             Int           @id @default(autoincrement())
+  createdAt      DateTime      @default(now())
+  userId         String
+  postId         Int?
+  commentId      Int?
+  storyId        Int?
   storyCommentId Int?
-  comment       Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  post          Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
-  story         Story?   @relation(fields: [storyId], references: [id], onDelete: Cascade)
-  storyComment  StoryComment? @relation(fields: [storyCommentId], references: [id], onDelete: Cascade)
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment        Comment?      @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  post           Post?         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  story          Story?        @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  storyComment   StoryComment? @relation(fields: [storyCommentId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, postId]) 
-  @@unique([userId, commentId]) 
+  @@unique([userId, postId])
+  @@unique([userId, commentId])
   @@unique([userId, storyId])
   @@unique([userId, storyCommentId])
   @@index([commentId], map: "Like_commentId_fkey")
@@ -144,16 +146,16 @@ model Block {
 }
 
 model Story {
-  id        Int      @id @default(autoincrement())
+  id        Int            @id @default(autoincrement())
   img       String
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
   expiresAt DateTime
-  showLikes Boolean  @default(true) // ✨ New field to store the user's preference
+  showLikes Boolean        @default(true) // ✨ New field to store the user's preference
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User           @relation(fields: [userId], references: [id])
   likes     Like[]
   views     StoryView[]
-  comments  StoryComment[]  
+  comments  StoryComment[]
 }
 
 model StoryComment {
@@ -165,9 +167,9 @@ model StoryComment {
   userId    String
 
   // Relations
-  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  likes     Like[]
+  story Story  @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes Like[]
 
   @@index([storyId])
   @@index([userId])
@@ -188,14 +190,14 @@ model StoryView {
 }
 
 model Conversation {
-  id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user1Id     String
-  user2Id     String
-  user1       User     @relation("User1Conversations", fields: [user1Id], references: [id])
-  user2       User     @relation("User2Conversations", fields: [user2Id], references: [id])
-  messages    Message[]
+  id        Int       @id @default(autoincrement())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user1Id   String
+  user2Id   String
+  user1     User      @relation("User1Conversations", fields: [user1Id], references: [id])
+  user2     User      @relation("User2Conversations", fields: [user2Id], references: [id])
+  messages  Message[]
 
   @@unique([user1Id, user2Id])
   @@index([user1Id])
@@ -203,38 +205,67 @@ model Conversation {
 }
 
 model Message {
-  id             Int       @id @default(autoincrement())
-  text           String?   // Make the text field optional, as a message can just be an image
-  createdAt      DateTime  @default(now())
+  id             Int      @id @default(autoincrement())
+  text           String? // Make the text field optional, as a message can just be an image
+  createdAt      DateTime @default(now())
   senderId       String
   receiverId     String
   conversationId Int
-  isRead         Boolean   @default(false)
-  
+  isRead         Boolean  @default(false)
+
   // New fields for media
-  mediaUrl       String?   // URL to the hosted image or video
-  mediaType      String?   // "image" or "video"
-  
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
-  receiver       User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  mediaUrl  String? // URL to the hosted image or video
+  mediaType String? // "image" or "video"
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiver     User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
 
   @@index([conversationId])
   @@index([senderId])
   @@index([receiverId])
 }
 
-
-
 model Event {
-  id          Int       @id @default(autoincrement())
-  postId      Int       @unique
-  date        DateTime  
-  endDate     DateTime? 
-  location    String?   
-  latitude    Float?    
-  longitude   Float?    
-  createdAt   DateTime  @default(now())
+  id        Int       @id @default(autoincrement())
+  postId    Int       @unique
+  date      DateTime
+  endDate   DateTime?
+  location  String?
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime  @default(now())
 
-  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model Poll {
+  id        Int      @id @default(autoincrement())
+  postId    Int      @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime @default(dbgenerated("(now() + interval 48 hour)"))
+
+  post    Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  options PollOption[]
+}
+
+model PollOption {
+  id     Int    @id @default(autoincrement())
+  pollId Int
+  text   String @db.VarChar(255)
+
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+}
+
+model PollVote {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  optionId  Int
+  createdAt DateTime @default(now())
+
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, optionId]) // prevent double-voting same option
 }

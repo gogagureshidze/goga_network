@@ -4,7 +4,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
 import { unstable_cache } from "next/cache";
 
-// Post selection fields with event
+// Post selection fields with event AND poll
 const postSelectFields = {
   id: true,
   desc: true,
@@ -37,6 +37,39 @@ const postSelectFields = {
       longitude: true,
     },
   },
+  poll: {
+    select: {
+      id: true,
+      expiresAt: true,
+      options: {
+        select: {
+          id: true,
+          text: true,
+          _count: {
+            select: {
+              votes: true,
+            },
+          },
+          votes: {
+            select: {
+              userId: true,
+              user: {
+                // ✅ Add this to get voter info
+                select: {
+                  username: true,
+                  avatar: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          id: "asc" as const,
+        },
+      },
+    },
+  },
+
   _count: {
     select: {
       likes: true,
@@ -252,6 +285,14 @@ async function Feed({
               (eventDate.getTime() - now) / (1000 * 60 * 60 * 24);
             if (daysUntil > 0 && daysUntil < 7) {
               score += 15; // Boost events happening soon
+            }
+          }
+
+          // Boost active polls
+          if (post.poll) {
+            const isExpired = new Date(post.poll.expiresAt) < new Date();
+            if (!isExpired) {
+              score += 12; // Boost active polls
             }
           }
 

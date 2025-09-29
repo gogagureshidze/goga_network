@@ -16,6 +16,7 @@ import Link from "next/link";
 import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import EventPostModal, { EventData } from "./EventPostModal"; // ✅ FIXED
+import PollPostModal from "./PollPostModal";
 
 function AddPost() {
   const [media, setMedia] = useState<any[]>([]);
@@ -37,6 +38,7 @@ function AddPost() {
       setMedia([]);
     });
   };
+const [isPollModalOpen, setIsPollModalOpen] = useState(false);
 
   const handleEventSubmit = async (eventData: EventData, eventDesc: string) => {
     startTransition(async () => {
@@ -162,7 +164,11 @@ function AddPost() {
               <span className="font-medium text-sm hidden md:block">Event</span>
             </button>
 
-            <button className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-orange-600 bg-orange-50/50 hover:bg-orange-100 transition-colors duration-200">
+            <button
+              type="button"
+              onClick={() => setIsPollModalOpen(true)}
+              className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-orange-600 bg-orange-50/50 hover:bg-orange-100 transition-colors duration-200"
+            >
               <Vote className="w-6 h-6" />
               <span className="font-medium text-sm hidden md:block">Poll</span>
             </button>
@@ -207,6 +213,11 @@ function AddPost() {
         isOpen={isEventModalOpen}
         onClose={() => setIsEventModalOpen(false)}
         onSubmit={handleEventSubmit}
+      />
+      <PollPostModal
+        isOpen={isPollModalOpen}
+        onClose={() => setIsPollModalOpen(false)}
+        userId={user.id} // ✅ Pass the actual user ID here
       />
     </>
   );
