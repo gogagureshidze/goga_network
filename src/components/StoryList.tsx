@@ -81,7 +81,6 @@ function useDebounce<T extends (...args: any[]) => any>(
     [callback, delay]
   );
 }
-
 // Rate limiting utility
 function useRateLimit(maxCalls: number, timeWindow: number) {
   const callsRef = useRef<number[]>([]);
@@ -147,6 +146,7 @@ export default function StoryList({
     {}
   );
 
+  const [mediaLoading, setMediaLoading] = useState(true);
   // Rate limiting hooks
   const canLikeStory = useRateLimit(10, 5000); // 10 likes per 5 seconds
   const canLikeComment = useRateLimit(20, 10000); // 20 comment likes per 10 seconds
@@ -809,13 +809,7 @@ const getStoryDuration = (story: { img: string }) => {
           options={{
             multiple: false,
             resourceType: "auto", // auto-detects image or video
-            clientAllowedFormats: [
-              "jpg",
-              "jpeg",
-              "png",
-              "mp4",
-              "mov",
-            ],
+            clientAllowedFormats: ["jpg", "jpeg", "png", "mp4", "mov"],
           }}
         >
           {({ open }) => (
@@ -842,7 +836,6 @@ const getStoryDuration = (story: { img: string }) => {
           )}
         </CldUploadWidget>
       )}
-
       {/* Preview Modal */}
       {/* Enhanced Preview Modal */}
       {media.length > 0 && (
@@ -1124,7 +1117,7 @@ const getStoryDuration = (story: { img: string }) => {
           </div>
         </div>
       )}
-      {/* Story Viewer Modal */}
+
       {activeUserStoryId !== null && activeGroup && currentStory && (
         <div
           className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black"
@@ -1134,25 +1127,38 @@ const getStoryDuration = (story: { img: string }) => {
             className="relative w-full h-full max-w-[400px] max-h-[800px] flex flex-col justify-end"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Loading spinner */}
+            {mediaLoading && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black">
+                <div className="relative">
+                  {/* Animated spinner */}
+                  <div className="w-16 h-16 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
+                  {/* Pulsing circle behind */}
+                  <div className="absolute inset-0 w-16 h-16 border-4 border-rose-300 rounded-full animate-pulse opacity-20"></div>
+                </div>
+              </div>
+            )}
+
             {isStoryVideo(currentStory) ? (
               <video
                 src={currentStory.img}
                 autoPlay
                 playsInline
                 muted={isMuted}
-                className="absolute inset-0 w-full h-full object-contain rounded-lg"
+                className={`absolute inset-0 w-full h-full object-contain rounded-lg transition-opacity duration-300 ${
+                  mediaLoading ? "opacity-0" : "opacity-100"
+                }`}
+                onLoadStart={() => setMediaLoading(true)}
+                onCanPlay={() => setMediaLoading(false)}
                 onEnded={() => {
-                  // Only auto-advance if not interacting with comments
                   if (!isInputActive) {
                     goNextStory();
                   }
                 }}
                 onLoadedMetadata={(e) => {
-                  // Optional: Cap video duration at 1 minute for display
                   const video = e.target as HTMLVideoElement;
                   if (video.duration > 60) {
-                    // If video is longer than 1 minute, we'll still advance after 1 minute
-                    // The timer will handle this automatically
+                    // Handle long videos
                   }
                 }}
               />
@@ -1162,9 +1168,15 @@ const getStoryDuration = (story: { img: string }) => {
                 alt="Story"
                 fill
                 style={{ objectFit: "contain" }}
-                className="rounded-lg"
+                className={`rounded-lg transition-opacity duration-300 ${
+                  mediaLoading ? "opacity-0" : "opacity-100"
+                }`}
+                onLoadingComplete={() => setMediaLoading(false)}
+                onLoadStart={() => setMediaLoading(true)}
               />
             )}
+
+            {/* Rest of your code stays the same... */}
 
             {/* Video mute/unmute button */}
             {isStoryVideo(currentStory) && (
@@ -1457,7 +1469,6 @@ const getStoryDuration = (story: { img: string }) => {
           </div>
         </div>
       )}
-
       {/* Story Activity Modal */}
       {showActivityModal && currentStory && (
         <StoryActivityModal
@@ -1465,7 +1476,6 @@ const getStoryDuration = (story: { img: string }) => {
           onClose={() => setShowActivityModal(false)}
         />
       )}
-
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && currentStory && (
         <div
@@ -1508,7 +1518,6 @@ const getStoryDuration = (story: { img: string }) => {
           </div>
         </div>
       )}
-
       {/* Story bubbles */}
       <div className="flex gap-4 overflow-x-auto scrollbar-hide py-2">
         {optimisticStories.map((group) => (

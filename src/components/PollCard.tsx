@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { castPollVote } from "@/actions/pollActions";
 import { useUser } from "@clerk/nextjs";
-import Image from "next/image";
 
 interface PollOption {
   id: number;
