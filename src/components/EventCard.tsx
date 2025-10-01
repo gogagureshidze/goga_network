@@ -16,7 +16,6 @@ interface EventCardProps {
 export default function EventCard({ event }: EventCardProps) {
   const [showMap, setShowMap] = useState(false);
 
-  // Helper functions for date, time, duration, and days until (no changes)
   const getDaysUntil = () => {
     const now = new Date();
     const eventDate = new Date(event.date);
@@ -50,7 +49,7 @@ export default function EventCard({ event }: EventCardProps) {
     return new Date(date).toLocaleDateString("en-US", { month: "short" });
   };
   const formatDayOfWeek = (date: Date) => {
-    return new Date(date).toLocaleDateString("en-US", { weekday: "short" }); // 🆕 Use 'short' for a cleaner look
+    return new Date(date).toLocaleDateString("en-US", { weekday: "short" });
   };
   const formatDayOfMonth = (date: Date) => {
     return new Date(date).getDate();
@@ -63,7 +62,6 @@ export default function EventCard({ event }: EventCardProps) {
     });
   };
 
-  // 🆕 New helper function to format the date range
   const formatDateRange = () => {
     const start = new Date(event.date);
     const end = new Date(event.endDate || event.date);
@@ -117,7 +115,10 @@ export default function EventCard({ event }: EventCardProps) {
 
   return (
     <div className="relative overflow-hidden bg-gradient-to-r from-orange-50 to-rose-50 rounded-2xl p-6 border border-orange-200 shadow-xl">
-      <div className="absolute top-0 right-0 w-24 h-24 bg-orange-200 rounded-full -translate-y-1/2 translate-x-1/2 opacity-50 blur-xl"></div>
+      {/* Background decoration - LOWER z-index */}
+      <div className="absolute top-0 right-0 w-24 h-24 bg-orange-200 rounded-full -translate-y-1/2 translate-x-1/2 opacity-50 blur-xl z-0"></div>
+
+      {/* Content - HIGHER z-index */}
       <div className="relative z-10">
         {/* Header Section */}
         <div className="flex items-center justify-between mb-4">
@@ -133,11 +134,8 @@ export default function EventCard({ event }: EventCardProps) {
         </div>
 
         {/* Date & Time */}
-        <div className="flex items-center gap-4 p-4 rounded-xl bg-orange-50 border-2 border-orange-200 shadow-lg mb-4">
-          <div className="flex-1 text-center">
-            {/* 🔄 Replaced the old date display with the new formatDateRange function */}
-            {formatDateRange()}
-          </div>
+        <div className="flex items-center gap-4 p-4 rounded-xl bg-white border-2 border-orange-200 shadow-lg mb-4">
+          <div className="flex-1 text-center">{formatDateRange()}</div>
           <div className="flex-1 flex flex-col items-center">
             <span className="block text-lg font-bold text-gray-800">
               {formatDayOfWeek(event.date)}

@@ -39,7 +39,7 @@ async function UserMediaCard({ user, username }:   UserMediaCardProps) {
       <div className="flex items-center justify-between font-medium">
         <span className="text-gray-500">User Media</span>
         <Link
-          href={`/user/${user.id}/media`}
+          href={`/media`}
           className="text-orange-300 text-sm hover:underline"
         >
           See all
