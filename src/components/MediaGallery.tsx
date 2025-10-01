@@ -57,8 +57,8 @@ export default function MediaGallery({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-rose-100 py-12">
-      <div className="max-w-7xl mx-auto px-6">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-rose-100 py-12 ">
+      <div className="max-w-7xl mx-auto px-6 flex align-center justfy-center flex-col gap-8 text-center">
         {/* Header */}
         <div className="mb-10">
           <h1 className="text-5xl font-black bg-gradient-to-r from-rose-600 via-orange-500 to-rose-700 bg-clip-text text-transparent mb-2">
