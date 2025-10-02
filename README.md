@@ -13,7 +13,7 @@
 
 *Developed solo in 2 months by an 18-year-old CS student* 🎓
 
-[Live Demo](#) • [Report Bug](#) • [Request Feature](#)
+[Live Demo](https://goga.network/) 
 
 </div>
 
