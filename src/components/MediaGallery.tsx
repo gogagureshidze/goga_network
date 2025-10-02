@@ -1,7 +1,7 @@
 // components/MediaGallery.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react"; // ADDED useRef and useEffect
 import Image from "next/image";
 import { X, ChevronLeft, ChevronRight, Download } from "lucide-react";
 
@@ -21,6 +21,14 @@ export default function MediaGallery({
   userName,
 }: MediaGalleryProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const lightboxRef = useRef<HTMLDivElement>(null); // REF for focusing lightbox
+
+  // FOCUS the lightbox when it opens (Fixes keyboard navigation bug)
+  useEffect(() => {
+    if (selectedIndex !== null && lightboxRef.current) {
+      lightboxRef.current.focus();
+    }
+  }, [selectedIndex]);
 
   const openLightbox = (index: number) => {
     setSelectedIndex(index);
@@ -53,6 +61,46 @@ export default function MediaGallery({
         goPrev();
       }
       if (e.key === "Escape") closeLightbox();
+    }
+  };
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent default link behavior
+    e.stopPropagation(); // Stop click from closing lightbox
+
+    if (selectedIndex === null) return;
+
+    const mediaItem = allMedia[selectedIndex];
+    const url = mediaItem.url;
+
+    // Create a safe, descriptive filename
+    const urlParts = url.split("/");
+    const filenameWithParams = urlParts[urlParts.length - 1].split("?")[0];
+    const filename = `${userName}_${mediaItem.id}_${filenameWithParams}`;
+
+    try {
+      // Fetch the file as a blob (requires the media source to allow CORS)
+      const response = await fetch(url);
+      const blob = await response.blob();
+
+      // Create a temporary object URL for the blob
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      // Create and click a temporary <a> element to trigger download
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filename;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Clean up
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Download failed, falling back to direct link:", error);
+      // Fallback: If fetch fails, open the URL directly (browser might still download)
+      window.open(url, "_blank");
     }
   };
 
@@ -130,6 +178,7 @@ export default function MediaGallery({
             onClick={closeLightbox}
             onKeyDown={handleKeyDown}
             tabIndex={0}
+            ref={lightboxRef} // ATTACH REF HERE
           >
             {/* Close button */}
             <button
@@ -146,12 +195,12 @@ export default function MediaGallery({
               </span>
             </div>
 
-            {/* Download button */}
+            {/* Download button - MODIFIED to use handleDownload */}
             <a
               href={allMedia[selectedIndex].url}
+              onClick={handleDownload} // USE NEW JS FUNCTION
               download
               rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
               className="absolute top-4 right-20 z-50 text-white bg-white/10 hover:bg-white/20 rounded-full p-3 transition-all duration-300 hover:scale-110 backdrop-blur-sm"
             >
               <Download className="w-6 h-6" />
