@@ -1,5 +1,3 @@
-// src/app/layout.tsx
-
 import type { Metadata } from "next";
 import { Funnel_Display } from "next/font/google";
 import "./globals.css";
@@ -10,7 +8,6 @@ import prisma from "@/lib/client";
 import Providers from "./providers";
 import Footer from "@/components/Footer";
 import GlobalLoader from "@/components/GlobalLoader";
-import { SocketProvider } from "@/context/SocketContext";
 
 // Define the Funnel Display font with the variable property
 const funnel_display = Funnel_Display({

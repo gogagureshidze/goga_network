@@ -1,7 +1,6 @@
-// components/MediaGallery.tsx
 "use client";
 
-import { useState, useRef, useEffect } from "react"; // ADDED useRef and useEffect
+import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { X, ChevronLeft, ChevronRight, Download } from "lucide-react";
 
@@ -14,41 +13,34 @@ interface Media {
 interface MediaGalleryProps {
   allMedia: Media[];
   userName: string;
+  id: string;
+  currentUserId?: string | null;
 }
 
 export default function MediaGallery({
   allMedia = [],
   userName,
+  id,
+  currentUserId,
 }: MediaGalleryProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const lightboxRef = useRef<HTMLDivElement>(null); // REF for focusing lightbox
+  const lightboxRef = useRef<HTMLDivElement>(null);
 
-  // FOCUS the lightbox when it opens (Fixes keyboard navigation bug)
+  // Automatically focus lightbox when opened (keyboard navigation fix)
   useEffect(() => {
     if (selectedIndex !== null && lightboxRef.current) {
       lightboxRef.current.focus();
     }
   }, [selectedIndex]);
 
-  const openLightbox = (index: number) => {
-    setSelectedIndex(index);
-  };
-
-  const closeLightbox = () => {
-    setSelectedIndex(null);
-  };
-
-  const goNext = () => {
-    if (selectedIndex !== null && selectedIndex < allMedia.length - 1) {
-      setSelectedIndex(selectedIndex + 1);
-    }
-  };
-
-  const goPrev = () => {
-    if (selectedIndex !== null && selectedIndex > 0) {
-      setSelectedIndex(selectedIndex - 1);
-    }
-  };
+  const openLightbox = (index: number) => setSelectedIndex(index);
+  const closeLightbox = () => setSelectedIndex(null);
+  const goNext = () =>
+    setSelectedIndex((i) =>
+      i !== null && i < allMedia.length - 1 ? i + 1 : i
+    );
+  const goPrev = () =>
+    setSelectedIndex((i) => (i !== null && i > 0 ? i - 1 : i));
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (selectedIndex !== null) {
@@ -65,62 +57,69 @@ export default function MediaGallery({
   };
 
   const handleDownload = async (e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent default link behavior
-    e.stopPropagation(); // Stop click from closing lightbox
+    e.preventDefault();
+    e.stopPropagation();
 
     if (selectedIndex === null) return;
-
     const mediaItem = allMedia[selectedIndex];
     const url = mediaItem.url;
 
-    // Create a safe, descriptive filename
     const urlParts = url.split("/");
     const filenameWithParams = urlParts[urlParts.length - 1].split("?")[0];
     const filename = `${userName}_${mediaItem.id}_${filenameWithParams}`;
 
     try {
-      // Fetch the file as a blob (requires the media source to allow CORS)
       const response = await fetch(url);
       const blob = await response.blob();
-
-      // Create a temporary object URL for the blob
       const blobUrl = window.URL.createObjectURL(blob);
 
-      // Create and click a temporary <a> element to trigger download
       const link = document.createElement("a");
       link.href = blobUrl;
       link.download = filename;
-
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-
-      // Clean up
       window.URL.revokeObjectURL(blobUrl);
     } catch (error) {
-      console.error("Download failed, falling back to direct link:", error);
-      // Fallback: If fetch fails, open the URL directly (browser might still download)
+      console.error("Download failed, opening directly:", error);
       window.open(url, "_blank");
     }
   };
 
+  // Check if current user owns this gallery
+  const isOwnGallery = currentUserId === id;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-rose-100 py-12 ">
-      <div className="max-w-7xl mx-auto px-6 flex align-center justfy-center flex-col gap-8 text-center">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-rose-100 py-12">
+      <div className="max-w-7xl mx-auto px-6 flex flex-col gap-8 text-center">
         {/* Header */}
         <div className="mb-10">
           <h1 className="text-5xl font-black bg-gradient-to-r from-rose-600 via-orange-500 to-rose-700 bg-clip-text text-transparent mb-2">
-            Your Media Gallery
+            {isOwnGallery
+              ? "Your Media Gallery"
+              : `${userName}'s Media Gallery`}
           </h1>
+
           <p className="text-lg text-gray-700">
-            Welcome back,{" "}
-            <span className="font-bold text-orange-600">{userName}</span>!
+            {isOwnGallery ? (
+              <>
+                Welcome back,{" "}
+                <span className="font-bold text-orange-600">{userName}</span>!
+              </>
+            ) : (
+              <>
+                This is{" "}
+                <span className="font-bold text-orange-600">{userName}</span>
+                {"'s"} library of photos and videos.
+              </>
+            )}
             <span className="text-gray-600 ml-2">
               ({allMedia.length} items)
             </span>
           </p>
         </div>
 
+        {/* No Media */}
         {allMedia.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-24 h-24 bg-gradient-to-br from-orange-400 to-rose-500 rounded-full flex items-center justify-center mb-6">
@@ -129,11 +128,14 @@ export default function MediaGallery({
             <p className="text-xl text-gray-600 font-medium">
               No media found yet
             </p>
-            <p className="text-sm text-gray-500 mt-2">
-              Start sharing photos and videos!
-            </p>
+            {isOwnGallery && (
+              <p className="text-sm text-gray-500 mt-2">
+                Start sharing photos and videos!
+              </p>
+            )}
           </div>
         ) : (
+          // Media grid
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {allMedia.map((file, index) => (
               <div
@@ -178,7 +180,7 @@ export default function MediaGallery({
             onClick={closeLightbox}
             onKeyDown={handleKeyDown}
             tabIndex={0}
-            ref={lightboxRef} // ATTACH REF HERE
+            ref={lightboxRef}
           >
             {/* Close button */}
             <button
@@ -195,10 +197,10 @@ export default function MediaGallery({
               </span>
             </div>
 
-            {/* Download button - MODIFIED to use handleDownload */}
+            {/* Download */}
             <a
               href={allMedia[selectedIndex].url}
-              onClick={handleDownload} // USE NEW JS FUNCTION
+              onClick={handleDownload}
               download
               rel="noopener noreferrer"
               className="absolute top-4 right-20 z-50 text-white bg-white/10 hover:bg-white/20 rounded-full p-3 transition-all duration-300 hover:scale-110 backdrop-blur-sm"
@@ -206,7 +208,7 @@ export default function MediaGallery({
               <Download className="w-6 h-6" />
             </a>
 
-            {/* Previous button */}
+            {/* Prev / Next */}
             {selectedIndex > 0 && (
               <button
                 onClick={(e) => {
@@ -219,7 +221,6 @@ export default function MediaGallery({
               </button>
             )}
 
-            {/* Next button */}
             {selectedIndex < allMedia.length - 1 && (
               <button
                 onClick={(e) => {
@@ -232,7 +233,7 @@ export default function MediaGallery({
               </button>
             )}
 
-            {/* Media content */}
+            {/* Media */}
             <div
               className="relative max-w-[90vw] max-h-[90vh]"
               onClick={(e) => e.stopPropagation()}

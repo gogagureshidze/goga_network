@@ -3,18 +3,21 @@ import ProfileCard from "./ProfileCard";
 import Link from "next/link";
 import Image from "next/image";
 import Ad from "./Ad";
+import { currentUser } from "@clerk/nextjs/server";
 
-function LeftMenu({ type }: { type: "home" | "profile" }) {
+async function LeftMenu({ type }: { type: "home" | "profile" }) {
+  const user = await currentUser();
+  const userId = user?.id;
   return (
     <div className="flex flex-col gap-6">
       {type === "home" && <ProfileCard />}
       <div className="p-4 bg-white text-sm rounded-lg shadow-md text-gray-500 flex flex-col gap-2">
         <Link
-          href="/"
+          href={`media/${userId}`}
           className="flex items-center gap-4 p-2 rounded-lg hover:bg-slate-100"
         >
           <Image src="/posts.png" alt="" height={20} width={20}></Image>
-          <span className="">My Posts</span>
+          <span className="">My Media</span>
         </Link>
         <hr className="border-t-1 border-gray-50 w-36 self-center" />
         <Link
