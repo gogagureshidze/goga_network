@@ -6,13 +6,14 @@ import RightMenu from "@/components/RightMenu";
 import Stories from "@/components/Stories";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import Greet from "@/components/Greet";
+import WeatherToggleWrapper from "@/components/WeatherToggleWrapper"; // ✅ new import
 
 const Homepage = async () => {
   const user = await currentUser();
   if (!user) {
     redirect("/sign-in");
   }
+
   return (
     <div className="flex gap-6 pt-6 px-4 md:px-6">
       {/* Left Menu - Fixed width on XL screens */}
@@ -28,9 +29,12 @@ const Homepage = async () => {
           <div className="block lg:hidden">
             <OnlineUsers />
           </div>
-          <div>
-            <Greet userName={(user?.firstName || user?.username) ?? undefined} />
-          </div>
+
+          {/* ✅ Weather / Greet section */}
+          <WeatherToggleWrapper
+            userName={(user?.firstName || user?.username) ?? undefined}
+          />
+
           <Feed />
         </div>
       </div>
