@@ -4,11 +4,11 @@ import MediaGallery from "@/components/MediaGallery";
 import { notFound } from "next/navigation";
 
 interface SeeAllMediaProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function SeeAllMedia({ params }: SeeAllMediaProps) {
-  const { id } = params;
+  const { id } = await params;
   if (!id) return null;
   const authUser = await currentUser();
   const currentUserId = authUser?.id ?? null;
