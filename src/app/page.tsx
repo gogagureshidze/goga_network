@@ -29,7 +29,7 @@ const Homepage = async () => {
             <OnlineUsers />
           </div>
           <div>
-            <Greet userName={user?.firstName ?? undefined} />
+            <Greet userName={(user?.firstName || user?.username) ?? undefined} />
           </div>
           <Feed />
         </div>

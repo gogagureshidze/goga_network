@@ -23,6 +23,8 @@ import {
   useUser,
 } from "@clerk/nextjs";
 import MobileMenu from "./MobileMenu";
+import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 
 // Define the type for a user object
 type User = {
@@ -60,6 +62,15 @@ function Navbar({ users }: { users: User[] }) {
     user?.updatedAt,
     isLoaded,
   ]);
+const { isSignedIn } = useAuth();
+const router = useRouter();
+
+useEffect(() => {
+  // When the user signs out, redirect them automatically
+  if (isLoaded && !isSignedIn) {
+    router.push("/sign-up"); // or "/sign-in" if you prefer
+  }
+}, [isSignedIn, isLoaded, router]);
 
   // Debounced search filtering to improve performance
   const filteredUsers = useMemo(() => {
