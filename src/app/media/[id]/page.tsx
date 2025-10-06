@@ -9,6 +9,7 @@ interface SeeAllMediaProps {
 
 export default async function SeeAllMedia({ params }: SeeAllMediaProps) {
   const { id } = params;
+  if (!id) return null;
   const authUser = await currentUser();
   const currentUserId = authUser?.id ?? null;
 

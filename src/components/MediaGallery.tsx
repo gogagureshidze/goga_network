@@ -24,14 +24,36 @@ export default function MediaGallery({
   currentUserId,
 }: MediaGalleryProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [loadingImages, setLoadingImages] = useState<Set<number>>(
+    new Set(allMedia.filter((m) => m.type === "photo").map((m) => m.id))
+  );
+  const [loadingVideos, setLoadingVideos] = useState<Set<number>>(
+    new Set(allMedia.filter((m) => m.type === "video").map((m) => m.id))
+  );
+
   const lightboxRef = useRef<HTMLDivElement>(null);
 
-  // Automatically focus lightbox when opened (keyboard navigation fix)
   useEffect(() => {
     if (selectedIndex !== null && lightboxRef.current) {
       lightboxRef.current.focus();
     }
   }, [selectedIndex]);
+
+  const handleImageLoad = (id: number) => {
+    setLoadingImages((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(id);
+      return newSet;
+    });
+  };
+
+  const handleVideoLoad = (id: number) => {
+    setLoadingVideos((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(id);
+      return newSet;
+    });
+  };
 
   const openLightbox = (index: number) => setSelectedIndex(index);
   const closeLightbox = () => setSelectedIndex(null);
@@ -44,14 +66,8 @@ export default function MediaGallery({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (selectedIndex !== null) {
-      if (e.key === "ArrowRight") {
-        e.preventDefault();
-        goNext();
-      }
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        goPrev();
-      }
+      if (e.key === "ArrowRight") goNext();
+      if (e.key === "ArrowLeft") goPrev();
       if (e.key === "Escape") closeLightbox();
     }
   };
@@ -86,7 +102,6 @@ export default function MediaGallery({
     }
   };
 
-  // Check if current user owns this gallery
   const isOwnGallery = currentUserId === id;
 
   return (
@@ -119,7 +134,7 @@ export default function MediaGallery({
           </p>
         </div>
 
-        {/* No Media */}
+        {/* Empty gallery */}
         {allMedia.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-24 h-24 bg-gradient-to-br from-orange-400 to-rose-500 rounded-full flex items-center justify-center mb-6">
@@ -145,19 +160,30 @@ export default function MediaGallery({
               >
                 {file.type === "photo" ? (
                   <div className="relative w-full aspect-square">
+                    {loadingImages.has(file.id) && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-100 to-rose-100 z-10">
+                        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
                     <Image
                       src={file.url}
                       alt="media"
                       fill
-                      className="object-cover"
+                      className="object-cover transition-opacity duration-300"
+                      onLoad={() => handleImageLoad(file.id)}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   </div>
                 ) : (
                   <div className="relative w-full aspect-square">
+                    {loadingVideos.has(file.id) && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-100 to-rose-100 z-10">
+                        <div className="w-8 h-8 border-4 border-rose-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
                     <video
                       key={file.url}
                       src={file.url}
+                      onLoadedData={() => handleVideoLoad(file.id)}
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -165,7 +191,6 @@ export default function MediaGallery({
                         <span className="text-2xl">▶️</span>
                       </div>
                     </div>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   </div>
                 )}
               </div>
@@ -182,7 +207,7 @@ export default function MediaGallery({
             tabIndex={0}
             ref={lightboxRef}
           >
-            {/* Close button */}
+            {/* Close */}
             <button
               onClick={closeLightbox}
               className="absolute top-4 right-4 z-50 text-white bg-white/10 hover:bg-white/20 rounded-full p-3 transition-all duration-300 hover:scale-110 backdrop-blur-sm"
@@ -220,7 +245,6 @@ export default function MediaGallery({
                 <ChevronLeft className="w-8 h-8" />
               </button>
             )}
-
             {selectedIndex < allMedia.length - 1 && (
               <button
                 onClick={(e) => {
@@ -233,24 +257,35 @@ export default function MediaGallery({
               </button>
             )}
 
-            {/* Media */}
+            {/* Main Media */}
             <div
               className="relative max-w-[90vw] max-h-[90vh]"
               onClick={(e) => e.stopPropagation()}
             >
               {allMedia[selectedIndex].type === "photo" ? (
-                <Image
-                  src={allMedia[selectedIndex].url}
-                  alt="media"
-                  width={1200}
-                  height={1200}
-                  className="max-w-full max-h-[90vh] object-contain rounded-lg"
-                />
+                <div className="relative">
+                  {loadingImages.has(allMedia[selectedIndex].id) && (
+                    <div className="absolute inset-0 flex items-center justify-center z-10">
+                      <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+                  <Image
+                    src={allMedia[selectedIndex].url}
+                    alt="media"
+                    width={1200}
+                    height={1200}
+                    className="max-w-full max-h-[90vh] object-contain rounded-lg"
+                    onLoad={() => handleImageLoad(allMedia[selectedIndex].id)}
+                  />
+                </div>
               ) : (
                 <video
                   src={allMedia[selectedIndex].url}
                   controls
                   autoPlay
+                  onLoadedData={() =>
+                    handleVideoLoad(allMedia[selectedIndex].id)
+                  }
                   className="max-w-full max-h-[90vh] object-contain rounded-lg"
                 />
               )}

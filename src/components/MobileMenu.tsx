@@ -23,6 +23,8 @@ function MobileMenu() {
   if (!isLoaded) return null; // Wait until user is loaded
 
   const username = user?.username || "unknown";
+  const userId = user?.id || "unknown";
+  if (!isSignedIn) return null; // Don't show menu if not signed in
 
   return (
     <div className="md:hidden">
@@ -100,6 +102,16 @@ function MobileMenu() {
             style={{ transitionDelay: `300ms` }}
           >
             Requests
+          </Link>
+          <Link
+            href={`media/${userId}`}
+            onClick={() => setIsOpen(false)}
+            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+              isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
+            } hover:-translate-y-[1px]`}
+            style={{ transitionDelay: `300ms` }}
+          >
+            Media
           </Link>
           <Link
             href="/chat"
