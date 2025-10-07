@@ -36,10 +36,10 @@ export async function likeComment(commentId: number) {
         },
       });
     }
-          revalidateTag("feed-posts");
-                revalidateTag("profile-posts");
-    
-    revalidatePath('/')
+    revalidateTag("feed-posts");
+    revalidateTag("profile-posts");
+
+    revalidatePath("/");
   } catch (error) {
     console.error("Error liking comment:", error);
     throw error;

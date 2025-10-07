@@ -6,7 +6,7 @@ import RightMenu from "@/components/RightMenu";
 import Stories from "@/components/Stories";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import WeatherToggleWrapper from "@/components/WeatherToggleWrapper"; // ✅ new import
+import WeatherToggleWrapper from "@/components/WeatherToggleWrapper"; 
 
 const Homepage = async () => {
   const user = await currentUser();

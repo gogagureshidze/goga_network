@@ -8,7 +8,7 @@ export default function WeatherToggleWrapper({
 }: {
   userName?: string;
 }) {
-  const [showWeather, setShowWeather] = useState<boolean | null>(null); // null = not loaded yet
+  const [showWeather, setShowWeather] = useState<boolean | null>(null);
 
   // Load preference from localStorage on mount
   useEffect(() => {
