@@ -104,7 +104,7 @@ function MobileMenu() {
             Requests
           </Link>
           <Link
-            href={`media/${userId}`}
+            href={`/media/${userId}`}
             onClick={() => setIsOpen(false)}
             className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
               isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
