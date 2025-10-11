@@ -206,7 +206,7 @@ export default function WeatherGreeting({
     // Set initial greeting
     const greetingOptions =
       greetings[tod as keyof typeof greetings] || greetings.afternoon;
-    setCurrentGreeting(greetingOptions[0]);
+    setCurrentGreeting(greetingOptions[0])
 
     // Start greeting rotation
     let greetingIndex = 0;

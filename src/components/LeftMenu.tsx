@@ -13,7 +13,7 @@ async function LeftMenu({ type }: { type: "home" | "profile" }) {
       {type === "home" && <ProfileCard />}
       <div className="p-4 bg-white text-sm rounded-lg shadow-md text-gray-500 flex flex-col gap-2">
         <Link
-          href={`media/${userId}`}
+          href={`/media/${userId}`}
           className="flex items-center gap-4 p-2 rounded-lg hover:bg-slate-100"
         >
           <Image src="/posts.png" alt="" height={20} width={20}></Image>

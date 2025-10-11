@@ -411,23 +411,43 @@ function CommentList({
     }
   );
 
-  // FIXED: Lightning fast like handler - NO transitions, pure optimistic
+  // Replace your handleLike function with this fixed version:
   const handleLike = useCallback(
     (commentId: number) => {
-      if (!user || isPending) return;
+      if (!user) return;
 
-      // Fire the optimistic update IMMEDIATELY
-      addOptimisticComment({
-        type: "like",
-        likedComment: { commentId, userId: user.id },
+      // Get current like state for this comment
+      const findComment = (
+        comments: CommentWithUser[],
+        id: number
+      ): CommentWithUser | null => {
+        for (const comment of comments) {
+          if (comment.id === id) return comment;
+          if (comment.replies) {
+            const found = findComment(comment.replies, id);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const currentComment = findComment(optimisticComments, commentId);
+      const isCurrentlyLiked =
+        currentComment?.likes.some((like) => like.userId === user.id) || false;
+
+      // Wrap optimistic update in startTransition to fix the error
+      startTransition(() => {
+        addOptimisticComment({
+          type: "like",
+          likedComment: { commentId, userId: user.id },
+        });
       });
 
-      // Background server update - don't await, don't care about response
-      likeComment(commentId).catch(console.error);
+      // Send the FINAL state to server (debounced on server side)
+      likeComment(commentId, !isCurrentlyLiked).catch(console.error);
     },
-    [user, addOptimisticComment, isPending]
+    [user, addOptimisticComment, optimisticComments, startTransition]
   );
-
   const handleDeleteComment = useCallback(
     (commentId: number) => {
       startTransition(() => {

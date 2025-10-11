@@ -78,7 +78,7 @@ function UpdateUser({ user }: { user: User }) {
   };
 
   return (
-    <div className="z-100">
+    <div className="z-[9999]">
       <span
         className="text-orange-400 text-sm cursor-pointer"
         onClick={() => setOpen(true)}
@@ -87,7 +87,7 @@ function UpdateUser({ user }: { user: User }) {
       </span>
 
       {open && (
-        <div className="fixed w-screen h-screen top-0 left-0 bg-black/50 z-100 flex items-center justify-center">
+        <div className="fixed w-screen h-screen top-0 left-0 bg-black/50 z-[9999] flex items-center justify-center">
           <form
             className="p-8 relative bg-white rounded-lg shadow-md flex flex-col gap-6 w-full md:w-2/3 xl:w-1/2 max-h-[90vh] overflow-y-auto"
             onSubmit={async (e) => {

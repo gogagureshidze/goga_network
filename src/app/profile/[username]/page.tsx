@@ -9,6 +9,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
+import { Suspense } from "react";
 
 // Super aggressive caching for user data
 const getCachedUser = unstable_cache(
@@ -263,19 +264,45 @@ async function ProfilePage({ params }: { params: any }) {
           {/* Mobile sections - non-critical */}
           {!isOwner && (
             <div className="px-4 lg:hidden">
-              <UserInfoCardInteraction
-                formatedDate={formatedDate}
-                isUserBlocked={relationships.isBlockedByViewer}
-                isFollowing={relationships.isFollowing}
-                isFollowingSent={relationships.isFollowingSent}
-                userId={user.id}
-                currentUserId={loggedInUserId}
-                isBlockedByViewer={relationships.isBlockedByViewer}
-              />
+              <Suspense fallback="Loading...">
+                <UserInfoCardInteraction
+                  formatedDate={formatedDate}
+                  isUserBlocked={relationships.isBlockedByViewer}
+                  isFollowing={relationships.isFollowing}
+                  isFollowingSent={relationships.isFollowingSent}
+                  userId={user.id}
+                  currentUserId={loggedInUserId}
+                  isBlockedByViewer={relationships.isBlockedByViewer}
+                />
+              </Suspense>
             </div>
           )}
 
           <div className="px-4 lg:hidden">
+            <Suspense fallback="Loading...">
+              <UserInfoCard
+                user={user}
+                username={user.username!}
+                isOwner={isOwner}
+                isFollowing={relationships.isFollowing}
+                isFollowingSent={relationships.isFollowingSent}
+                isBlockedByViewer={relationships.isBlockedByViewer}
+                hideInteraction
+              />
+            </Suspense>
+          </div>
+
+          {/* Feed - render immediately */}
+          <Suspense fallback="Loading...">
+            <Feed username={user.username ?? undefined} userId={user.id} />
+          </Suspense>
+        </div>
+      </div>
+
+      {/* Right sidebar - non-critical */}
+      <div className="hidden lg:block w-[30%]">
+        <RightMenu>
+          <Suspense fallback="Loading...">
             <UserInfoCard
               user={user}
               username={user.username!}
@@ -283,27 +310,12 @@ async function ProfilePage({ params }: { params: any }) {
               isFollowing={relationships.isFollowing}
               isFollowingSent={relationships.isFollowingSent}
               isBlockedByViewer={relationships.isBlockedByViewer}
-              hideInteraction
             />
-          </div>
+          </Suspense>
+          <Suspense fallback="Loading...">
 
-          {/* Feed - render immediately */}
-          <Feed username={user.username ?? undefined} userId={user.id} />
-        </div>
-      </div>
-
-      {/* Right sidebar - non-critical */}
-      <div className="hidden lg:block w-[30%]">
-        <RightMenu>
-          <UserInfoCard
-            user={user}
-            username={user.username!}
-            isOwner={isOwner}
-            isFollowing={relationships.isFollowing}
-            isFollowingSent={relationships.isFollowingSent}
-            isBlockedByViewer={relationships.isBlockedByViewer}
-          />
           <UserMediaCard user={user} username={user.username!} />
+          </Suspense>
         </RightMenu>
       </div>
     </div>
