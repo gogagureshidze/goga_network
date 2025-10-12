@@ -15,11 +15,27 @@ function PostInfo({
 }) {
   const [open, setOpen] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  
   const { userId } = useAuth();
 
-  const deletePostAction = deletePost.bind(null, postId);
+  const handleDelete = async () => {
+    if (deleteLoading) return; // Prevent double-click
 
-  // ✅ Show menu to everyone now
+    setDeleteLoading(true);
+
+    try {
+      await deletePost(postId); // call the function!
+    } catch (error) {
+      console.error("Failed to delete post:", error);
+      alert("Failed to delete post. Please try again.");
+    } finally {
+      setDeleteLoading(false);
+      setOpen(false); // Close menu 
+    }
+  };
+
+  //  Show menu to everyone now
   const isOwner = userId === postOwnerId;
 
   return (
@@ -46,11 +62,14 @@ function PostInfo({
             {isOwner && (
               <>
                 <div className="border-t border-gray-200"></div>
-                <form action={deletePostAction}>
-                  <button className="flex items-center gap-2 px-4 py-2 w-full text-left text-red-500 hover:bg-red-50 transition-colors duration-200">
-                    <Trash2 size={16} /> Delete
-                  </button>
-                </form>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleteLoading}
+                  className="flex items-center gap-2 px-4 py-2 w-full text-left text-red-500 hover:bg-red-50 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Trash2 size={16} />{" "}
+                  {deleteLoading ? "Deleting..." : "Delete"}
+                </button>
               </>
             )}
           </div>

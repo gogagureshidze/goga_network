@@ -28,7 +28,7 @@ const PostInteractions = ({
   const [currentLikes, setCurrentLikes] = useState<string[]>(normalizedLikes);
   const [isAnimating, setIsAnimating] = useState(false);
   const [pendingLike, setPendingLike] = useState<boolean | null>(null);
-
+  const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
   // Animation states
   const [showSparkles, setShowSparkles] = useState(false);
   const [countAnimation, setCountAnimation] = useState(false);
@@ -323,8 +323,8 @@ const PostInteractions = ({
           </div>
 
           {/* Comments */}
-          <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl hover:bg-slate-200 transition-colors">
-            <MessageSquareText className="text-blue-500" size={18} />
+          <div className="flex items-center cursor-pointer gap-2 bg-slate-100 px-3 py-1.5 rounded-xl hover:bg-slate-200 transition-colors">
+            <MessageSquareText onClick={() => {setIsCommentModalOpen(!isCommentModalOpen)}} className="text-blue-500" size={18} />
             <span className="text-gray-700 font-medium">
               {commentNumber}
               <span className="hidden sm:inline ml-1 font-normal text-xs">
