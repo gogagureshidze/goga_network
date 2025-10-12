@@ -1,9 +1,10 @@
 "use client";
 
 import { deletePost } from "@/actions/deletePost";
-import { EllipsisVertical, Trash2 } from "lucide-react";
+import { EllipsisVertical, Trash2, Heart } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import PostActivityModal from "./PostActivityModal";
 
 function PostInfo({
   postId,
@@ -13,29 +14,57 @@ function PostInfo({
   postOwnerId: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [showActivityModal, setShowActivityModal] = useState(false);
   const { userId } = useAuth();
 
   const deletePostAction = deletePost.bind(null, postId);
 
-  // ✅ Only show menu if logged-in user is owner
-  if (userId !== postOwnerId) return null;
+  // ✅ Show menu to everyone now
+  const isOwner = userId === postOwnerId;
 
   return (
-    <div className="relative">
-      <button onClick={() => setOpen((prev) => !prev)}>
-        <EllipsisVertical className="text-gray-500 cursor-pointer w-5 h-5" />
-      </button>
+    <>
+      <div className="relative">
+        <button onClick={() => setOpen((prev) => !prev)}>
+          <EllipsisVertical className="text-gray-500 cursor-pointer w-5 h-5" />
+        </button>
 
-      {open && (
-        <div className="absolute top-6 right-0 bg-white rounded-lg shadow-lg z-30 min-w-[140px]">
-          <form action={deletePostAction}>
-            <button className="flex items-center gap-2 px-4 py-2 w-full text-left text-red-500 hover:bg-red-50 transition-colors duration-200">
-              <Trash2 size={16} /> Delete
+        {open && (
+          <div className="absolute top-6 right-0 bg-white rounded-lg shadow-lg z-30 min-w-[160px] border border-gray-200">
+            {/* Activity option - shown to everyone */}
+            <button
+              onClick={() => {
+                setShowActivityModal(true);
+                setOpen(false);
+              }}
+              className="flex items-center gap-2 px-4 py-2 w-full text-left text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+            >
+              <Heart size={16} /> Activity
             </button>
-          </form>
-        </div>
+
+            {/* Delete option - only shown to owner */}
+            {isOwner && (
+              <>
+                <div className="border-t border-gray-200"></div>
+                <form action={deletePostAction}>
+                  <button className="flex items-center gap-2 px-4 py-2 w-full text-left text-red-500 hover:bg-red-50 transition-colors duration-200">
+                    <Trash2 size={16} /> Delete
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Activity Modal */}
+      {showActivityModal && (
+        <PostActivityModal
+          postId={postId}
+          onClose={() => setShowActivityModal(false)}
+        />
       )}
-    </div>
+    </>
   );
 }
 

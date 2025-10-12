@@ -100,7 +100,7 @@ function AddPost() {
         if (prev >= 90) return prev; // Stop at 90%, complete on success
         return prev + Math.random() * 10;
       });
-    }, 800);
+    }, 1000);
 
     try {
       const result = await generateDescription(media);
@@ -296,11 +296,11 @@ function AddPost() {
                       />
                       <div
                         className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
-                        style={{ animationDelay: "150ms" }}
+                        style={{ animationDelay: "200ms" }}
                       />
                       <div
                         className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
-                        style={{ animationDelay: "300ms" }}
+                        style={{ animationDelay: "350ms" }}
                       />
                     </div>
                     <span>{Math.round(progress)}%</span>

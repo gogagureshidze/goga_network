@@ -5,11 +5,49 @@ import PostInfo from "./PostInfo";
 import Comments from "./Comments";
 import PostInteractions from "./PostInteractions";
 import EventCard from "./EventCard";
-import PollCard from "./PollCard"; // ✅ Import the new PollCard
+import PollCard from "./PollCard";
+
+// Helper function to format time
+function formatTimeAgo(date: Date | string) {
+  const d = new Date(date);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - d.getTime()) / 1000);
+
+  if (diffInSeconds < 60) {
+    return "Just now";
+  }
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes}m ago`;
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return `${diffInHours}h ago`;
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) {
+    return `${diffInDays}d ago`;
+  }
+
+  const diffInWeeks = Math.floor(diffInDays / 7);
+  if (diffInWeeks < 4) {
+    return `${diffInWeeks}w ago`;
+  }
+
+  // For older posts, show the actual date
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
+}
 
 export default function Post({ post }: { post: any }) {
   const isEventPost = !!post.event;
-  const isPollPost = !!post.poll; // ✅ Check for poll
+  const isPollPost = !!post.poll;
 
   return (
     <div className="flex flex-col gap-4 p-4 bg-white rounded-xl shadow-sm">
@@ -24,9 +62,14 @@ export default function Post({ post }: { post: any }) {
               height={40}
               className="w-10 h-10 object-cover cursor-pointer rounded-full ring-orange-200 ring-2"
             />
-            <span className="font-medium cursor-pointer">
-              {post.user?.username}
-            </span>
+            <div className="flex flex-col">
+              <span className="font-medium cursor-pointer">
+                {post.user?.username}
+              </span>
+              <span className="text-xs text-gray-500">
+                {formatTimeAgo(post.createdAt)}
+              </span>
+            </div>
           </div>
         </Link>
         <PostInfo postId={post.id} postOwnerId={post.userId} />
@@ -41,7 +84,7 @@ export default function Post({ post }: { post: any }) {
 
       {/* Content - Event, Poll, or Media */}
       {isPollPost ? (
-        <PollCard poll={post.poll} /> // ✅ Show poll
+        <PollCard poll={post.poll} />
       ) : isEventPost ? (
         <EventCard event={post.event} />
       ) : (

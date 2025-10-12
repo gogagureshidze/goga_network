@@ -80,7 +80,6 @@ Write the caption NOW:`,
             },
           });
         } else if (item.resource_type === "video") {
-          // For videos, we can only describe the thumbnail or first frame
           // Gemini doesn't support video in this model yet
           parts.push({
             text: `[Video content included - unable to analyze video frames]`,
@@ -130,7 +129,7 @@ Write the caption NOW:`,
 }
 
 /**
- * Fetch media from URL and convert to base64
+ convert to base64
  */
 async function fetchMediaAsBase64(url: string): Promise<string> {
   try {
@@ -174,6 +173,5 @@ function getMimeType(url: string, format?: string): string {
     gif: "image/gif",
     webp: "image/webp",
   };
-
   return extensionMap[extension || ""] || "image/jpeg";
 }

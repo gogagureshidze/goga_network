@@ -298,17 +298,17 @@ async function ProfilePage({ params }: { params: any }) {
               <div className="flex items-center justify-center p-8">
                 <div className="flex flex-col items-center gap-3">
                   <div className="relative w-12 h-12">
-                    <div className="absolute inset-0 border-4 border-purple-200 rounded-full"></div>
-                    <div className="absolute inset-0 border-4 border-transparent border-t-purple-500 rounded-full animate-spin"></div>
+                    <div className="absolute inset-0 border-4 border-orange-400 rounded-full"></div>
+                    <div className="absolute inset-0 border-4 border-transparent border-t-orange-500 rounded-full animate-spin"></div>
                   </div>
                   <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"></div>
                     <div
-                      className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
+                      className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"
                       style={{ animationDelay: "0.1s" }}
                     ></div>
                     <div
-                      className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
+                      className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"
                       style={{ animationDelay: "0.2s" }}
                     ></div>
                   </div>

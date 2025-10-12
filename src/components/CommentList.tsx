@@ -10,6 +10,7 @@ import {
   useCallback,
   memo,
 } from "react";
+import CommentActivityModal from "./CommentActivityModal";
 import { addComment } from "../actions/createComment";
 import { addReplyComment } from "../actions/addReplyComment";
 import { likeComment } from "../actions/likeComment";
@@ -35,6 +36,26 @@ type CommentWithUser = {
   };
   parentId?: number | null;
   replies?: CommentWithUser[];
+};
+
+// Helper function to format time - MOVED BEFORE ANY COMPONENT
+const formatTimeAgo = (date: Date | string) => {
+  const d = new Date(date);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - d.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return "Just now";
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) return `${diffInMinutes}m`;
+
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) return `${diffInHours}h`;
+
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) return `${diffInDays}d`;
+
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
 // Helper function to build a nested comment tree from a flat list
@@ -104,6 +125,7 @@ const CommentItem = memo(function CommentItem({
   const [showAllReplies, setShowAllReplies] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [isReplying, setIsReplying] = useState(false);
+  const [showActivityModal, setShowActivityModal] = useState(false); // MOVED INSIDE COMPONENT
   const isCommentOwner = user?.id === comment.userId;
 
   const repliesToDisplay = showAllReplies
@@ -124,9 +146,14 @@ const CommentItem = memo(function CommentItem({
           />
         </Link>
         <div className="bg-slate-100 rounded-xl px-3 py-2 text-sm flex-1">
-          <Link href={`/profile/${comment.user.username}`}>
-            <span className="font-semibold">{comment.user.username}</span>{" "}
-          </Link>
+          <div className="flex items-center gap-2 mb-1">
+            <Link href={`/profile/${comment.user.username}`}>
+              <span className="font-semibold">{comment.user.username}</span>
+            </Link>
+            <span className="text-xs text-gray-500">
+              {formatTimeAgo(comment.createdAt)}
+            </span>
+          </div>
           {comment.desc}
           <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
             <button
@@ -161,31 +188,66 @@ const CommentItem = memo(function CommentItem({
           </div>
         </div>
 
-        {isCommentOwner && (
-          <div className="relative">
-            <button onClick={() => setShowMenu(!showMenu)} className="p-1">
-              <MoreVertical
-                size={16}
-                className="text-gray-500 hover:text-gray-700"
-              />
-            </button>
-            {showMenu && (
-              <div className="absolute right-0 top-6 w-24 bg-white rounded-md shadow-lg py-1 z-10">
-                <button
-                  onClick={() => {
-                    handleDeleteComment(comment.id);
-                    setShowMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100"
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        {/* 3-DOT MENU - SHOWN TO EVERYONE */}
+        <div className="relative">
+          <button onClick={() => setShowMenu(!showMenu)} className="p-1">
+            <MoreVertical
+              size={16}
+              className="text-gray-500 hover:text-gray-700"
+            />
+          </button>
+          {showMenu && (
+            <div className="absolute right-0 top-6 w-32 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200">
+              {/* Activity - shown to everyone */}
+              <button
+                onClick={() => {
+                  setShowActivityModal(true);
+                  setShowMenu(false);
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+              >
+                <Heart size={14} /> Activity
+              </button>
+
+              {/* Delete - only shown to comment owner */}
+              {isCommentOwner && (
+                <>
+                  <div className="border-t border-gray-200"></div>
+                  <button
+                    onClick={() => {
+                      handleDeleteComment(comment.id);
+                      setShowMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                    Delete
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Activity Modal */}
+      {showActivityModal && (
+        <CommentActivityModal
+          commentId={comment.id}
+          onClose={() => setShowActivityModal(false)}
+        />
+      )}
+
+      {/* Rest of your existing code for reply form and nested replies */}
       {isReplyingToThisComment && user && (
         <div className="flex flex-col gap-2 mt-2 ml-10 border-l-2 border-gray-300 pl-4">
           <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -411,12 +473,10 @@ function CommentList({
     }
   );
 
-  // Replace your handleLike function with this fixed version:
   const handleLike = useCallback(
     (commentId: number) => {
       if (!user) return;
 
-      // Get current like state for this comment
       const findComment = (
         comments: CommentWithUser[],
         id: number
@@ -435,7 +495,6 @@ function CommentList({
       const isCurrentlyLiked =
         currentComment?.likes.some((like) => like.userId === user.id) || false;
 
-      // Wrap optimistic update in startTransition to fix the error
       startTransition(() => {
         addOptimisticComment({
           type: "like",
@@ -443,11 +502,11 @@ function CommentList({
         });
       });
 
-      // Send the FINAL state to server (debounced on server side)
       likeComment(commentId, !isCurrentlyLiked).catch(console.error);
     },
     [user, addOptimisticComment, optimisticComments, startTransition]
   );
+
   const handleDeleteComment = useCallback(
     (commentId: number) => {
       startTransition(() => {
