@@ -109,6 +109,7 @@ const CommentItem = memo(function CommentItem({
   addOptimisticComment,
   startTransition,
   handleDeleteComment,
+  depth = 0,
 }: {
   comment: CommentWithUser;
   user: any;
@@ -119,6 +120,7 @@ const CommentItem = memo(function CommentItem({
   addOptimisticComment: (action: any) => void;
   startTransition: (callback: () => void) => void;
   handleDeleteComment: (commentId: number) => void;
+  depth?: number;
 }) {
   const hasLiked = comment.likes.some((like) => like.userId === user?.id);
   const isReplyingToThisComment = replyingTo === comment.id;
@@ -133,29 +135,33 @@ const CommentItem = memo(function CommentItem({
     : comment.replies?.slice(0, 3);
   const hasMoreReplies = (comment.replies?.length || 0) > 3;
 
+  // Keep only 3 levels of indentation to prevent mobile overflow
+  const maxDepth = 3;
+  const shouldIndent = depth < maxDepth;
+
   return (
     <>
-      <div className="flex items-start gap-3 relative">
-        <Link href={`/profile/${comment.user.username}`}>
+      <div className="flex items-start gap-2 sm:gap-3 relative">
+        <Link href={`/profile/${comment.user.username}`} className="flex-shrink-0">
           <Image
             src={comment.user.avatar || "/noAvatar.png"}
             alt={comment.user.username || "User"}
             width={28}
             height={28}
-            className="rounded-full w-7 h-7"
+            className="rounded-full w-6 h-6 sm:w-7 sm:h-7"
           />
         </Link>
-        <div className="bg-slate-100 rounded-xl px-3 py-2 text-sm flex-1">
-          <div className="flex items-center gap-2 mb-1">
+        <div className="bg-slate-100 rounded-xl px-2 sm:px-3 py-2 text-sm flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <Link href={`/profile/${comment.user.username}`}>
-              <span className="font-semibold">{comment.user.username}</span>
+              <span className="font-semibold text-xs sm:text-sm">{comment.user.username}</span>
             </Link>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-gray-500 flex-shrink-0">
               {formatTimeAgo(comment.createdAt)}
             </span>
           </div>
-          {comment.desc}
-          <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+          <p className="text-xs sm:text-sm break-words">{comment.desc}</p>
+          <div className="flex items-center gap-3 sm:gap-4 mt-1 text-xs text-gray-500">
             <button
               onClick={() => handleLike(comment.id)}
               className="flex items-center gap-1 transition-colors"
@@ -167,7 +173,7 @@ const CommentItem = memo(function CommentItem({
                     ? "text-red-500 fill-red-500 scale-110"
                     : "text-gray-400 hover:text-red-400 hover:scale-105"
                 }`}
-                size={14}
+                size={12}
               />
               <span
                 className={
@@ -189,7 +195,7 @@ const CommentItem = memo(function CommentItem({
         </div>
 
         {/* 3-DOT MENU - SHOWN TO EVERYONE */}
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           <button onClick={() => setShowMenu(!showMenu)} className="p-1">
             <MoreVertical
               size={16}
@@ -249,24 +255,24 @@ const CommentItem = memo(function CommentItem({
 
       {/* Rest of your existing code for reply form and nested replies */}
       {isReplyingToThisComment && user && (
-        <div className="flex flex-col gap-2 mt-2 ml-10 border-l-2 border-gray-300 pl-4">
+        <div className={`flex flex-col gap-2 mt-2 ${shouldIndent ? "ml-4 sm:ml-10" : "ml-0"} ${shouldIndent ? "border-l-2 border-gray-300 pl-2 sm:pl-4" : ""}`}>
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Image
               src={comment.user.avatar || "/noAvatar.png"}
               alt="Profile"
               width={20}
               height={20}
-              className="rounded-full w-5 h-5"
+              className="rounded-full w-5 h-5 flex-shrink-0"
             />
-            <span>Replying to {comment.user.username}</span>
+            <span className="truncate text-xs sm:text-sm">Replying to {comment.user.username}</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <Image
               src={user.imageUrl || "/noAvatar.png"}
               alt="Profile"
               width={28}
               height={28}
-              className="rounded-full w-7 h-7 ring-2 ring-orange-300 cursor-pointer"
+              className="rounded-full w-6 h-6 sm:w-7 sm:h-7 ring-2 ring-orange-300 cursor-pointer flex-shrink-0"
             />
             <form
               onSubmit={(e) => {
@@ -311,22 +317,22 @@ const CommentItem = memo(function CommentItem({
                   addReplyComment(comment.postId, desc, comment.id);
                 });
               }}
-              className="relative flex-1 bg-slate-100 rounded-xl px-4 py-2 text-sm"
+              className="relative flex-1 bg-slate-100 rounded-xl px-3 sm:px-4 py-2 text-sm min-w-0"
             >
               <input
-                className="w-full pr-10 bg-transparent outline-none"
+                className="w-full pr-8 sm:pr-10 bg-transparent outline-none text-xs sm:text-sm"
                 type="text"
                 name="reply-input"
                 placeholder={
                   isReplying
-                    ? "Sending reply..."
-                    : `Replying to ${comment.user.username}...`
+                    ? "Sending..."
+                    : "Reply..."
                 }
                 disabled={isReplying}
               />
-              <button type="submit" disabled={isReplying}>
+              <button type="submit" disabled={isReplying} className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2">
                 <SendHorizonal
-                  className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${
+                  className={`cursor-pointer w-4 h-4 sm:w-5 sm:h-5 ${
                     isReplying ? "text-gray-300" : "text-orange-300"
                   }`}
                 />
@@ -338,7 +344,7 @@ const CommentItem = memo(function CommentItem({
 
       {/* Render nested replies */}
       {repliesToDisplay && repliesToDisplay.length > 0 && (
-        <div className="pl-8 mt-2 border-l-2 border-gray-300">
+        <div className={`${shouldIndent ? "pl-4 sm:pl-8" : "pl-0"} mt-2 ${shouldIndent ? "border-l-2 border-gray-300" : ""}`}>
           {repliesToDisplay.map((reply) => (
             <div key={reply.id} className="mt-2 mb-2">
               <CommentItem
@@ -351,13 +357,14 @@ const CommentItem = memo(function CommentItem({
                 addOptimisticComment={addOptimisticComment}
                 startTransition={startTransition}
                 handleDeleteComment={handleDeleteComment}
+                depth={depth + 1}
               />
             </div>
           ))}
           {hasMoreReplies && (
             <button
               onClick={() => setShowAllReplies(!showAllReplies)}
-              className="text-sm text-gray-500 hover:text-gray-700 hover:underline mt-2"
+              className="text-xs sm:text-sm text-gray-500 hover:text-gray-700 hover:underline mt-2"
             >
               {showAllReplies
                 ? "Hide replies"
@@ -635,6 +642,7 @@ function CommentList({
             addOptimisticComment={addOptimisticComment}
             startTransition={startTransition}
             handleDeleteComment={handleDeleteComment}
+            depth={0}
           />
         </div>
       ))}
