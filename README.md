@@ -139,15 +139,24 @@ Prisma + MySQL architecture providing:
 - [x] Events & locations
 - [x] Albums & media management
 - [x] Polls with live updates
-- [x] Voice & video calling
 - [x] Online status tracking
+- [x] Real Time Chatting 
+- [x] Enhanced AI suggestions
+- [x] Advanced Settings Page for Full Control
+- [x] Performance optimizations
+- [x] User Tagging System in UserInfo and Posts
+
 
 ### 🚧 In Progress
-- [ ] Enhanced AI suggestions
-- [ ] Advanced analytics dashboard
 - [ ] Goga_Blog platform expansion
-- [ ] Performance optimizations
 - [ ] Additional customization options
+- [ ] Better User Quallity in Chats
+- [ ] Video/Voice Calls
+- [ ] Post/Story Archive
+- [ ] Reposts/Sharing
+- [ ] Complex Report System and Automation
+- [ ] Stickers in Chats and Comments
+- [ ] Sharing Media/Voice Messages in Comments
 
 ---
 
