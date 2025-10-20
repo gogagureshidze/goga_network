@@ -6,6 +6,7 @@ import Comments from "./Comments";
 import PostInteractions from "./PostInteractions";
 import EventCard from "./EventCard";
 import PollCard from "./PollCard";
+import PostDescription from "./PostDescription"; // NEW IMPORT
 
 // Helper function to format time
 function formatTimeAgo(date: Date | string) {
@@ -49,6 +50,10 @@ export default function Post({ post }: { post: any }) {
   const isEventPost = !!post.event;
   const isPollPost = !!post.poll;
 
+  // Extract tagged usernames from the tags array
+  const taggedUsernames = post.tags?.map((tag: any) => tag.user.username) || [];
+  const taggedUserIds = post.tags?.map((tag: any) => tag.userId) || [];
+
   return (
     <div className="flex flex-col gap-4 p-4 bg-white rounded-xl shadow-sm">
       {/* Header */}
@@ -72,14 +77,12 @@ export default function Post({ post }: { post: any }) {
             </div>
           </div>
         </Link>
-        <PostInfo postId={post.id} postOwnerId={post.userId} />
+        <PostInfo taggedUserIds={taggedUserIds} postId={post.id} postOwnerId={post.userId} />
       </div>
 
-      {/* Caption */}
+      {/* Caption with clickable tags - CHANGED */}
       {post.desc && (
-        <p className="text-sm leading-relaxed text-gray-800 px-1">
-          {post.desc}
-        </p>
+        <PostDescription text={post.desc} taggedUsernames={taggedUsernames} />
       )}
 
       {/* Content - Event, Poll, or Media */}

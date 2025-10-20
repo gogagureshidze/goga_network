@@ -20,7 +20,6 @@ interface AddEventPostInput {
 }
 
 export async function addEventPost(data: AddEventPostInput) {
-  // Verify user is authenticated
   const user = await currentUser();
   if (!user || user.id !== data.userId) {
     throw new Error("Unauthorized");
@@ -29,12 +28,11 @@ export async function addEventPost(data: AddEventPostInput) {
   const { userId, desc, media, event } = data;
 
   try {
-    // Create Post with Event in a single transaction
+    // 1. Create Post with Event
     const createdPost = await prisma.post.create({
       data: {
         desc,
         userId,
-        // Create media if provided
         media:
           media && media.length > 0
             ? {
@@ -47,7 +45,6 @@ export async function addEventPost(data: AddEventPostInput) {
                 },
               }
             : undefined,
-        // Create event linked to this post
         event: {
           create: {
             date: event.date,
@@ -65,9 +62,32 @@ export async function addEventPost(data: AddEventPostInput) {
       },
     });
 
+    // 2. Extract @mentions and create tags
+    const mentionRegex = /@(\w+)/g;
+    const mentions = [...desc.matchAll(mentionRegex)].map((m) => m[1]);
+
+    if (mentions.length > 0) {
+      const validUsers = await prisma.user.findMany({
+        where: {
+          username: { in: mentions },
+
+        },
+        select: { id: true, username: true },
+      });
+
+      if (validUsers.length > 0) {
+        await prisma.postTag.createMany({
+          data: validUsers.map((u) => ({
+            postId: createdPost.id,
+            userId: u.id,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
     console.log("✅ Event post created:", createdPost);
 
-    // Invalidate cached feeds & profiles
     revalidateTag("feed-posts");
     revalidateTag("profile-posts");
 

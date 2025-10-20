@@ -1,9 +1,70 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
 [[headers]]
   for = "/*"
   [headers.values]
-  Strict-Transport-Security = "max-age=31536000"
+  Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
   X-Content-Type-Options = "nosniff"
   X-Frame-Options = "DENY"
   Referrer-Policy = "strict-origin-when-cross-origin"
   Permissions-Policy = "camera=(), microphone=(), geolocation=()"
   Content-Security-Policy = "default-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none';"
+
+
+
+
+
+
+
+
+
+                                                          /etc/nginx/sites-available/socket.goga.network                                                                      
+# Redirect HTTP -> HTTPS
+server {
+    listen 80;
+    server_name socket.goga.network;
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS + WebSocket proxy
+server {
+    listen 443 ssl http2;
+    server_name socket.goga.network;
+
+    ssl_certificate /etc/letsencrypt/live/socket.goga.network/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/socket.goga.network/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # Security headers
+    add_header X-Frame-Options SAMEORIGIN;
+    add_header X-Content-Type-Options nosniff;
+
+    # Proxy all socket.io traffic
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:3001;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Avoid buffering
+        proxy_buffering off;
+        proxy_read_timeout 1d;
+        proxy_send_timeout 1d;
+    }
+
+    # Optional health check
+    location /health {
+        return 200 "OK\n";
+        add_header Content-Type text/plain;
+    }
+}
+
+
+

@@ -9,34 +9,35 @@ import PostActivityModal from "./PostActivityModal";
 function PostInfo({
   postId,
   postOwnerId,
+  taggedUserIds = [] as string[], // ✅ pass tagged user IDs here
 }: {
   postId: number;
   postOwnerId: string;
+  taggedUserIds?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  
+
   const { userId } = useAuth();
 
   const handleDelete = async () => {
     if (deleteLoading) return; // Prevent double-click
-
     setDeleteLoading(true);
 
     try {
-      await deletePost(postId); // call the function!
+      await deletePost(postId);
     } catch (error) {
       console.error("Failed to delete post:", error);
       alert("Failed to delete post. Please try again.");
     } finally {
       setDeleteLoading(false);
-      setOpen(false); // Close menu 
+      setOpen(false); // Close menu
     }
   };
 
-  //  Show menu to everyone now
-  const isOwner = userId === postOwnerId;
+  // ✅ Delete button visible if user is owner OR tagged
+  const canDelete = userId === postOwnerId || taggedUserIds.includes(userId!);
 
   return (
     <>
@@ -58,8 +59,8 @@ function PostInfo({
               <Heart size={16} /> Activity
             </button>
 
-            {/* Delete option - only shown to owner */}
-            {isOwner && (
+            {/* Delete option - owner or tagged */}
+            {canDelete && (
               <>
                 <div className="border-t border-gray-200"></div>
                 <button

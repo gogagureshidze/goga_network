@@ -11,6 +11,8 @@ import UserInfoCardInteraction from "./UserInfoCardInteraction";
 import UpdateUser from "./UpdateUser";
 import { currentUser } from "@clerk/nextjs/server";
 import allPatterns, { CustomPattern } from "../actions/allPaterns";
+import LinkifyText from "./LinkifyText";
+import prisma from "@/lib/client";
 
 type UserInfoCardProps = {
   user?: User & {
@@ -40,9 +42,39 @@ async function UserInfoCard({
   if (!user) {
     return null;
   }
+  // At the top, add this helper function to extract @mentions and check them
+  async function getValidUsernames(text: string) {
+    if (!text) return [];
+
+    const mentionRegex = /@(\w+)/g;
+    const matches = Array.from(text.matchAll(mentionRegex));
+    const usernames = matches.map((match) => match[1]);
+
+    if (usernames.length === 0) return [];
+
+    // Query database for valid usernames
+    const users = await prisma.user.findMany({
+      where: {
+        username: {
+          in: usernames,
+        },
+      },
+      select: {
+        username: true,
+      },
+    });
+
+    return users.map((u) => u.username);
+  }
 
   const loggedInUser = await currentUser();
   const currentUserId = loggedInUser?.id;
+
+  const descriptionUsernames = await getValidUsernames(user.description || "");
+  const websiteUsernames = await getValidUsernames(user.website || "");
+  const allValidUsernames = [...descriptionUsernames, ...websiteUsernames].filter(
+    (username): username is string => username !== null
+  );
 
   const createdAtDate = new Date(user.createdAt);
   const formatedDate = createdAtDate.toLocaleDateString("en-US", {
@@ -84,9 +116,14 @@ async function UserInfoCard({
             </span>
             <span className="text-sm">{username}</span>
           </div>
-
-          {user.description && <p>{user.description}</p>}
-
+          {user.description && (
+            <LinkifyText
+              text={user.description}
+              validUsernames={allValidUsernames}
+              className={textColorClass}
+              mentionClassName="text-orange-600 font-bold hover:text-orange-700"
+            />
+          )}
           {user.city && (
             <div className="flex items-center gap-2">
               <MapPinHouse className="text-green-500" />
@@ -117,21 +154,13 @@ async function UserInfoCard({
           {user.website && (
             <div className="flex gap-1 items-center">
               <Cable className="text-rose-500" />
-              <Link href="/" className="underline text-rose-500 font-bold">
-                {user.website}
-              </Link>
+              <LinkifyText
+                text={user.website}
+                validUsernames={allValidUsernames}
+                linkClassName="text-rose-500 font-bold underline hover:text-rose-600"
+                mentionClassName="text-orange-600 font-bold hover:text-orange-700"
+              />
             </div>
-          )}
-
-          {currentUserId && !isOwner && !hideInteraction && (
-            <UserInfoCardInteraction
-              currentUserId={currentUserId}
-              formatedDate={formatedDate}
-              isUserBlocked={isBlockedByViewer}
-              isFollowing={isFollowing}
-              isFollowingSent={isFollowingSent}
-              userId={user.id}
-            />
           )}
         </div>
       </div>

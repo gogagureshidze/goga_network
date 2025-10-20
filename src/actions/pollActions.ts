@@ -34,6 +34,7 @@ export async function createPollPost({
 
   try {
     const newPost = await prisma.$transaction(async (tx) => {
+      // 1️⃣ Create post
       const post = await tx.post.create({
         data: {
           userId,
@@ -41,6 +42,7 @@ export async function createPollPost({
         },
       });
 
+      // 2️⃣ Create poll
       const poll = await tx.poll.create({
         data: {
           postId: post.id,
@@ -48,23 +50,37 @@ export async function createPollPost({
         },
       });
 
+      // 3️⃣ Create poll options
       const optionData = validOptions.map((text) => ({
         pollId: poll.id,
         text: text.trim(),
       }));
+      await tx.pollOption.createMany({ data: optionData });
 
-      await tx.pollOption.createMany({
-        data: optionData,
-      });
+      // 4️⃣ Handle @mentions inside transaction
+      const mentionRegex = /@(\w+)/g;
+      const mentions = [...question.matchAll(mentionRegex)].map((m) => m[1]);
 
-      return post;
+      if (mentions.length > 0) {
+        const taggedUsers = await tx.user.findMany({
+          where: { username: { in: mentions } },
+          select: { id: true },
+        });
+
+        if (taggedUsers.length > 0) {
+          await tx.postTag.createMany({
+            data: taggedUsers.map((u) => ({ postId: post.id, userId: u.id })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return post; // return post at the end
     });
 
-    // Clear ALL caches
-    revalidatePath("/", "layout"); // Clear everything
+    // 5️⃣ Revalidate caches
+    revalidatePath("/", "layout");
     revalidatePath("/home");
-
-    // Import and use revalidateTag
     const { revalidateTag } = await import("next/cache");
     revalidateTag("feed-posts");
     revalidateTag("profile-posts");
@@ -76,6 +92,7 @@ export async function createPollPost({
     return { error: "Failed to create poll post. Please try again." };
   }
 }
+
 // =================================================================
 // 2. ACTION: CAST A VOTE
 // =================================================================

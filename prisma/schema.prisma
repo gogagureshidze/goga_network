@@ -39,6 +39,7 @@ model User {
   sentMessages           Message[]       @relation("SentMessages")
   receivedMessages       Message[]       @relation("ReceivedMessages")
   pollVotes              PollVote[]
+  postTags               PostTag[]
 }
 
 model Post {
@@ -51,9 +52,9 @@ model Post {
   likes     Like[]
   media     Media[]
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  event Event?
-  poll  Poll?
+  tags      PostTag[]
+  event     Event?
+  poll      Poll?
 }
 
 model Media {
@@ -268,4 +269,19 @@ model PollVote {
   user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, optionId]) // prevent double-voting same option
+}
+
+model PostTag {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  userId    String
+  createdAt DateTime @default(now())
+  deleted   Boolean  @default(false) // <-- new field
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
 }

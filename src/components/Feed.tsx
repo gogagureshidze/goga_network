@@ -54,7 +54,6 @@ const postSelectFields = {
             select: {
               userId: true,
               user: {
-                // ✅ Add this to get voter info
                 select: {
                   username: true,
                   avatar: true,
@@ -65,6 +64,18 @@ const postSelectFields = {
         },
         orderBy: {
           id: "asc" as const,
+        },
+      },
+    },
+  },
+  tags: {
+    where: {
+      deleted: false, // ✅ FIX 1: Only fetch non-deleted tags
+    },
+    include: {
+      user: {
+        select: {
+          username: true,
         },
       },
     },
@@ -131,11 +142,22 @@ const getCachedFollowing = unstable_cache(
   { revalidate: 1800, tags: ["following-list"] }
 );
 
+// ✅ FIX 2: Updated to filter deleted tags properly
 const getCachedProfilePosts = unstable_cache(
   async (username: string, excludedUserIds: string[]) => {
-    return await prisma.post.findMany({
+    const posts = await prisma.post.findMany({
       where: {
-        user: { username },
+        OR: [
+          { user: { username } }, // posts she authored
+          {
+            tags: {
+              some: {
+                user: { username },
+                deleted: false, // ✅ Only show posts where user is tagged AND not deleted
+              },
+            },
+          },
+        ],
         ...(excludedUserIds.length > 0 && {
           NOT: { userId: { in: excludedUserIds } },
         }),
@@ -143,6 +165,15 @@ const getCachedProfilePosts = unstable_cache(
       select: postSelectFields,
       orderBy: { createdAt: "desc" },
       take: 10,
+    });
+
+    // ✅ Additional filter: remove posts where ALL tags are deleted (edge case)
+    return posts.filter((post) => {
+      // If user is the author, always show
+      if (post.user.username === username) return true;
+
+      // If user is tagged, only show if they have a non-deleted tag
+      return post.tags && post.tags.length > 0;
     });
   },
   ["profile-posts"],
