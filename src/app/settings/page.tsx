@@ -144,9 +144,7 @@ export default function SettingsPage() {
                   <h4 className="font-medium text-gray-900">
                     Show Activity Status
                   </h4>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Let others see when you're online
-                  </p>
+                  <p>Let others see when you&#39;re online</p>
                 </div>
               </div>
               <button

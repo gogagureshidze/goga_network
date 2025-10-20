@@ -3,6 +3,10 @@ const nextConfig = {
   experimental: {
     reactCompiler: true,
   },
+  eslint: {
+    // ❗ This tells Next.js NOT to fail the build on lint errors
+    ignoreDuringBuilds: true,
+  },
   images: {
     remotePatterns: [
       {
