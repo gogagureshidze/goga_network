@@ -54,7 +54,7 @@ async function LeftMenu({ type }: { type: "home" | "profile" }) {
         </Link>
         <hr className="border-t-1 border-gray-50 w-36 self-center" />
         <Link
-          href="/"
+          href="/settings"
           className="flex items-center gap-4 p-2 rounded-lg hover:bg-slate-100"
         >
           <Image src="/settings.png" alt="" height={20} width={20}></Image>

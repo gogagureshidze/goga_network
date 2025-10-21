@@ -4,7 +4,6 @@ import { currentUser } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
 import { unstable_cache } from "next/cache";
 
-// Post selection fields with event AND poll
 const postSelectFields = {
   id: true,
   desc: true,
@@ -17,6 +16,7 @@ const postSelectFields = {
       avatar: true,
       name: true,
       surname: true,
+      isPrivate: true, // 🆕 Include privacy status
     },
   },
   media: {
@@ -70,7 +70,7 @@ const postSelectFields = {
   },
   tags: {
     where: {
-      deleted: false, // ✅ FIX 1: Only fetch non-deleted tags
+      deleted: false,
     },
     include: {
       user: {
@@ -80,7 +80,6 @@ const postSelectFields = {
       },
     },
   },
-
   _count: {
     select: {
       likes: true,
@@ -106,7 +105,6 @@ const postSelectFields = {
   },
 };
 
-//? Aggressive caching for stable data
 const getCachedBlockedUsers = unstable_cache(
   async (userId: string) => {
     const [blockedUsers, usersWhoBlockedMe] = await Promise.all([
@@ -142,18 +140,46 @@ const getCachedFollowing = unstable_cache(
   { revalidate: 1800, tags: ["following-list"] }
 );
 
-// ✅ FIX 2: Updated to filter deleted tags properly
+// 🆕 Helper to check if viewer can see profile
+async function canViewProfile(
+  viewerId: string,
+  profileUserId: string,
+  profileUsername: string
+) {
+  // Get the profile user's privacy status
+  const profileUser = await prisma.user.findFirst({
+    where: { username: profileUsername },
+    select: { isPrivate: true },
+  });
+
+  // If not private, everyone can see
+  if (!profileUser?.isPrivate) return true;
+
+  // If viewing own profile, can see
+  if (viewerId === profileUserId) return true;
+
+  // Check if viewer follows the private account
+  const isFollowing = await prisma.follower.findFirst({
+    where: {
+      followerId: viewerId,
+      followingId: profileUserId,
+    },
+  });
+
+  return !!isFollowing;
+}
+
 const getCachedProfilePosts = unstable_cache(
-  async (username: string, excludedUserIds: string[]) => {
+  async (username: string, excludedUserIds: string[], viewerId: string) => {
     const posts = await prisma.post.findMany({
       where: {
         OR: [
-          { user: { username } }, // posts she authored
+          { user: { username } },
           {
             tags: {
               some: {
                 user: { username },
-                deleted: false, // ✅ Only show posts where user is tagged AND not deleted
+                deleted: false,
               },
             },
           },
@@ -167,12 +193,8 @@ const getCachedProfilePosts = unstable_cache(
       take: 10,
     });
 
-    // ✅ Additional filter: remove posts where ALL tags are deleted (edge case)
     return posts.filter((post) => {
-      // If user is the author, always show
       if (post.user.username === username) return true;
-
-      // If user is tagged, only show if they have a non-deleted tag
       return post.tags && post.tags.length > 0;
     });
   },
@@ -186,12 +208,36 @@ const getCachedFeedPosts = unstable_cache(
     excludedUserIds: string[],
     currentUserId: string
   ) => {
+    // 🆕 Get all private users
+    const privateUsers = await prisma.user.findMany({
+      where: { isPrivate: true },
+      select: { id: true },
+    });
+    const privateUserIds = privateUsers.map((u) => u.id);
+
+    // 🆕 Filter out private users that current user doesn't follow
+    const privateUsersToExclude = privateUserIds.filter(
+      (id) => !followingIds.includes(id) && id !== currentUserId
+    );
+
     if (followingIds.length === 0) {
       return await prisma.post.findMany({
         where: {
           ...(excludedUserIds.length > 0
-            ? { userId: { notIn: [...excludedUserIds, currentUserId] } }
-            : { userId: { not: currentUserId } }),
+            ? {
+                userId: {
+                  notIn: [
+                    ...excludedUserIds,
+                    currentUserId,
+                    ...privateUsersToExclude, // 🆕 Exclude private accounts
+                  ],
+                },
+              }
+            : {
+                userId: {
+                  notIn: [currentUserId, ...privateUsersToExclude],
+                },
+              }),
         },
         select: postSelectFields,
         take: 8,
@@ -220,12 +266,17 @@ const getCachedFeedPosts = unstable_cache(
                     ...followingIds.slice(0, 50),
                     ...excludedUserIds,
                     currentUserId,
+                    ...privateUsersToExclude, // 🆕 Exclude private accounts
                   ],
                 },
               }
             : {
                 userId: {
-                  notIn: [...followingIds.slice(0, 50), currentUserId],
+                  notIn: [
+                    ...followingIds.slice(0, 50),
+                    currentUserId,
+                    ...privateUsersToExclude, // 🆕 Exclude private accounts
+                  ],
                 },
               }),
         },
@@ -279,9 +330,69 @@ async function Feed({
     let posts: any[] = [];
 
     if (username) {
+      // 🆕 Profile view - check if viewer can see this profile
+      const profileUser = await prisma.user.findFirst({
+        where: { username },
+        select: { id: true, isPrivate: true },
+      });
+
+      if (!profileUser) {
+        return (
+          <div className="bg-rose-50 shadow-md rounded-lg flex flex-col gap-8 p-4">
+            <p className="text-center text-gray-500">User not found.</p>
+          </div>
+        );
+      }
+
+      // Check if it's a private account and viewer doesn't follow
+      if (profileUser.isPrivate && profileUser.id !== currentUserId) {
+        const isFollowing = await prisma.follower.findFirst({
+          where: {
+            followerId: currentUserId,
+            followingId: profileUser.id,
+          },
+        });
+
+        if (!isFollowing) {
+          // 🆕 Show private account message
+          return (
+            <div className="bg-white shadow-md rounded-lg flex flex-col items-center gap-4 p-12">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-orange-100 to-rose-100 flex items-center justify-center">
+                <svg
+                  className="w-10 h-10 text-orange-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                  />
+                </svg>
+              </div>
+              <div className="text-center">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  This Account is Private
+                </h3>
+                <p className="text-gray-600 max-w-sm">
+                  Follow this account to see their photos and videos. ✨
+                </p>
+              </div>
+            </div>
+          );
+        }
+      }
+
       const excludedUserIds = await getCachedBlockedUsers(currentUserId);
-      posts = await getCachedProfilePosts(username, excludedUserIds);
+      posts = await getCachedProfilePosts(
+        username,
+        excludedUserIds,
+        currentUserId
+      );
     } else {
+      // Feed view
       const [followingIds, excludedUserIds] = await Promise.all([
         getCachedFollowing(currentUserId),
         getCachedBlockedUsers(currentUserId),
@@ -309,21 +420,19 @@ async function Feed({
           else if (ageHours < 12) score += 5;
           else if (ageHours < 24) score += 2;
 
-          // Boost event posts that are upcoming
           if (post.event) {
             const eventDate = new Date(post.event.date);
             const daysUntil =
               (eventDate.getTime() - now) / (1000 * 60 * 60 * 24);
             if (daysUntil > 0 && daysUntil < 7) {
-              score += 15; // Boost events happening soon
+              score += 15;
             }
           }
 
-          // Boost active polls
           if (post.poll) {
             const isExpired = new Date(post.poll.expiresAt) < new Date();
             if (!isExpired) {
-              score += 12; // Boost active polls
+              score += 12;
             }
           }
 

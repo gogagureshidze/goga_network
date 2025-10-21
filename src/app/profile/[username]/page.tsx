@@ -11,7 +11,6 @@ import { notFound, redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
 import { Suspense } from "react";
 
-// Super aggressive caching for user data
 const getCachedUser = unstable_cache(
   async (username: string) => {
     return await prisma.user.findFirst({
@@ -30,6 +29,7 @@ const getCachedUser = unstable_cache(
         website: true,
         createdAt: true,
         bioPattern: true,
+        isPrivate: true, // 🆕 Include privacy status
         _count: {
           select: {
             posts: true,
@@ -41,13 +41,11 @@ const getCachedUser = unstable_cache(
     });
   },
   ["user-profile"],
-  { revalidate: 1800, tags: ["user-profile"] } // 30 minutes
+  { revalidate: 1800, tags: ["user-profile"] }
 );
 
-// Very fast relationship check
 const getCachedRelationships = unstable_cache(
   async (loggedInUserId: string, targetUserId: string) => {
-    // Timeout after 1 second
     const queryPromise = Promise.all([
       prisma.follower.findFirst({
         where: { followerId: loggedInUserId, followingId: targetUserId },
@@ -82,7 +80,6 @@ const getCachedRelationships = unstable_cache(
         isBlockedByUser: !!isBlockedByUser,
       };
     } catch (error) {
-      // Return safe defaults on timeout
       return {
         isFollowing: false,
         isFollowingSent: false,
@@ -92,13 +89,12 @@ const getCachedRelationships = unstable_cache(
     }
   },
   ["user-relationships"],
-  { revalidate: 300, tags: ["user-relationships"] } // 5 minutes
+  { revalidate: 300, tags: ["user-relationships"] }
 );
 
 async function ProfilePage({ params }: { params: any }) {
   const startTime = Date.now();
 
-  // Get user immediately, don't await params
   const loggedInUserPromise = currentUser();
   const paramsPromise = params;
 
@@ -116,11 +112,9 @@ async function ProfilePage({ params }: { params: any }) {
 
   const { username } = resolvedParams;
 
-  // Fast user lookup with fallback
   let user = await getCachedUser(username);
 
   if (!user && clerkUsername === username) {
-    // Direct query for own profile
     user = await prisma.user.findFirst({
       where: { id: loggedInUserId },
       select: {
@@ -137,6 +131,7 @@ async function ProfilePage({ params }: { params: any }) {
         website: true,
         createdAt: true,
         bioPattern: true,
+        isPrivate: true, // 🆕
         _count: {
           select: {
             posts: true,
@@ -153,7 +148,6 @@ async function ProfilePage({ params }: { params: any }) {
   const isOwner = user.id === loggedInUserId;
   const loadTime = Date.now() - startTime;
 
-  // Background username sync - don't block render
   if (isOwner && clerkUsername && user.username !== clerkUsername) {
     prisma.user
       .update({
@@ -167,7 +161,6 @@ async function ProfilePage({ params }: { params: any }) {
     }
   }
 
-  // Default relationships - fast path for owner
   let relationships = {
     isFollowing: false,
     isFollowingSent: false,
@@ -175,7 +168,6 @@ async function ProfilePage({ params }: { params: any }) {
     isBlockedByUser: false,
   };
 
-  // Only check relationships for non-owners
   if (!isOwner) {
     relationships = await getCachedRelationships(loggedInUserId, user.id);
 
@@ -184,12 +176,15 @@ async function ProfilePage({ params }: { params: any }) {
     }
   }
 
+  // 🆕 Check if viewer can see content
+  const canViewContent =
+    isOwner || !user.isPrivate || relationships.isFollowing;
+
   const formatedDate = new Date(user.createdAt).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
   });
 
-  // Log performance in development
   if (process.env.NODE_ENV === "development") {
     console.log(`Profile loaded in ${loadTime}ms`);
   }
@@ -204,7 +199,7 @@ async function ProfilePage({ params }: { params: any }) {
       {/* Center content */}
       <div className="w-full lg:w-[60%] xl:w-[50%]">
         <div className="flex flex-col gap-6">
-          {/* Critical path - Banner + Avatar with optimized images */}
+          {/* Banner + Avatar */}
           <div className="relative w-full h-64">
             <Image
               src={user.cover || "/noCover.png"}
@@ -232,14 +227,14 @@ async function ProfilePage({ params }: { params: any }) {
             </div>
           </div>
 
-          {/* Name - immediate render */}
+          {/* Name */}
           <h1 className="text-center text-2xl font-medium mt-[45px]">
             {user.name && user.surname
               ? `${user.name} ${user.surname}`
               : user.username}
           </h1>
 
-          {/* Stats - immediate render */}
+          {/* Stats */}
           <div className="flex items-center justify-center gap-12 mb-4">
             <div className="flex flex-col items-center">
               <span className="font-medium text-orange-400">
@@ -261,7 +256,7 @@ async function ProfilePage({ params }: { params: any }) {
             </div>
           </div>
 
-          {/* Mobile sections - non-critical */}
+          {/* Mobile sections */}
           {!isOwner && (
             <div className="px-4 lg:hidden">
               <Suspense fallback="Loading...">
@@ -292,7 +287,7 @@ async function ProfilePage({ params }: { params: any }) {
             </Suspense>
           </div>
 
-          {/* Feed - render immediately */}
+          {/* Feed */}
           <Suspense
             fallback={
               <div className="flex items-center justify-center p-8">
@@ -321,9 +316,12 @@ async function ProfilePage({ params }: { params: any }) {
         </div>
       </div>
 
-      {/* Right sidebar - non-critical */}
+      {/* Right sidebar */}
+      {/* Right sidebar */}
       <div className="hidden lg:block w-[30%]">
         <RightMenu>
+          {/* 🆕 Add this block for desktop */}
+
           <Suspense fallback="Loading...">
             <UserInfoCard
               user={user}
@@ -334,9 +332,27 @@ async function ProfilePage({ params }: { params: any }) {
               isBlockedByViewer={relationships.isBlockedByViewer}
             />
           </Suspense>
-          <Suspense fallback="Loading...">
-            <UserMediaCard user={user} username={user.username!} />
-          </Suspense>
+
+          {!isOwner && (
+            <Suspense fallback="Loading...">
+              <UserInfoCardInteraction
+                formatedDate={formatedDate}
+                isUserBlocked={relationships.isBlockedByViewer}
+                isFollowing={relationships.isFollowing}
+                isFollowingSent={relationships.isFollowingSent}
+                userId={user.id}
+                currentUserId={loggedInUserId}
+                isBlockedByViewer={relationships.isBlockedByViewer}
+              />
+            </Suspense>
+          )}
+
+          {/* 🆕 Only show media card if viewer can see content */}
+          {canViewContent && (
+            <Suspense fallback="Loading...">
+              <UserMediaCard user={user} username={user.username!} />
+            </Suspense>
+          )}
         </RightMenu>
       </div>
     </div>

@@ -20,11 +20,24 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { togglePrivateAccount } from "../../actions/togglePrivateAction";
+import { useUserContext } from "../../contexts/UserContext";
 
 export default function SettingsPage() {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded: isClerkLoaded } = useUser();
+  const router = useRouter();
 
-  const [isPrivate, setIsPrivate] = useState(false);
+  const {
+    userData,
+    refreshUser,
+    isLoading: isContextLoading,
+  } = useUserContext();
+  const isPrivate = userData?.isPrivate ?? false;
+
+  const [isToggleLoading, setIsToggleLoading] = useState(false);
+
+  // These other states are fine because they are local to this page
   const [showActivity, setShowActivity] = useState(true);
   const [allowStoryComments, setAllowStoryComments] = useState(true);
   const [showStoryLikes, setShowStoryLikes] = useState(true);
@@ -39,15 +52,24 @@ export default function SettingsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
 
-  // Loading state
-  if (!isLoaded) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-rose-50 flex items-center justify-center">
-        <div className="animate-pulse">
-          <div className="w-16 h-16 bg-orange-200 rounded-full"></div>
-        </div>
-      </div>
-    );
+  // This will log null first, then your user object. This is normal.
+
+  const handleTogglePrivate = async () => {
+    setIsToggleLoading(true); // Use the local toggle loader
+    try {
+      await togglePrivateAccount();
+      await refreshUser(); // Tell context to refresh
+    } catch (error) {
+      console.error("Failed to toggle privacy:", error);
+      alert("Failed to update privacy settings");
+    } finally {
+      setIsToggleLoading(false);
+    }
+  };
+
+  // Loading state: Wait for BOTH Clerk and your context to be ready
+  if (!isClerkLoaded || isContextLoading) {
+    <div className="loader-spiner"></div>
   }
 
   // Not logged in
@@ -56,14 +78,13 @@ export default function SettingsPage() {
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-rose-50 flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Not logged in
+            Not logged in!!!
           </h2>
           <p className="text-gray-600">Please log in to access settings</p>
         </div>
       </div>
     );
   }
-
   return (
     <div className="min-h-screen rose-50">
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -85,7 +106,7 @@ export default function SettingsPage() {
               alt="Profile"
               width={50}
               height={50}
-              className="rounded-full w-12 h-12 ring-2 mt-5 ring-orange-200" // <-- Fix is here
+              className="rounded-full w-12 h-12 ring-2 mt-5 ring-orange-200"
             />
             <div>
               <h2 className="text-xl font-semibold mt-5 text-gray-900">
@@ -120,19 +141,32 @@ export default function SettingsPage() {
                   <p className="text-sm text-gray-600 mt-1">
                     Only approved followers can see your posts
                   </p>
+                  {isPrivate && (
+                    <p className="text-xs text-orange-600 mt-2 font-medium">
+                      🚀 Your account is private. Existing followers can still
+                      see your content. 🚀
+                    </p>
+                  )}
                 </div>
               </div>
               <button
-                onClick={() => setIsPrivate(!isPrivate)}
+                onClick={handleTogglePrivate}
+                disabled={isToggleLoading}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                   isPrivate ? "bg-orange-500" : "bg-gray-300"
-                }`}
+                } ${isToggleLoading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    isPrivate ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
+                {isToggleLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                ) : (
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      isPrivate ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                )}
               </button>
             </div>
 
@@ -144,7 +178,9 @@ export default function SettingsPage() {
                   <h4 className="font-medium text-gray-900">
                     Show Activity Status
                   </h4>
-                  <p>Let others see when you&#39;re online</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Let others see when you&apos;re online
+                  </p>
                 </div>
               </div>
               <button

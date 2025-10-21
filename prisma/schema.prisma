@@ -17,6 +17,7 @@ model User {
   surname                String?
   description            String?
   city                   String?
+  isPrivate              Boolean         @default(false) // 🆕 NEW FIELD
   school                 String?
   work                   String?
   website                String?

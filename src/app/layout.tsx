@@ -8,6 +8,7 @@ import prisma from "@/lib/client";
 import Providers from "./providers";
 import Footer from "@/components/Footer";
 import GlobalLoader from "@/components/GlobalLoader";
+import { UserProvider } from "@/contexts/UserContext";
 
 // Define the Funnel Display font with the variable property
 const funnel_display = Funnel_Display({
@@ -57,7 +58,8 @@ export default async function RootLayout({
       </head>
       <body className="font-sans">
         <Providers>
-          {/* <SocketProvider> */}
+          <UserProvider>
+            {/* <SocketProvider> */}
             <ClickSpark
               sparkColor="#e65800ff"
               sparkSize={10}
@@ -74,6 +76,7 @@ export default async function RootLayout({
               </div>
               <Footer />
             </ClickSpark>
+          </UserProvider>
           {/* </SocketProvider> */}
         </Providers>
       </body>
