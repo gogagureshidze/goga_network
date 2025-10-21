@@ -223,24 +223,25 @@ export default function StoryList({
               };
               return newState;
             } else {
-              const newUserGroup: UserStoryGroup = {
-                user: {
-                  id: userId,
-                  username: user?.username || "Sending...",
-                  avatar: user?.imageUrl || "/noAvatar.png",
-                  cover: user?.imageUrl || "/noCover.png",
-                  description: "",
-                  name: user?.firstName || "",
-                  surname: user?.lastName || "",
-                  city: "",
-                  work: "",
-                  school: "",
-                  website: "",
-                  bioPattern: '',
-                  createdAt: new Date(),
-                },
-                stories: action.stories,
-              };
+const newUserGroup: UserStoryGroup = {
+  user: {
+    id: userId,
+    isPrivate: (user?.publicMetadata?.isPrivate as boolean) ?? false, // ✅ ADDED
+    username: user?.username || "Sending...",
+    avatar: user?.imageUrl || "/noAvatar.png",
+    cover: user?.imageUrl || "/noCover.png",
+    description: "",
+    name: user?.firstName || "",
+    surname: user?.lastName || "",
+    city: "",
+    work: "",
+    school: "",
+    website: "",
+    bioPattern: "",
+    createdAt: new Date(),
+  },
+  stories: action.stories,
+};
               return [newUserGroup, ...state];
             }
 
@@ -374,6 +375,7 @@ useRateLimit
         school: "",
         website: "",
         bioPattern: "",
+        isPrivate: (user?.publicMetadata?.isPrivate as boolean) ?? false,
         createdAt: new Date(),
       },
       likes: [],
@@ -481,7 +483,8 @@ const handleDeleteComment = useCallback(
           work: "",
           school: "",
           website: "",
-          bioPattern: ''
+          bioPattern: '',
+          isPrivate: (user?.publicMetadata?.isPrivate as boolean) ?? false,
         },
         likes: [],
       };
