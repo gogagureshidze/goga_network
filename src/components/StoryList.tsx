@@ -81,6 +81,7 @@ function useDebounce<T extends (...args: any[]) => any>(
     [callback, delay]
   );
 }
+
 // Rate limiting utility
 function useRateLimit(maxCalls: number, timeWindow: number) {
   const callsRef = useRef<number[]>([]);
@@ -89,7 +90,6 @@ function useRateLimit(maxCalls: number, timeWindow: number) {
     const now = Date.now();
     const cutoff = now - timeWindow;
 
-    // More efficient filtering - only keep recent calls
     callsRef.current = callsRef.current.filter((time) => time > cutoff);
 
     if (callsRef.current.length >= maxCalls) {
@@ -114,7 +114,6 @@ export default function StoryList({
   stories: StoryWithUser[];
   userId: string;
 }) {
-  // State management with better organization
   const [pendingActions, setPendingActions] = useState<{
     likingStories: Set<number>;
     likingComments: Set<number>;
@@ -138,7 +137,6 @@ export default function StoryList({
   const [isInputActive, setIsInputActive] = useState(false);
   const [showLikes, setShowLikes] = useState(true);
 
-  // Story management states
   const [showStoryMenu, setShowStoryMenu] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -147,12 +145,11 @@ export default function StoryList({
   );
 
   const [mediaLoading, setMediaLoading] = useState(true);
-  // Rate limiting hooks
-  const canLikeStory = useRateLimit(10, 5000); // 10 likes per 5 seconds
-  const canLikeComment = useRateLimit(20, 10000); // 20 comment likes per 10 seconds
-  const canAddComment = useRateLimit(5, 10000); // 5 comments per 10 seconds
 
-  // Memoized story grouping function
+  const canLikeStory = useRateLimit(10, 5000);
+  const canLikeComment = useRateLimit(20, 10000);
+  const canAddComment = useRateLimit(5, 10000);
+
   const groupStories = useCallback((storiesArray: StoryWithUser[]) => {
     const grouped: { [key: string]: UserStoryGroup } = {};
     storiesArray.forEach((story) => {
@@ -163,7 +160,6 @@ export default function StoryList({
     return Object.values(grouped);
   }, []);
 
-  // Optimistic updates with better error handling
   const [optimisticStories, dispatch] = useOptimistic(
     useMemo(() => groupStories(stories), [stories, groupStories]),
     (state, action: OptimisticAction) => {
@@ -223,25 +219,30 @@ export default function StoryList({
               };
               return newState;
             } else {
-const newUserGroup: UserStoryGroup = {
-  user: {
-    id: userId,
-    isPrivate: (user?.publicMetadata?.isPrivate as boolean) ?? false, // ✅ ADDED
-    username: user?.username || "Sending...",
-    avatar: user?.imageUrl || "/noAvatar.png",
-    cover: user?.imageUrl || "/noCover.png",
-    description: "",
-    name: user?.firstName || "",
-    surname: user?.lastName || "",
-    city: "",
-    work: "",
-    school: "",
-    website: "",
-    bioPattern: "",
-    createdAt: new Date(),
-  },
-  stories: action.stories,
-};
+              const newUserGroup: UserStoryGroup = {
+                user: {
+                  id: userId,
+                  isPrivate:
+                    (user?.publicMetadata?.isPrivate as boolean) ?? false,
+                  username: user?.username || "Sending...",
+                  avatar: user?.imageUrl || "/noAvatar.png",
+                  cover: user?.imageUrl || "/noCover.png",
+                  description: null,
+                  name: user?.firstName || null,
+                  surname: user?.lastName || null,
+                  city: null,
+                  work: null,
+                  school: null,
+                  website: null,
+                  bioPattern: null,
+                  createdAt: new Date(),
+                  lastActiveAt: new Date(),
+                  showActivityStatus:
+                    (user?.publicMetadata?.showActivityStatus as boolean) ??
+                    true,
+                },
+                stories: action.stories,
+              };
               return [newUserGroup, ...state];
             }
 
@@ -322,41 +323,41 @@ const newUserGroup: UserStoryGroup = {
         }
       } catch (error) {
         console.error("Optimistic update error:", error);
-        return state; // Return unchanged state on error
+        return state;
       }
     }
   );
-  
 
-  // Story navigation state
   const [activeIndex, setActiveIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(Date.now());
   const lastTrackedRef = useRef<number | null>(null);
 
-  // Helper function to update pending actions
-const updatePendingAction = useCallback(
-  (actionType: keyof typeof pendingActions, id: number, isAdding: boolean) => {
-    setPendingActions((prev) => {
-      const newSet = new Set(prev[actionType]);
-      if (isAdding) {
-        newSet.add(id);
-      } else {
-        newSet.delete(id);
-      }
-      return { ...prev, [actionType]: newSet };
-    });
-  },
-  []
-);
-useRateLimit
-  // Improved story addition with better error handling
+  const updatePendingAction = useCallback(
+    (
+      actionType: keyof typeof pendingActions,
+      id: number,
+      isAdding: boolean
+    ) => {
+      setPendingActions((prev) => {
+        const newSet = new Set(prev[actionType]);
+        if (isAdding) {
+          newSet.add(id);
+        } else {
+          newSet.delete(id);
+        }
+        return { ...prev, [actionType]: newSet };
+      });
+    },
+    []
+  );
+
   const handleAddStory = async () => {
     if (media.length === 0 || isPending) return;
 
     const newOptimisticStories: StoryWithUser[] = media.map((item, idx) => ({
-      id: -(Date.now() + idx), // Negative IDs for temp stories
+      id: -(Date.now() + idx),
       img: item.secure_url,
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -367,16 +368,19 @@ useRateLimit
         username: user?.username || "Sending...",
         avatar: user?.imageUrl || "/noAvatar.png",
         cover: user?.imageUrl || "/noCover.png",
-        description: "",
-        name: user?.firstName || "",
-        surname: user?.lastName || "",
-        city: "",
-        work: "",
-        school: "",
-        website: "",
-        bioPattern: "",
+        description: null,
+        name: user?.firstName || null,
+        surname: user?.lastName || null,
+        city: null,
+        work: null,
+        school: null,
+        website: null,
+        bioPattern: null,
         isPrivate: (user?.publicMetadata?.isPrivate as boolean) ?? false,
+        showActivityStatus:
+          (user?.publicMetadata?.showActivityStatus as boolean) ?? true,
         createdAt: new Date(),
+        lastActiveAt: new Date(),
       },
       likes: [],
     }));
@@ -391,64 +395,58 @@ useRateLimit
         );
       } catch (err) {
         console.error("Failed to add stories:", err);
-        // Could add toast notification here
       }
     });
   };
 
-  // Improved comment deletion with proper error handling
-const handleDeleteComment = useCallback(
-  async (commentId: number) => {
-    if (pendingActions.deletingComments.has(commentId)) return;
+  const handleDeleteComment = useCallback(
+    async (commentId: number) => {
+      if (pendingActions.deletingComments.has(commentId)) return;
 
-    const activeGroup = optimisticStories.find(
-      (group) => group.user.id === activeUserStoryId
-    );
-    const currentStory = activeGroup?.stories[activeIndex];
-    if (!currentStory) return;
+      const activeGroup = optimisticStories.find(
+        (group) => group.user.id === activeUserStoryId
+      );
+      const currentStory = activeGroup?.stories[activeIndex];
+      if (!currentStory) return;
 
-    const originalComment = currentStory.comments?.find(
-      (c) => c.id === commentId
-    );
-    if (!originalComment) return;
+      const originalComment = currentStory.comments?.find(
+        (c) => c.id === commentId
+      );
+      if (!originalComment) return;
 
-    // Instant UI removal
-    dispatch({
-      type: "DELETE_COMMENT",
-      storyId: currentStory.id,
-      commentId,
-    });
-    updatePendingAction("deletingComments", commentId, true);
-
-    try {
-      await deleteStoryComment(commentId);
-    } catch (error: any) {
-      console.error("Failed to delete comment:", error);
-
-      // Rollback - restore the comment
       dispatch({
-        type: "ADD_COMMENT",
+        type: "DELETE_COMMENT",
         storyId: currentStory.id,
-        comment: originalComment,
+        commentId,
       });
+      updatePendingAction("deletingComments", commentId, true);
 
-      // Show user-friendly error
-      alert(error.message || "Failed to delete comment. Please try again.");
-    } finally {
-      updatePendingAction("deletingComments", commentId, false);
-    }
-  },
-  [
-    pendingActions.deletingComments,
-    optimisticStories,
-    activeUserStoryId,
-    activeIndex,
-    dispatch,
-    updatePendingAction,
-  ]
-);
+      try {
+        await deleteStoryComment(commentId);
+      } catch (error: any) {
+        console.error("Failed to delete comment:", error);
 
-  // Improved comment addition with rate limiting and validation
+        dispatch({
+          type: "ADD_COMMENT",
+          storyId: currentStory.id,
+          comment: originalComment,
+        });
+
+        alert(error.message || "Failed to delete comment. Please try again.");
+      } finally {
+        updatePendingAction("deletingComments", commentId, false);
+      }
+    },
+    [
+      pendingActions.deletingComments,
+      optimisticStories,
+      activeUserStoryId,
+      activeIndex,
+      dispatch,
+      updatePendingAction,
+    ]
+  );
+
   const handleAddComment = useCallback(
     async (storyId: number) => {
       const commentText = commentMap[storyId]?.trim();
@@ -472,19 +470,22 @@ const handleDeleteComment = useCallback(
         userId,
         user: {
           id: userId,
-          username: user?.username || "",
+          username: user?.username || null,
           avatar: user?.imageUrl || "/noAvatar.png",
-          name: user?.firstName || "",
-          surname: user?.lastName || "",
+          name: user?.firstName || null,
+          surname: user?.lastName || null,
           createdAt: new Date(),
-          description: "",
-          cover: "",
-          city: "",
-          work: "",
-          school: "",
-          website: "",
-          bioPattern: '',
+          description: null,
+          cover: null,
+          city: null,
+          work: null,
+          school: null,
+          website: null,
+          bioPattern: null,
           isPrivate: (user?.publicMetadata?.isPrivate as boolean) ?? false,
+          lastActiveAt: new Date(),
+          showActivityStatus:
+            (user?.publicMetadata?.showActivityStatus as boolean) ?? true,
         },
         likes: [],
       };
@@ -509,13 +510,11 @@ const handleDeleteComment = useCallback(
         });
       } catch (err) {
         console.error("Failed to add comment:", err);
-        // Rollback
         dispatch({
           type: "DELETE_COMMENT",
           storyId,
           commentId: tempId,
         });
-        // Restore comment text
         setCommentMap((prev) => ({ ...prev, [storyId]: commentText }));
         alert("Failed to add comment. Please try again.");
       } finally {
@@ -533,7 +532,6 @@ const handleDeleteComment = useCallback(
     ]
   );
 
-  // Story navigation callbacks
   const goNextStory = useCallback(() => {
     const activeGroup = optimisticStories.find(
       (group) => group.user.id === activeUserStoryId
@@ -552,122 +550,108 @@ const handleDeleteComment = useCallback(
     if (activeIndex > 0) setActiveIndex(activeIndex - 1);
   }, [activeIndex]);
 
-  // Improved story liking with rate limiting and optimistic updates
- const handleLikeStory = useCallback(
-   async (storyId: number) => {
-     // Prevent double-clicking and check rate limit
-     if (pendingActions.likingStories.has(storyId) || !canLikeStory()) {
-       return;
-     }
+  const handleLikeStory = useCallback(
+    async (storyId: number) => {
+      if (pendingActions.likingStories.has(storyId) || !canLikeStory()) {
+        return;
+      }
 
-     const activeGroup = optimisticStories.find(
-       (group) => group.user.id === activeUserStoryId
-     );
-     const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
-     if (!currentStory) return;
+      const activeGroup = optimisticStories.find(
+        (group) => group.user.id === activeUserStoryId
+      );
+      const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
+      if (!currentStory) return;
 
-     const isCurrentlyLiked = currentStory.likes.some(
-       (like) => like.userId === userId
-     );
-     const isLiking = !isCurrentlyLiked;
+      const isCurrentlyLiked = currentStory.likes.some(
+        (like) => like.userId === userId
+      );
+      const isLiking = !isCurrentlyLiked;
 
-     // Instant UI update
-     dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking });
-     updatePendingAction("likingStories", storyId, true);
+      dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking });
+      updatePendingAction("likingStories", storyId, true);
 
-     try {
-       // Fire and forget - don't await to keep UI snappy
-       likeStory(storyId, isLiking).catch((error) => {
-         console.error("Background like failed:", error);
-         // Rollback on error
-         dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking: !isLiking });
-       });
-     } finally {
-       // Clear pending state immediately for instant feedback
-       setTimeout(() => {
-         updatePendingAction("likingStories", storyId, false);
-       }, 100);
-     }
-   },
-   [
-     pendingActions.likingStories,
-     canLikeStory,
-     optimisticStories,
-     activeUserStoryId,
-     userId,
-     dispatch,
-     updatePendingAction,
-   ]
- );
+      try {
+        likeStory(storyId, isLiking).catch((error) => {
+          console.error("Background like failed:", error);
+          dispatch({ type: "TOGGLE_STORY_LIKE", storyId, isLiking: !isLiking });
+        });
+      } finally {
+        setTimeout(() => {
+          updatePendingAction("likingStories", storyId, false);
+        }, 100);
+      }
+    },
+    [
+      pendingActions.likingStories,
+      canLikeStory,
+      optimisticStories,
+      activeUserStoryId,
+      userId,
+      dispatch,
+      updatePendingAction,
+    ]
+  );
 
+  const handleLikeComment = useCallback(
+    async (storyId: number, commentId: number) => {
+      if (
+        commentId < 0 ||
+        pendingActions.likingComments.has(commentId) ||
+        !canLikeComment()
+      ) {
+        return;
+      }
 
-  // Improved comment liking with better error handling
- const handleLikeComment = useCallback(
-   async (storyId: number, commentId: number) => {
-     // Skip temporary comments and prevent double-clicking
-     if (
-       commentId < 0 ||
-       pendingActions.likingComments.has(commentId) ||
-       !canLikeComment()
-     ) {
-       return;
-     }
+      const activeGroup = optimisticStories.find(
+        (group) => group.user.id === activeUserStoryId
+      );
+      const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
+      const currentComment = currentStory?.comments?.find(
+        (c) => c.id === commentId
+      );
 
-     const activeGroup = optimisticStories.find(
-       (group) => group.user.id === activeUserStoryId
-     );
-     const currentStory = activeGroup?.stories.find((s) => s.id === storyId);
-     const currentComment = currentStory?.comments?.find(
-       (c) => c.id === commentId
-     );
+      if (!currentComment) return;
 
-     if (!currentComment) return;
+      const isCurrentlyLiked = currentComment.likes.some(
+        (like) => like.userId === userId
+      );
+      const isLiking = !isCurrentlyLiked;
 
-     const isCurrentlyLiked = currentComment.likes.some(
-       (like) => like.userId === userId
-     );
-     const isLiking = !isCurrentlyLiked;
+      dispatch({
+        type: "TOGGLE_COMMENT_LIKE",
+        storyId,
+        commentId,
+        isLiking,
+      });
+      updatePendingAction("likingComments", commentId, true);
 
-     // Instant UI update
-     dispatch({
-       type: "TOGGLE_COMMENT_LIKE",
-       storyId,
-       commentId,
-       isLiking,
-     });
-     updatePendingAction("likingComments", commentId, true);
+      try {
+        likeStoryComment(commentId, isLiking).catch((error) => {
+          console.error("Background comment like failed:", error);
+          dispatch({
+            type: "TOGGLE_COMMENT_LIKE",
+            storyId,
+            commentId,
+            isLiking: !isLiking,
+          });
+        });
+      } finally {
+        setTimeout(() => {
+          updatePendingAction("likingComments", commentId, false);
+        }, 100);
+      }
+    },
+    [
+      pendingActions.likingComments,
+      canLikeComment,
+      optimisticStories,
+      activeUserStoryId,
+      userId,
+      dispatch,
+      updatePendingAction,
+    ]
+  );
 
-     try {
-       // Background request - don't block UI
-       likeStoryComment(commentId, isLiking).catch((error) => {
-         console.error("Background comment like failed:", error);
-         // Rollback on error
-         dispatch({
-           type: "TOGGLE_COMMENT_LIKE",
-           storyId,
-           commentId,
-           isLiking: !isLiking,
-         });
-       });
-     } finally {
-       // Clear pending state quickly
-       setTimeout(() => {
-         updatePendingAction("likingComments", commentId, false);
-       }, 100);
-     }
-   },
-   [
-     pendingActions.likingComments,
-     canLikeComment,
-     optimisticStories,
-     activeUserStoryId,
-     userId,
-     dispatch,
-     updatePendingAction,
-   ]
- );
-
-  // Story bubble click handler with improved view tracking
   const handleStoryBubbleClick = useCallback(
     async (uId: string) => {
       setActiveUserStoryId(uId);
@@ -688,7 +672,6 @@ const handleDeleteComment = useCallback(
     [optimisticStories, userId]
   );
 
-  // Story deletion handler
   const handleDeleteStory = useCallback(
     async (storyId: number) => {
       startTransition(async () => {
@@ -706,56 +689,53 @@ const handleDeleteComment = useCallback(
     },
     [dispatch]
   );
-const getStoryDuration = (story: { img: string }) => {
-  // Videos can play for up to 60 seconds (1 minute)
-  // Photos get 10 seconds
-  return isStoryVideo(story) ? 60000 : 10000; // milliseconds
-};
-  // Timer management for story progression
- useEffect(() => {
-   if (!activeUserStoryId) return;
 
-   const shouldPause = isInputActive || showActivityModal || showDeleteConfirm;
-   if (shouldPause) return;
+  const getStoryDuration = (story: { img: string }) => {
+    return isStoryVideo(story) ? 60000 : 10000;
+  };
 
-   const activeGroup = optimisticStories.find(
-     (group) => group.user.id === activeUserStoryId
-   );
-   const currentStory = activeGroup?.stories[activeIndex];
-   if (!currentStory) return;
+  useEffect(() => {
+    if (!activeUserStoryId) return;
 
-   const storyDuration = getStoryDuration(currentStory);
+    const shouldPause = isInputActive || showActivityModal || showDeleteConfirm;
+    if (shouldPause) return;
 
-   timerRef.current = window.setInterval(() => {
-     const elapsed = Date.now() - startTimeRef.current;
-     setProgress(Math.min((elapsed / storyDuration) * 100, 100));
+    const activeGroup = optimisticStories.find(
+      (group) => group.user.id === activeUserStoryId
+    );
+    const currentStory = activeGroup?.stories[activeIndex];
+    if (!currentStory) return;
 
-     if (elapsed >= storyDuration) {
-       startTimeRef.current = Date.now();
-       goNextStory();
-     }
-   }, 100);
+    const storyDuration = getStoryDuration(currentStory);
 
-   return () => {
-     if (timerRef.current) clearInterval(timerRef.current);
-   };
- }, [
-   activeUserStoryId,
-   activeIndex,
-   isInputActive,
-   showActivityModal,
-   showDeleteConfirm,
-   goNextStory,
-   optimisticStories, // Add this dependency
- ]);
+    timerRef.current = window.setInterval(() => {
+      const elapsed = Date.now() - startTimeRef.current;
+      setProgress(Math.min((elapsed / storyDuration) * 100, 100));
 
-  // Reset progress on story change
+      if (elapsed >= storyDuration) {
+        startTimeRef.current = Date.now();
+        goNextStory();
+      }
+    }, 100);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [
+    activeUserStoryId,
+    activeIndex,
+    isInputActive,
+    showActivityModal,
+    showDeleteConfirm,
+    goNextStory,
+    optimisticStories,
+  ]);
+
   useEffect(() => {
     setProgress(0);
     startTimeRef.current = Date.now();
   }, [activeIndex, activeUserStoryId]);
 
-  // View tracking for story progression
   useEffect(() => {
     if (!activeUserStoryId) return;
 
