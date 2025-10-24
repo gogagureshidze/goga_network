@@ -9,6 +9,8 @@ import Providers from "./providers";
 import Footer from "@/components/Footer";
 import GlobalLoader from "@/components/GlobalLoader";
 import { UserProvider } from "@/contexts/UserContext";
+import ActivityTracker from "@/components/ActivityTracker";
+import { updateLastActive } from "@/actions/activityActions";
 
 // Define the Funnel Display font with the variable property
 const funnel_display = Funnel_Display({
@@ -72,6 +74,10 @@ export default async function RootLayout({
               </div>
               <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
                 <GlobalLoader />
+                {users && (
+                  <ActivityTracker updateLastActive={updateLastActive} />
+                )}
+
                 <PageTransition>{children}</PageTransition>
               </div>
               <Footer />

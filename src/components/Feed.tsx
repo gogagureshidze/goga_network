@@ -16,7 +16,9 @@ const postSelectFields = {
       avatar: true,
       name: true,
       surname: true,
-      isPrivate: true, // 🆕 Include privacy status
+      isPrivate: true,
+      lastActiveAt: true, // 🆕 Activity tracking
+      showActivityStatus: true, // 🆕 Include privacy status
     },
   },
   media: {

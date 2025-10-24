@@ -9,6 +9,8 @@ import {
   useTransition,
   useCallback,
   memo,
+  useEffect,
+  useRef,
 } from "react";
 import CommentActivityModal from "./CommentActivityModal";
 import { addComment } from "../actions/createComment";
@@ -16,6 +18,7 @@ import { addReplyComment } from "../actions/addReplyComment";
 import { likeComment } from "../actions/likeComment";
 import { deleteComment } from "../actions/deleteComment";
 import Link from "next/link";
+import { io, Socket } from "socket.io-client";
 
 // Type definition for a comment including user details and nested replies
 type CommentWithUser = {
@@ -38,7 +41,7 @@ type CommentWithUser = {
   replies?: CommentWithUser[];
 };
 
-// Helper function to format time - MOVED BEFORE ANY COMPONENT
+// Helper function to format time
 const formatTimeAgo = (date: Date | string) => {
   const d = new Date(date);
   const now = new Date();
@@ -98,6 +101,57 @@ const removeCommentFromTree = (
   }, [] as CommentWithUser[]);
 };
 
+// 🆕 TYPING INDICATOR COMPONENT
+const TypingIndicator = memo(function TypingIndicator({
+  usernames,
+}: {
+  usernames: string[];
+}) {
+  if (usernames.length === 0) return null;
+
+  // Only show first 3 users max
+  const maxDisplay = 3;
+  const displayUsernames = usernames.slice(0, maxDisplay);
+  const remainingCount = usernames.length - maxDisplay;
+
+  let displayText = "";
+
+  if (usernames.length === 1) {
+    displayText = `${displayUsernames[0]} is typing`;
+  } else if (usernames.length === 2) {
+    displayText = `${displayUsernames[0]} and ${displayUsernames[1]} are typing`;
+  } else if (usernames.length === 3) {
+    displayText = `${displayUsernames[0]}, ${displayUsernames[1]}, and ${displayUsernames[2]} are typing`;
+  } else {
+    // 4 or more users - show first 3 and count remaining
+    displayText = `${displayUsernames[0]}, ${displayUsernames[1]}, ${
+      displayUsernames[2]
+    }, and ${remainingCount} ${
+      remainingCount === 1 ? "other is" : "others are"
+    } typing`;
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-gray-500 px-2 py-1 bg-gray-50 rounded-lg animate-pulse py-2">
+      <div className="flex gap-1">
+        <span
+          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+          style={{ animationDelay: "0ms" }}
+        ></span>
+        <span
+          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+          style={{ animationDelay: "150ms" }}
+        ></span>
+        <span
+          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+          style={{ animationDelay: "300ms" }}
+        ></span>
+      </div>
+      <span>{displayText}</span>
+    </div>
+  );
+});
+
 // --- CommentItem Component (Memoized) ---
 const CommentItem = memo(function CommentItem({
   comment,
@@ -127,7 +181,7 @@ const CommentItem = memo(function CommentItem({
   const [showAllReplies, setShowAllReplies] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [isReplying, setIsReplying] = useState(false);
-  const [showActivityModal, setShowActivityModal] = useState(false); // MOVED INSIDE COMPONENT
+  const [showActivityModal, setShowActivityModal] = useState(false);
   const isCommentOwner = user?.id === comment.userId;
 
   const repliesToDisplay = showAllReplies
@@ -142,7 +196,10 @@ const CommentItem = memo(function CommentItem({
   return (
     <>
       <div className="flex items-start gap-2 sm:gap-3 relative">
-        <Link href={`/profile/${comment.user.username}`} className="flex-shrink-0">
+        <Link
+          href={`/profile/${comment.user.username}`}
+          className="flex-shrink-0"
+        >
           <Image
             src={comment.user.avatar || "/noAvatar.png"}
             alt={comment.user.username || "User"}
@@ -154,7 +211,9 @@ const CommentItem = memo(function CommentItem({
         <div className="bg-slate-100 rounded-xl px-2 sm:px-3 py-2 text-sm flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <Link href={`/profile/${comment.user.username}`}>
-              <span className="font-semibold text-xs sm:text-sm">{comment.user.username}</span>
+              <span className="font-semibold text-xs sm:text-sm">
+                {comment.user.username}
+              </span>
             </Link>
             <span className="text-xs text-gray-500 flex-shrink-0">
               {formatTimeAgo(comment.createdAt)}
@@ -194,7 +253,7 @@ const CommentItem = memo(function CommentItem({
           </div>
         </div>
 
-        {/* 3-DOT MENU - SHOWN TO EVERYONE */}
+        {/* 3-DOT MENU */}
         <div className="relative flex-shrink-0">
           <button onClick={() => setShowMenu(!showMenu)} className="p-1">
             <MoreVertical
@@ -204,7 +263,6 @@ const CommentItem = memo(function CommentItem({
           </button>
           {showMenu && (
             <div className="absolute right-0 top-6 w-32 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200">
-              {/* Activity - shown to everyone */}
               <button
                 onClick={() => {
                   setShowActivityModal(true);
@@ -215,7 +273,6 @@ const CommentItem = memo(function CommentItem({
                 <Heart size={14} /> Activity
               </button>
 
-              {/* Delete - only shown to comment owner */}
               {isCommentOwner && (
                 <>
                   <div className="border-t border-gray-200"></div>
@@ -253,9 +310,13 @@ const CommentItem = memo(function CommentItem({
         />
       )}
 
-      {/* Rest of your existing code for reply form and nested replies */}
+      {/* Reply form */}
       {isReplyingToThisComment && user && (
-        <div className={`flex flex-col gap-2 mt-2 ${shouldIndent ? "ml-4 sm:ml-10" : "ml-0"} ${shouldIndent ? "border-l-2 border-gray-300 pl-2 sm:pl-4" : ""}`}>
+        <div
+          className={`flex flex-col gap-2 mt-2 ${
+            shouldIndent ? "ml-4 sm:ml-10" : "ml-0"
+          } ${shouldIndent ? "border-l-2 border-gray-300 pl-2 sm:pl-4" : ""}`}
+        >
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Image
               src={comment.user.avatar || "/noAvatar.png"}
@@ -264,7 +325,9 @@ const CommentItem = memo(function CommentItem({
               height={20}
               className="rounded-full w-5 h-5 flex-shrink-0"
             />
-            <span className="truncate text-xs sm:text-sm">Replying to {comment.user.username}</span>
+            <span className="truncate text-xs sm:text-sm">
+              Replying to {comment.user.username}
+            </span>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
             <Image
@@ -323,14 +386,14 @@ const CommentItem = memo(function CommentItem({
                 className="w-full pr-8 sm:pr-10 bg-transparent outline-none text-xs sm:text-sm"
                 type="text"
                 name="reply-input"
-                placeholder={
-                  isReplying
-                    ? "Sending..."
-                    : "Reply..."
-                }
+                placeholder={isReplying ? "Sending..." : "Reply..."}
                 disabled={isReplying}
               />
-              <button type="submit" disabled={isReplying} className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2">
+              <button
+                type="submit"
+                disabled={isReplying}
+                className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2"
+              >
                 <SendHorizonal
                   className={`cursor-pointer w-4 h-4 sm:w-5 sm:h-5 ${
                     isReplying ? "text-gray-300" : "text-orange-300"
@@ -344,7 +407,11 @@ const CommentItem = memo(function CommentItem({
 
       {/* Render nested replies */}
       {repliesToDisplay && repliesToDisplay.length > 0 && (
-        <div className={`${shouldIndent ? "pl-4 sm:pl-8" : "pl-0"} mt-2 ${shouldIndent ? "border-l-2 border-gray-300" : ""}`}>
+        <div
+          className={`${shouldIndent ? "pl-4 sm:pl-8" : "pl-0"} mt-2 ${
+            shouldIndent ? "border-l-2 border-gray-300" : ""
+          }`}
+        >
           {repliesToDisplay.map((reply) => (
             <div key={reply.id} className="mt-2 mb-2">
               <CommentItem
@@ -393,6 +460,16 @@ function CommentList({
   const [showAll, setShowAll] = useState(false);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [isCommenting, setIsCommenting] = useState(false);
+
+  // 🆕 SOCKET & TYPING STATE
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const SOCKET_SERVER_URL =
+    process.env.NODE_ENV === "production"
+      ? "wss://socket.goga.network"
+      : "http://localhost:3001";
 
   const [optimisticComments, addOptimisticComment] = useOptimistic(
     comments,
@@ -457,7 +534,6 @@ function CommentList({
                 };
               }
 
-              // Check replies recursively
               if (comment.replies && comment.replies.length > 0) {
                 return {
                   ...comment,
@@ -479,6 +555,85 @@ function CommentList({
       }
     }
   );
+
+  // 🆕 SOCKET CONNECTION SETUP
+  useEffect(() => {
+    if (!user) return;
+
+    console.log(`💬 Setting up socket for post ${postId}`);
+
+    const newSocket = io(SOCKET_SERVER_URL, {
+      query: { userId: user.id },
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    newSocket.on("connect", () => {
+      console.log(`✅ Connected to socket server for post ${postId}`);
+      // Join the post room
+      newSocket.emit("joinPost", { postId });
+    });
+
+    newSocket.on("connect_error", (error) => {
+      console.error("❌ Socket connection error:", error);
+    });
+
+    // 🆕 LISTEN FOR TYPING UPDATES
+    newSocket.on(
+      "typingUpdate",
+      (data: { postId: number; typingUsers: string[] }) => {
+        if (data.postId === postId) {
+          console.log(`⌨️ Typing update for post ${postId}:`, data.typingUsers);
+          // Filter out current user from typing list
+          const otherUsers = data.typingUsers.filter(
+            (u) => u !== user.username
+          );
+          setTypingUsers(otherUsers);
+        }
+      }
+    );
+
+    setSocket(newSocket);
+
+    return () => {
+      console.log(`🔌 Cleaning up socket for post ${postId}`);
+      newSocket.emit("leavePost", { postId });
+      newSocket.removeAllListeners();
+      newSocket.disconnect();
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [user, postId, SOCKET_SERVER_URL]);
+
+  // 🆕 HANDLE TYPING INDICATOR
+  const handleTyping = useCallback(() => {
+    if (!socket || !user || !user.username) return;
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Emit typing started
+    socket.emit("userTyping", {
+      postId,
+      username: user.username,
+      isTyping: true,
+    });
+
+    // Set timeout to stop typing after 3 seconds of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+      socket.emit("userTyping", {
+        postId,
+        username: user.username,
+        isTyping: false,
+      });
+    }, 3000);
+  }, [socket, user, postId]);
 
   const handleLike = useCallback(
     (commentId: number) => {
@@ -556,6 +711,21 @@ function CommentList({
       setReplyingTo(null);
       setIsCommenting(false);
 
+      // 🆕 EMIT COMMENT SUBMITTED TO STOP TYPING INDICATOR
+      if (socket) {
+        socket.emit("commentSubmitted", { postId });
+        socket.emit("userTyping", {
+          postId,
+          username: user.username,
+          isTyping: false,
+        });
+      }
+
+      // Clear typing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
       startTransition(() => {
         if (replyingTo) {
           addReplyComment(postId, desc, replyingTo);
@@ -573,6 +743,7 @@ function CommentList({
       startTransition,
       addOptimisticComment,
       isCommenting,
+      socket,
     ]
   );
 
@@ -607,7 +778,10 @@ function CommentList({
                 isCommenting ? "Posting comment..." : "Write a comment..."
               }
               value={desc}
-              onChange={(e) => setDesc(e.target.value)}
+              onChange={(e) => {
+                setDesc(e.target.value);
+                handleTyping(); // 🆕 TRIGGER TYPING INDICATOR
+              }}
               disabled={isCommenting}
             />
             <button type="submit" disabled={isCommenting}>
@@ -618,6 +792,13 @@ function CommentList({
               />
             </button>
           </form>
+        </div>
+      )}
+
+      {/* 🆕 TYPING INDICATOR */}
+      {typingUsers.length > 0 && (
+        <div className="mb-4">
+          <TypingIndicator usernames={typingUsers} />
         </div>
       )}
 

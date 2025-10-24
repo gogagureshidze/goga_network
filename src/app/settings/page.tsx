@@ -22,6 +22,7 @@ import Image from "next/image";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { togglePrivateAccount } from "../../actions/togglePrivateAction";
+import { toggleActivityStatus } from "../../actions/activityActions"; // 🆕 Import this
 import { useUserContext } from "../../contexts/UserContext";
 
 export default function SettingsPage() {
@@ -34,11 +35,12 @@ export default function SettingsPage() {
     isLoading: isContextLoading,
   } = useUserContext();
   const isPrivate = userData?.isPrivate ?? false;
+  const showActivityStatusState = userData?.showActivityStatus ?? true; // 🆕 Get from context
 
   const [isToggleLoading, setIsToggleLoading] = useState(false);
+  const [isActivityToggleLoading, setIsActivityToggleLoading] = useState(false); // 🆕 Add loading state
 
   // These other states are fine because they are local to this page
-  const [showActivity, setShowActivity] = useState(true);
   const [allowStoryComments, setAllowStoryComments] = useState(true);
   const [showStoryLikes, setShowStoryLikes] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
@@ -52,13 +54,11 @@ export default function SettingsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
 
-  // This will log null first, then your user object. This is normal.
-
   const handleTogglePrivate = async () => {
-    setIsToggleLoading(true); // Use the local toggle loader
+    setIsToggleLoading(true);
     try {
       await togglePrivateAccount();
-      await refreshUser(); // Tell context to refresh
+      await refreshUser();
     } catch (error) {
       console.error("Failed to toggle privacy:", error);
       alert("Failed to update privacy settings");
@@ -66,10 +66,26 @@ export default function SettingsPage() {
       setIsToggleLoading(false);
     }
   };
+const handleToggleActivityStatus = async () => {
+  setIsActivityToggleLoading(true);
+  try {
+    const res = await toggleActivityStatus();
 
+    if (res.success) {
+      // ✅ Update UI immediately (no waiting for revalidation)
+      await refreshUser();
+    }
+  } catch (error) {
+    console.error("Failed to toggle activity status:", error);
+  } finally {
+    setIsActivityToggleLoading(false);
+  }
+};
+
+console.log(userData?.isPrivate, "USER DATA ACTIVITY STATUS");
   // Loading state: Wait for BOTH Clerk and your context to be ready
   if (!isClerkLoaded || isContextLoading) {
-    <div className="loader-spiner"></div>
+    return <div className="loader-spiner"></div>;
   }
 
   // Not logged in
@@ -85,6 +101,7 @@ export default function SettingsPage() {
       </div>
     );
   }
+
   return (
     <div className="min-h-screen rose-50">
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -170,7 +187,7 @@ export default function SettingsPage() {
               </button>
             </div>
 
-            {/* Activity Status */}
+            {/* 🆕 Activity Status - UPDATED VERSION */}
             <div className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
               <div className="flex items-start gap-4 flex-1">
                 <Eye className="text-gray-400 mt-1" size={20} />
@@ -179,21 +196,42 @@ export default function SettingsPage() {
                     Show Activity Status
                   </h4>
                   <p className="text-sm text-gray-600 mt-1">
-                    Let others see when you&apos;re online
+                    Let others see when you were last active
                   </p>
+                  {showActivityStatusState && (
+                    <p className="text-xs text-green-600 mt-2 font-medium">
+                      ✨ Others can see when you&apos;re online ✨
+                    </p>
+                  )}
+                  {!showActivityStatusState && (
+                    <p className="text-xs text-gray-500 mt-2 font-medium">
+                      🔒 Your activity status is hidden
+                    </p>
+                  )}
                 </div>
               </div>
               <button
-                onClick={() => setShowActivity(!showActivity)}
+                onClick={handleToggleActivityStatus}
+                disabled={isActivityToggleLoading}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  showActivity ? "bg-orange-500" : "bg-gray-300"
+                  showActivityStatusState ? "bg-orange-500" : "bg-gray-300"
+                } ${
+                  isActivityToggleLoading ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    showActivity ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
+                {isActivityToggleLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                ) : (
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      showActivityStatusState
+                        ? "translate-x-6"
+                        : "translate-x-1"
+                    }`}
+                  />
+                )}
               </button>
             </div>
           </div>

@@ -26,6 +26,7 @@ type UserData = {
   school?: string;
   work?: string;
   website?: string;
+  showActivityStatus?: boolean;
   bioPattern?: string;
   isPrivate: boolean;
 };
@@ -57,14 +58,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 3. If Clerk is loaded AND there is a user, fetch their DB data.
     setIsLoading(true);
     try {
-      const dbUser = await getUserData(); // Server action
+      const dbUser = await getUserData(); 
       if (dbUser) {
         setUserData(dbUser);
       } else {
-        // This can happen if the DB user was deleted but Clerk session persists
         setUserData(null);
       }
     } catch (err) {
@@ -73,12 +72,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [user, isLoaded]); // <-- Depend on BOTH user and isLoaded
+  }, [user, isLoaded]); 
 
-  // Effect to run the fetch function whenever it changes
   useEffect(() => {
     fetchUserData();
-  }, [fetchUserData]); // <-- This now correctly re-runs when user or isLoaded changes
+  }, [fetchUserData]); 
 
   // Manual refresh function
   const refreshUser = async () => {
@@ -95,7 +93,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 }
 
-// ... (Your useUserContext hook is fine)
 export function useUserContext() {
   const context = useContext(UserContext);
   if (context === undefined) {

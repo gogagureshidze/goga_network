@@ -28,6 +28,7 @@ export const getUserData = async () => {
         work: true,
         website: true,
         bioPattern: true,
+        showActivityStatus: true,
         isPrivate: true,
       },
     });

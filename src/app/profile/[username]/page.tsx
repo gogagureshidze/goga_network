@@ -10,6 +10,7 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
 import { Suspense } from "react";
+import ActivityStatus from "@/components/ActivityStatus";
 
 const getCachedUser = unstable_cache(
   async (username: string) => {
@@ -27,6 +28,8 @@ const getCachedUser = unstable_cache(
         school: true,
         work: true,
         website: true,
+        lastActiveAt: true,
+        showActivityStatus: true,
         createdAt: true,
         bioPattern: true,
         isPrivate: true, // 🆕 Include privacy status
@@ -128,6 +131,8 @@ async function ProfilePage({ params }: { params: any }) {
         city: true,
         school: true,
         work: true,
+        lastActiveAt: true,
+        showActivityStatus: true,
         website: true,
         createdAt: true,
         bioPattern: true,
@@ -233,7 +238,15 @@ async function ProfilePage({ params }: { params: any }) {
               ? `${user.name} ${user.surname}`
               : user.username}
           </h1>
-
+          { user.showActivityStatus && user.lastActiveAt && (
+            <div className="flex justify-center">
+              <ActivityStatus
+                lastActiveAt={user.lastActiveAt}
+                size="md"
+                showText={true}
+              />
+            </div>
+          )}
           {/* Stats */}
           <div className="flex items-center justify-center gap-12 mb-4">
             <div className="flex flex-col items-center">

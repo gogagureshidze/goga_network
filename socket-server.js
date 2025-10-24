@@ -25,8 +25,10 @@ const io = new Server(httpServer, {
 });
 
 // Track online users with socket mapping for proper cleanup
-
 const onlineUsers = new Map(); // userId -> Set of socketIds
+
+// Track typing status per post: postId -> Map of userId -> username
+const typingUsers = new Map(); // postId -> Map(userId -> {username, timestamp})
 
 const broadcastOnlineCount = () => {
   const count = onlineUsers.size;
@@ -44,6 +46,34 @@ const broadcastOnlineCount = () => {
     );
   }
 };
+
+// Clean up stale typing indicators (after 10 seconds of inactivity)
+setInterval(() => {
+  const now = Date.now();
+  const timeout = 10000; // 10 seconds
+
+  typingUsers.forEach((users, postId) => {
+    users.forEach((data, userId) => {
+      if (now - data.timestamp > timeout) {
+        users.delete(userId);
+        console.log(
+          `🧹 Cleaned up stale typing indicator for user ${userId} on post ${postId}`
+        );
+
+        // Broadcast updated typing users to all clients viewing this post
+        io.to(`post-${postId}`).emit("typingUpdate", {
+          postId,
+          typingUsers: Array.from(users.values()).map((u) => u.username),
+        });
+      }
+    });
+
+    // Remove empty post entries
+    if (users.size === 0) {
+      typingUsers.delete(postId);
+    }
+  });
+}, 5000); // Check every 5 seconds
 
 io.on("connection", (socket) => {
   const userId = socket.handshake.query.userId?.toString();
@@ -73,6 +103,105 @@ io.on("connection", (socket) => {
 
   // Send current online count immediately to new connection
   socket.emit("onlineCount", onlineUsers.size);
+
+  // 🆕 JOIN POST ROOM - when user views a post
+  socket.on("joinPost", (data) => {
+    const { postId } = data;
+    socket.join(`post-${postId}`);
+    console.log(`📌 User ${userId} joined post room: post-${postId}`);
+
+    // Send current typing users for this post
+    const currentTyping = typingUsers.get(postId);
+    if (currentTyping && currentTyping.size > 0) {
+      socket.emit("typingUpdate", {
+        postId,
+        typingUsers: Array.from(currentTyping.values()).map((u) => u.username),
+      });
+    }
+  });
+
+  // 🆕 LEAVE POST ROOM
+  socket.on("leavePost", (data) => {
+    const { postId } = data;
+    socket.leave(`post-${postId}`);
+    console.log(`📌 User ${userId} left post room: post-${postId}`);
+
+    // Remove user from typing if they were typing
+    const postTyping = typingUsers.get(postId);
+    if (postTyping && postTyping.has(userId)) {
+      postTyping.delete(userId);
+
+      // Broadcast updated typing users
+      io.to(`post-${postId}`).emit("typingUpdate", {
+        postId,
+        typingUsers: Array.from(postTyping.values()).map((u) => u.username),
+      });
+
+      if (postTyping.size === 0) {
+        typingUsers.delete(postId);
+      }
+    }
+  });
+
+  // 🆕 USER IS TYPING
+  socket.on("userTyping", (data) => {
+    const { postId, username, isTyping } = data;
+
+    if (!userId || !postId || !username) return;
+
+    console.log(
+      `⌨️ User ${username} (${userId}) is ${
+        isTyping ? "typing" : "stopped typing"
+      } on post ${postId}`
+    );
+
+    if (!typingUsers.has(postId)) {
+      typingUsers.set(postId, new Map());
+    }
+
+    const postTyping = typingUsers.get(postId);
+
+    if (isTyping) {
+      // Add or update user's typing status
+      postTyping.set(userId, { username, timestamp: Date.now() });
+    } else {
+      // Remove user from typing
+      postTyping.delete(userId);
+    }
+
+    // Broadcast to all users in this post room (except sender)
+    socket.to(`post-${postId}`).emit("typingUpdate", {
+      postId,
+      typingUsers: Array.from(postTyping.values()).map((u) => u.username),
+    });
+
+    // Clean up empty entries
+    if (postTyping.size === 0) {
+      typingUsers.delete(postId);
+    }
+  });
+
+  // 🆕 COMMENT SUBMITTED - stop typing indicator immediately
+  socket.on("commentSubmitted", (data) => {
+    const { postId } = data;
+
+    if (!userId || !postId) return;
+
+    const postTyping = typingUsers.get(postId);
+    if (postTyping && postTyping.has(userId)) {
+      postTyping.delete(userId);
+
+      // Broadcast updated typing users
+      io.to(`post-${postId}`).emit("typingUpdate", {
+        postId,
+        typingUsers: Array.from(postTyping.values()).map((u) => u.username),
+      });
+
+      if (postTyping.size === 0) {
+        typingUsers.delete(postId);
+      }
+    }
+  });
 
   socket.on("sendMessage", async (data) => {
     try {
@@ -124,6 +253,23 @@ io.on("connection", (socket) => {
         if (userSockets.size === 0) {
           onlineUsers.delete(userId);
           console.log(`👋 User ${userId} is now offline`);
+
+          // Remove user from all typing indicators
+          typingUsers.forEach((users, postId) => {
+            if (users.has(userId)) {
+              users.delete(userId);
+
+              // Broadcast updated typing users
+              io.to(`post-${postId}`).emit("typingUpdate", {
+                postId,
+                typingUsers: Array.from(users.values()).map((u) => u.username),
+              });
+
+              if (users.size === 0) {
+                typingUsers.delete(postId);
+              }
+            }
+          });
         } else {
           console.log(
             `🔌 User ${userId} still has ${userSockets.size} active connections`

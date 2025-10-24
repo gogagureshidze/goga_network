@@ -23,6 +23,9 @@ model User {
   website                String?
   bioPattern             String?
   createdAt              DateTime        @default(now())
+  lastActiveAt           DateTime        @default(now())
+  showActivityStatus     Boolean         @default(true)
+  
   blockedBy              Block[]         @relation("BlocksReceived")
   blocks                 Block[]         @relation("BlocksSent")
   comments               Comment[]

@@ -7,6 +7,7 @@ import PostInteractions from "./PostInteractions";
 import EventCard from "./EventCard";
 import PollCard from "./PollCard";
 import PostDescription from "./PostDescription"; // NEW IMPORT
+import ActivityStatus from "./ActivityStatus";
 
 // Helper function to format time
 function formatTimeAgo(date: Date | string) {
@@ -49,10 +50,11 @@ function formatTimeAgo(date: Date | string) {
 export default function Post({ post }: { post: any }) {
   const isEventPost = !!post.event;
   const isPollPost = !!post.poll;
-
-  // Extract tagged usernames from the tags array
   const taggedUsernames = post.tags?.map((tag: any) => tag.user.username) || [];
   const taggedUserIds = post.tags?.map((tag: any) => tag.userId) || [];
+
+  // 🆕 Check if we should show activity (user has it enabled)
+  const showActivity = post.user?.showActivityStatus && post.user?.lastActiveAt;
 
   return (
     <div className="flex flex-col gap-4 p-4 bg-white rounded-xl shadow-sm">
@@ -60,32 +62,54 @@ export default function Post({ post }: { post: any }) {
       <div className="flex items-center justify-between">
         <Link href={`/profile/${post.user?.username}`}>
           <div className="flex items-center gap-4">
-            <Image
-              src={post.user?.avatar || "/noAvatar.png"}
-              alt="Profile"
-              width={40}
-              height={40}
-              className="w-10 h-10 object-cover cursor-pointer rounded-full ring-orange-200 ring-2"
-            />
+            {/* 🆕 AVATAR WITH GREEN DOT */}
+            <div className="relative">
+              <Image
+                src={post.user?.avatar || "/noAvatar.png"}
+                alt="Profile"
+                width={40}
+                height={40}
+                className="w-10 h-10 object-cover cursor-pointer rounded-full ring-orange-200 ring-2"
+              />
+            </div>
+
             <div className="flex flex-col">
               <span className="font-medium cursor-pointer">
                 {post.user?.username}
               </span>
-              <span className="text-xs text-gray-500">
-                {formatTimeAgo(post.createdAt)}
-              </span>
+              
+              {/* 🆕 THIS IS WHERE ACTIVITY STATUS SHOWS */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">
+                  {formatTimeAgo(post.createdAt)}
+                </span>
+                {/* 🆕 ACTIVITY STATUS TEXT */}
+                {showActivity && (
+                  <>
+                    <span className="text-xs text-gray-400">•</span>
+                    <ActivityStatus
+                      lastActiveAt={post.user.lastActiveAt}
+                      size="sm"
+                      showText={true} // Change to false to hide text, show only dot
+                    />
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </Link>
-        <PostInfo taggedUserIds={taggedUserIds} postId={post.id} postOwnerId={post.userId} />
+        <PostInfo
+          taggedUserIds={taggedUserIds}
+          postId={post.id}
+          postOwnerId={post.userId}
+        />
       </div>
 
-      {/* Caption with clickable tags - CHANGED */}
+      {/* Rest of your post code stays the same */}
       {post.desc && (
         <PostDescription text={post.desc} taggedUsernames={taggedUsernames} />
       )}
 
-      {/* Content - Event, Poll, or Media */}
       {isPollPost ? (
         <PollCard poll={post.poll} />
       ) : isEventPost ? (
