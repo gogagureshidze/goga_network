@@ -42,9 +42,9 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
   useEffect(() => {
     if (startDate) {
       const now = new Date();
-      const eventStart = new Date(startDate + "T00:00:00"); // Use ISO format with time for consistency
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Start of today
-      const diffTime = eventStart.getTime() - today.getTime();
+      // Ensure date is parsed correctly, considering timezone potentially
+      const eventStart = new Date(startDate + "T00:00:00"); // Set time to midnight to avoid timezone issues with just date
+      const diffTime = eventStart.getTime() - now.setHours(0, 0, 0, 0); // Compare dates only
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
       if (diffDays < 0) {
@@ -59,10 +59,10 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
         const weeks = Math.floor(diffDays / 7);
         setDaysUntil(`In ${weeks} week${weeks > 1 ? "s" : ""}`);
       } else if (diffDays < 365) {
-        const months = Math.floor(diffDays / 30.44); // Average month length
+        const months = Math.floor(diffDays / 30);
         setDaysUntil(`In ${months} month${months > 1 ? "s" : ""}`);
       } else {
-        const years = Math.floor(diffDays / 365.25); // Account for leap years
+        const years = Math.floor(diffDays / 365);
         setDaysUntil(`In ${years} year${years > 1 ? "s" : ""}`);
       }
     } else {
@@ -73,6 +73,7 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
   // Calculate duration when dates change
   useEffect(() => {
     if (startDate && startTime && endDate && endTime) {
+      // Use UTC parsing to avoid timezone shifts if times are meant to be local
       const start = new Date(`${startDate}T${startTime}`);
       const end = new Date(`${endDate}T${endTime}`);
       const diffMs = end.getTime() - start.getTime();
@@ -146,7 +147,7 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
 
     onSubmit(eventData, desc);
 
-    // Reset form after successful submission
+    // Reset form after successful submission (or move inside onSubmit if preferred)
     setDesc("");
     setStartDate("");
     setStartTime("");
@@ -174,9 +175,8 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      {/* Main Modal Container - Themed */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col transition-colors duration-300">
-        {/* Header - Themed */}
+        {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500 dark:bg-gradient-to-r dark:from-gray-700 dark:via-gray-800 dark:to-gray-800 p-6 flex justify-between items-center">
           <h2 className="text-2xl font-bold text-white flex items-center gap-3">
             <Sparkles className="w-7 h-7" />
@@ -192,7 +192,7 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
 
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Description Section - Themed */}
+          {/* Description Section */}
           <div className="bg-indigo-50 dark:bg-gray-700/50 rounded-xl p-5 border border-indigo-200 dark:border-gray-600 shadow-sm transition-colors duration-300">
             <label className="block text-sm font-semibold text-gray-800 dark:text-white mb-2">
               Whats happening?
@@ -220,7 +220,7 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
             </div>
           </div>
 
-          {/* Date & Time Section - Themed */}
+          {/* Date & Time Section */}
           <div className="bg-purple-50 dark:bg-gray-700/50 rounded-xl p-5 border border-purple-200 dark:border-gray-600 shadow-sm transition-colors duration-300">
             <div className="flex items-center gap-2 mb-4">
               <Clock className="w-5 h-5 text-purple-600 dark:text-gray-400" />
@@ -271,7 +271,7 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
                 />
               </div>
             </div>
-            {/* Info Boxes - Themed */}
+            {/* Info Boxes */}
             <div className="mt-4 space-y-2">
               {daysUntil && (
                 <div className="p-3 bg-gradient-to-r from-blue-100 to-cyan-100 dark:bg-gray-700 rounded-lg border-2 border-blue-300 dark:border-gray-600">
@@ -299,7 +299,7 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
             </div>
           </div>
 
-          {/* Location Section - Themed & Fixed Wiggle */}
+          {/* Location Section */}
           <div className="bg-blue-50 dark:bg-gray-700/50 rounded-xl p-5 border border-blue-200 dark:border-gray-600 shadow-sm transition-colors duration-300">
             <div className="flex items-center gap-2 mb-4">
               <MapPin className="w-5 h-5 text-blue-600 dark:text-gray-400" />
@@ -308,37 +308,33 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
               </h3>
             </div>
 
-            {/* FIXED BUTTONS - No scale/shadow on active, consistent border */}
-            <div className="flex gap-3 mb-4">
-              <button
-                onClick={() => setLocationType("current")}
-                className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 border-2 ${
-                  // Base classes
-                  locationType === "current"
-                    ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white dark:from-gray-600 dark:to-gray-700 dark:text-white border-transparent dark:border-transparent" // Active state
-                    : "bg-white text-gray-600 hover:bg-blue-50 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 border-blue-200 dark:border-gray-600" // Inactive state
-                }`}
-              >
-                Current Location
-              </button>
-              <button
-                onClick={() => setLocationType("future")}
-                className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 border-2 ${
-                  // Base classes
-                  locationType === "future"
-                    ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white dark:from-gray-600 dark:to-gray-700 dark:text-white border-transparent dark:border-transparent" // Active state
-                    : "bg-white text-gray-600 hover:bg-cyan-50 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 border-cyan-200 dark:border-gray-600" // Inactive state
-                }`}
-              >
-                Search Location
-              </button>
-            </div>
+            {/* CORRECTED BUTTONS - No scale/shadow on active, consistent border */}
+<div className="flex gap-3 mb-4">
+  <button
+    onClick={() => setLocationType("current")}
+    className={`flex-1 py-3 px-4 rounded-xl font-medium transition-colors duration-200 border-2 ${
+      locationType === "current"
+        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white dark:from-gray-600 dark:to-gray-700 dark:text-white border-transparent"
+        : "bg-white text-gray-600 hover:bg-blue-50 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 border-blue-200 dark:border-gray-600"
+    }`}
+  >
+    Current Location
+  </button>
+  <button
+    onClick={() => setLocationType("future")}
+    className={`flex-1 py-3 px-4 rounded-xl font-medium transition-colors duration-200 border-2 ${
+      locationType === "future"
+        ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white dark:from-gray-600 dark:to-gray-700 dark:text-white border-transparent"
+        : "bg-white text-gray-600 hover:bg-cyan-50 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 border-cyan-200 dark:border-gray-600"
+    }`}
+  >
+    Search Location
+  </button>
+</div>
 
-            {/* FIXED MAP CONTAINER - Added fixed height */}
-            <div className="transform transition-all duration-300 h-64">
-              {" "}
-              {/* <-- ADDED h-64 */}
-              {/* EventMap will need its own dark mode styles */}
+
+            <div className="transform transition-all duration-300">
+              {/* EventMap will need its own dark mode styles passed via props or context if necessary */}
               <EventMap
                 locationType={locationType}
                 onSelectLocation={handleLocationSelect}
@@ -347,7 +343,7 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
           </div>
         </div>
 
-        {/* Footer Buttons - Themed */}
+        {/* Footer Buttons */}
         <div className="sticky bottom-0 bg-gradient-to-r from-gray-50 to-gray-100 dark:bg-gradient-to-r dark:from-gray-800 dark:to-gray-900 p-6 flex gap-3 border-t-2 border-gray-200 dark:border-gray-700 transition-colors duration-300">
           <button
             onClick={handleClose}

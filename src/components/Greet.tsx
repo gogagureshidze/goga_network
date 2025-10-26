@@ -388,7 +388,7 @@ export default function WeatherGreeting({
         </div>
 
         {/* Header Section with Animated Greeting */}
-        <div className="mb-6 sm:mb-8">
+        <div className="mb-6 sm:mb-8 mt-3">
           <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
             <div
               className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-gradient-to-r ${theme.gradient} dark:${theme.darkGradient} animate-pulse shadow-lg dark:shadow-xl`}
@@ -606,7 +606,7 @@ export default function WeatherGreeting({
                       </span>
                     </div>
                   </div>
-                  <p className="mt-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+                  <p className="mt-2 text-sm font-semibold text-gray-600 dark:text-gray-600">
                     Temperature
                   </p>
                 </div>
@@ -638,7 +638,7 @@ export default function WeatherGreeting({
                       />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <Droplets className="w-6 h-6 text-gray-500 dark:text-gray-400 mb-1" />
+                      <Droplets className="w-6 h-6 text-gray-500 dark:text-gray-600 mb-1" />
                       <span className="text-2xl font-black text-gray-800 dark:text-gray-100">
                         {weather.relative_humidity_2m}%
                       </span>

@@ -35,12 +35,12 @@ async function UserMediaCard({ user, username }:   UserMediaCardProps) {
   const allMedia = postsWithMedia.flatMap((post) => post.media).slice(0, 8);
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4">
+    <div className="p-4 dark:bg-gray-800 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4">
       <div className="flex items-center justify-between font-medium">
-        <span className="text-gray-500">User Media</span>
+        <span className="text-gray-500 dark:text-orange-500">User Media</span>
         <Link
           href={`/media/${user.id}`}
-          className="text-orange-300 text-sm hover:underline"
+          className="text-orange-500 text-sm hover:underline"
         >
           See all
         </Link>

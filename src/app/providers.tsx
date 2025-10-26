@@ -63,12 +63,46 @@ export default function ClerkThemeProvider({
       appearance={{
         baseTheme: clerkTheme,
         variables: {
-          colorPrimary: "#f97316", // Orange accent
+          colorPrimary: "#f97316",
           colorBackground: isDark ? "#1f2937" : "#ffffff",
           colorInputBackground: isDark ? "#374151" : "#f9fafb",
           colorInputText: isDark ? "#f3f4f6" : "#111827",
           colorText: isDark ? "#f3f4f6" : "#111827",
-          colorTextSecondary: isDark ? "#9ca3af" : "#6b7280",
+          colorTextSecondary: isDark ? "#d1d5db" : "#6b7280",
+          colorTextOnPrimaryBackground: isDark ? "#ffffff" : "#111827",
+          colorNeutral: isDark ? "#9ca3af" : "#6b7280",
+        },
+        elements: {
+          // Fix all text elements
+          headerTitle: {
+            color: isDark ? "#f3f4f6" : "#111827",
+          },
+          headerSubtitle: {
+            color: isDark ? "#d1d5db" : "#6b7280",
+          },
+          socialButtonsBlockButton: {
+            color: isDark ? "#f3f4f6" : "#111827",
+          },
+          formFieldLabel: {
+            color: isDark ? "#f3f4f6" : "#111827",
+          },
+          formFieldInput: {
+            backgroundColor: isDark ? "#374151" : "#f9fafb",
+            color: isDark ? "#f3f4f6" : "#111827",
+          },
+          footerActionLink: {
+            color: "#f97316",
+          },
+          card: {
+            backgroundColor: isDark ? "#1f2937" : "#ffffff",
+          },
+          // Fix any other text that might appear dark
+          identityPreviewText: {
+            color: isDark ? "#f3f4f6" : "#111827",
+          },
+          identityPreviewEditButton: {
+            color: "#f97316",
+          },
         },
       }}
     >

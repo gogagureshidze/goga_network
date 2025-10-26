@@ -74,7 +74,7 @@ function UserInfoCardInteraction({
       {!optimisticFollow.blocked && !isBlockedByViewer && (
         <button
           onClick={follow}
-          className="w-full bg-orange-300 hover:bg-rose-300 text-white font-semibold text-sm px-4 py-2 rounded-lg shadow-sm transition-all duration-200"
+          className="w-full bg-orange-500 hover:bg-rose-300 text-white font-semibold text-sm px-4 py-2 rounded-lg shadow-sm transition-all duration-200"
         >
           {optimisticFollow.following
             ? "Unfollow"

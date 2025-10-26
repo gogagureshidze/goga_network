@@ -10,13 +10,13 @@
   }
 }
 
-.scrollbar-hide{
-     scrollbar-width: none;
+.scrollbar-hide {
+  scrollbar-width: none;
 }
 
 @layer utilities {
 
-  /* Spinner loader */
+  /* Spinner loader - Light Mode */
   .loader-spinner {
     @apply relative h-20 aspect-square p-2.5 rounded-2xl box-border;
     mask: conic-gradient(#000 0 0) content-box exclude, conic-gradient(#000 0 0);
@@ -34,13 +34,23 @@
     animation: spin-gradient 1.5s linear infinite;
   }
 
+  /* Spinner loader - Dark Mode */
+  .dark .loader-spinner::before {
+    background: repeating-conic-gradient(transparent 0 5%,
+        #fb923c,
+        /* orange-400 - brighter for dark mode */
+        #f97316,
+        /* orange-500 */
+        transparent 20% 50%);
+  }
+
   @keyframes spin-gradient {
     to {
       rotate: 1turn;
     }
   }
 
-  /* Text loader */
+  /* Text loader - Light Mode */
   .loader-text {
     @apply relative w-fit font-mono font-bold text-[30px] text-orange-500;
     text-shadow: 0 0 0 rgb(251 113 133),
@@ -56,6 +66,14 @@
     content: "Loading...";
   }
 
+  /* Text loader - Dark Mode */
+  .dark .loader-text {
+    @apply text-orange-400;
+    text-shadow: 0 0 0 rgb(251 146 60),
+      0 0 0 rgb(249 115 22),
+      0 0 0 rgb(234 88 12);
+  }
+
   @keyframes text-glitch {
 
     25%,
@@ -64,6 +82,18 @@
         0.03px -0.01px 0.01px rgb(251 113 133),
         0.02px 0.02px 0 rgb(249 115 22),
         -0.02px 0.02px 0 rgb(223, 34, 34);
+    }
+  }
+
+  /* Dark mode text glitch animation */
+  @keyframes text-glitch-dark {
+
+    25%,
+    100% {
+      text-shadow:
+        0.03px -0.01px 0.01px rgb(251 146 60),
+        0.02px 0.02px 0 rgb(249 115 22),
+        -0.02px 0.02px 0 rgb(234 88 12);
     }
   }
 }
@@ -98,6 +128,7 @@
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
   }
+
   .dark {
     --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
@@ -126,9 +157,7 @@
   }
 }
 
-/* Add these styles to your globals.css file */
-
-/* Dark mode color scheme */
+/* Dark mode color scheme variables */
 :root {
   --color-bg-light: theme('colors.rose.50');
   --color-bg-dark: theme('colors.gray.900');
@@ -148,7 +177,7 @@
   transition: none !important;
 }
 
-/* Dark mode specific overrides if needed */
+/* Dark mode specific overrides */
 .dark {
   color-scheme: dark;
 }
@@ -175,11 +204,8 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
 }
-
-
-
-
