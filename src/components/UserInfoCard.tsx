@@ -92,7 +92,7 @@ async function UserInfoCard({
     : "text-gray-500";
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 relative ">
+    <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 relative dark:bg-gray-800">
       {selectedPattern && (
         <div className="absolute inset-0 z-0 rounded-lg overflow-hidden">
           <selectedPattern.component />
@@ -100,7 +100,7 @@ async function UserInfoCard({
       )}
 
       {/* This overlay ensures text is visible on top of the pattern */}
-      <div className="relative z-10 flex flex-col gap-4 cursor-pointer z-100">
+      <div className="relative z-10 flex flex-col gap-4 cursor-pointer z-100 ">
         <div
           className={`flex items-center justify-between font-medium ${textColorClass} z-100`}
         >
