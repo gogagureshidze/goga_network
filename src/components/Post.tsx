@@ -6,7 +6,7 @@ import Comments from "./Comments";
 import PostInteractions from "./PostInteractions";
 import EventCard from "./EventCard";
 import PollCard from "./PollCard";
-import PostDescription from "./PostDescription"; // NEW IMPORT
+import PostDescription from "./PostDescription";
 import ActivityStatus from "./ActivityStatus";
 
 // Helper function to format time
@@ -53,44 +53,45 @@ export default function Post({ post }: { post: any }) {
   const taggedUsernames = post.tags?.map((tag: any) => tag.user.username) || [];
   const taggedUserIds = post.tags?.map((tag: any) => tag.userId) || [];
 
-  // 🆕 Check if we should show activity (user has it enabled)
+  // Check if we should show activity (user has it enabled)
   const showActivity = post.user?.showActivityStatus && post.user?.lastActiveAt;
 
   return (
-    <div className="flex flex-col gap-4 p-4 bg-white rounded-xl shadow-sm">
+    <div className="flex flex-col gap-4 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900/50 border border-gray-100 dark:border-gray-700 transition-colors">
       {/* Header */}
       <div className="flex items-center justify-between">
         <Link href={`/profile/${post.user?.username}`}>
           <div className="flex items-center gap-4">
-            {/* 🆕 AVATAR WITH GREEN DOT */}
+            {/* Avatar */}
             <div className="relative">
               <Image
                 src={post.user?.avatar || "/noAvatar.png"}
                 alt="Profile"
                 width={40}
                 height={40}
-                className="w-10 h-10 object-cover cursor-pointer rounded-full ring-orange-200 ring-2"
+                className="w-10 h-10 object-cover cursor-pointer rounded-full ring-orange-200 dark:ring-orange-600 ring-2 transition-all"
               />
             </div>
 
             <div className="flex flex-col">
-              <span className="font-medium cursor-pointer">
+              <span className="font-medium cursor-pointer text-gray-900 dark:text-gray-100 transition-colors">
                 {post.user?.username}
               </span>
-              
-              {/* 🆕 THIS IS WHERE ACTIVITY STATUS SHOWS */}
+
+              {/* Activity Status */}
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
                   {formatTimeAgo(post.createdAt)}
                 </span>
-                {/* 🆕 ACTIVITY STATUS TEXT */}
                 {showActivity && (
                   <>
-                    <span className="text-xs text-gray-400">•</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-600">
+                      •
+                    </span>
                     <ActivityStatus
                       lastActiveAt={post.user.lastActiveAt}
                       size="sm"
-                      showText={true} // Change to false to hide text, show only dot
+                      showText={true}
                     />
                   </>
                 )}
@@ -105,11 +106,12 @@ export default function Post({ post }: { post: any }) {
         />
       </div>
 
-      {/* Rest of your post code stays the same */}
+      {/* Post Description */}
       {post.desc && (
         <PostDescription text={post.desc} taggedUsernames={taggedUsernames} />
       )}
 
+      {/* Post Content */}
       {isPollPost ? (
         <PollCard poll={post.poll} />
       ) : isEventPost ? (
@@ -118,6 +120,7 @@ export default function Post({ post }: { post: any }) {
         <MediaGrid media={post.media} />
       )}
 
+      {/* Post Interactions */}
       <PostInteractions
         postId={post.id}
         likes={post.likes}

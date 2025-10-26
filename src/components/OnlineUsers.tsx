@@ -95,10 +95,10 @@ const OnlineUsers = () => {
 
   if (!isLoaded) {
     return (
-      <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 border border-gray-200">
+      <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
         <div className="flex items-center justify-between font-medium animate-pulse">
-          <span className="text-gray-500">Loading...</span>
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+          <span className="text-gray-500 dark:text-gray-400">Loading...</span>
+          <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-pulse" />
         </div>
       </div>
     );
@@ -107,9 +107,9 @@ const OnlineUsers = () => {
   if (!isSignedIn) return null;
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 border border-lime-200">
+    <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 border border-lime-200 dark:bg-gray-800 dark:border-gray-700 transition-colors duration-300">
       <div className="flex items-center justify-between font-medium">
-        <span className="text-gray-500">Online Now</span>
+        <span className="text-gray-500 dark:text-gray-400">Online Now</span>
         <div
           className={`w-2 h-2 rounded-full ${
             isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
@@ -117,10 +117,10 @@ const OnlineUsers = () => {
         />
       </div>
 
-      <div className="flex items-center gap-4 text-gray-700">
-        <Users className="w-6 h-6 text-rose-500" />
+      <div className="flex items-center gap-4 text-gray-700 dark:text-gray-200">
+        <Users className="w-6 h-6 text-rose-500 dark:text-gray-400" />
         <span className="font-bold text-2xl">{onlineCount}</span>
-        <span className="text-gray-500">
+        <span className="text-gray-500 dark:text-gray-400">
           {onlineCount === 1 ? "user online" : "users online"}
         </span>
       </div>
@@ -128,8 +128,8 @@ const OnlineUsers = () => {
       <div
         className={`p-4 rounded-lg flex items-center gap-4 border ${
           isConnected
-            ? "bg-green-50 border-green-100"
-            : "bg-red-50 border-red-100"
+            ? "bg-green-50 border-green-100 dark:bg-gray-700/50 dark:border-gray-600"
+            : "bg-red-50 border-red-100 dark:bg-gray-700/50 dark:border-gray-600"
         }`}
       >
         {isConnected ? (
@@ -138,10 +138,16 @@ const OnlineUsers = () => {
           <WifiOff className="w-10 h-10 text-red-500" />
         )}
         <div className="flex flex-col gap-1 text-xs">
-          <span className="text-gray-700 font-semibold">
+          <span className="text-gray-700 font-semibold dark:text-white">
             {isConnected ? "Real-time connection" : "Connection lost"}
           </span>
-          <span className="text-gray-500">
+          <span
+            className={
+              isConnected
+                ? "text-gray-500 dark:text-gray-400"
+                : "text-gray-500 dark:text-red-400"
+            }
+          >
             {isConnected
               ? "You are seeing live updates."
               : connectionError || "Attempting to reconnect..."}

@@ -2,45 +2,49 @@ import React from "react";
 
 const TermsOfServicePage = () => {
   return (
-    // Main container with a soft rose background, consistent with Privacy Policy
-    <main className="w-full min-h-screen bg-rose-50 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-xl p-6 md:p-10 border border-rose-100">
-        <article className="prose prose-lg max-w-none text-gray-800">
-          {/* Header with gradient and prominent styling */}
+    // Main container - Themed
+    <main className="w-full min-h-screen bg-rose-50 dark:bg-gray-900 p-4 md:p-8 transition-colors duration-300">
+      {/* Content container - Themed */}
+      <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 md:p-10 border border-rose-100 dark:border-gray-700 transition-colors duration-300">
+        {/* Prose container - Added explicit dark text colors */}
+        <article className="prose prose-lg max-w-none text-gray-800 dark:text-gray-200 dark:prose-headings:text-white dark:prose-strong:text-white dark:prose-p:text-gray-300 dark:prose-li:text-gray-300 dark:prose-a:text-orange-400 dark:hover:prose-a:text-orange-300">
+          {/* Header - Themed */}
           <header className="mb-10 text-center">
-            <h1 className="text-5xl font-extrabold bg-gradient-to-r from-orange-400 to-rose-500 text-transparent bg-clip-text mb-4">
+            <h1 className="text-5xl font-extrabold bg-gradient-to-r from-orange-400 to-rose-500 text-transparent bg-clip-text dark:bg-none dark:text-white mb-4">
               Terms of Service
             </h1>
-            <p className="text-lg text-gray-600 font-medium">
+            <p className="text-lg text-gray-600 dark:text-gray-400 font-medium">
               Effective Date: 2025, 1 October
             </p>
           </header>
 
-          {/* Section 1: Introduction and Agreement */}
-          <section className="mb-10 p-6 rounded-lg bg-orange-50/50 border border-orange-100">
-            <h2 className="text-3xl font-bold text-orange-600 mb-4 border-b-2 border-orange-300 pb-2">
+          {/* Section 1: Introduction and Agreement - Themed */}
+          <section className="mb-10 p-6 rounded-lg bg-orange-50/50 dark:bg-gray-700/50 border border-orange-100 dark:border-gray-600 transition-colors duration-300">
+            <h2 className="text-3xl font-bold text-orange-600 dark:text-orange-400 mb-4 border-b-2 border-orange-300 dark:border-gray-600 pb-2">
               1. Introduction and Agreement
             </h2>
-            <p className="leading-relaxed text-gray-700">
+            <p className="leading-relaxed">
               Welcome to{" "}
-              <strong className="text-orange-500">goga.network</strong>{" "}
-              . These Terms of Service (&quot;Terms&quot;)
-              govern your use of our website, mobile application, and related
-              services (collectively, the &quot;Services&quot;).
+              <strong className="text-orange-500 dark:text-orange-400">
+                goga.network
+              </strong>{" "}
+              . These Terms of Service (&quot;Terms&quot;) govern your use of
+              our website, mobile application, and related services
+              (collectively, the &quot;Services&quot;).
             </p>
-            <p className="leading-relaxed text-gray-700 mt-3">
+            <p className="leading-relaxed mt-3">
               By accessing or using our Services, you agree to be bound by these
               Terms. If you do not agree to these Terms, you may not use our
               Services. You must be at least 13 years old to use the Services.
             </p>
           </section>
 
-          {/* Section 2: User Accounts */}
-          <section className="mb-10 p-6 rounded-lg bg-rose-100/50 border border-rose-200">
-            <h2 className="text-3xl font-bold text-rose-600 mb-4 border-b-2 border-rose-300 pb-2">
+          {/* Section 2: User Accounts - Themed */}
+          <section className="mb-10 p-6 rounded-lg bg-rose-100/50 dark:bg-gray-700/50 border border-rose-200 dark:border-gray-600 transition-colors duration-300">
+            <h2 className="text-3xl font-bold text-rose-600 dark:text-rose-400 mb-4 border-b-2 border-rose-300 dark:border-gray-600 pb-2">
               2. User Accounts
             </h2>
-            <ul className="list-disc list-inside space-y-2 text-gray-700">
+            <ul className="list-disc list-inside space-y-2">
               <li>
                 <strong>Account Creation:</strong> To use most features of the
                 Services, you must create an account. You agree to provide
@@ -58,12 +62,12 @@ const TermsOfServicePage = () => {
             </ul>
           </section>
 
-          {/* Section 3: Your Content */}
-          <section className="mb-10 p-6 rounded-lg bg-orange-50/50 border border-orange-100">
-            <h2 className="text-3xl font-bold text-orange-600 mb-4 border-b-2 border-orange-300 pb-2">
+          {/* Section 3: Your Content - Themed */}
+          <section className="mb-10 p-6 rounded-lg bg-orange-50/50 dark:bg-gray-700/50 border border-orange-100 dark:border-gray-600 transition-colors duration-300">
+            <h2 className="text-3xl font-bold text-orange-600 dark:text-orange-400 mb-4 border-b-2 border-orange-300 dark:border-gray-600 pb-2">
               3. Your Content
             </h2>
-            <ul className="list-disc list-inside space-y-2 text-gray-700">
+            <ul className="list-disc list-inside space-y-2">
               <li>
                 <strong>Content Responsibility:</strong> You are solely
                 responsible for all content you post, upload, or otherwise make
@@ -88,16 +92,16 @@ const TermsOfServicePage = () => {
             </ul>
           </section>
 
-          {/* Section 4: Acceptable Use */}
-          <section className="mb-10 p-6 rounded-lg bg-rose-100/50 border border-rose-200">
-            <h2 className="text-3xl font-bold text-rose-600 mb-4 border-b-2 border-rose-300 pb-2">
+          {/* Section 4: Acceptable Use - Themed */}
+          <section className="mb-10 p-6 rounded-lg bg-rose-100/50 dark:bg-gray-700/50 border border-rose-200 dark:border-gray-600 transition-colors duration-300">
+            <h2 className="text-3xl font-bold text-rose-600 dark:text-rose-400 mb-4 border-b-2 border-rose-300 dark:border-gray-600 pb-2">
               4. Acceptable Use
             </h2>
-            <p className="leading-relaxed text-gray-700">
+            <p className="leading-relaxed">
               You agree not to use the Services for any of the following
               purposes:
             </p>
-            <ul className="list-disc list-inside space-y-2 text-gray-700">
+            <ul className="list-disc list-inside space-y-2">
               <li>
                 To engage in any illegal activities or to violate any laws.
               </li>
@@ -111,12 +115,12 @@ const TermsOfServicePage = () => {
             </ul>
           </section>
 
-          {/* Section 5: Intellectual Property */}
-          <section className="mb-10 p-6 rounded-lg bg-orange-50/50 border border-orange-100">
-            <h2 className="text-3xl font-bold text-orange-600 mb-4 border-b-2 border-orange-300 pb-2">
+          {/* Section 5: Intellectual Property - Themed */}
+          <section className="mb-10 p-6 rounded-lg bg-orange-50/50 dark:bg-gray-700/50 border border-orange-100 dark:border-gray-600 transition-colors duration-300">
+            <h2 className="text-3xl font-bold text-orange-600 dark:text-orange-400 mb-4 border-b-2 border-orange-300 dark:border-gray-600 pb-2">
               5. Intellectual Property
             </h2>
-            <ul className="list-disc list-inside space-y-2 text-gray-700">
+            <ul className="list-disc list-inside space-y-2">
               <li>
                 <strong>Our Rights:</strong> All intellectual property rights in
                 the Services (excluding Your Content), including trademarks,
@@ -126,7 +130,7 @@ const TermsOfServicePage = () => {
               <li>
                 <strong>Copyright:</strong> If you believe that your copyright
                 has been infringed by any content on our Services, please
-                contact us at{" "}
+                contact us at {/* Link color handled by prose class */}
                 <a
                   href="mailto:gogagureshidze8@gmail.com"
                   className="text-orange-600 hover:text-orange-800 hover:underline font-medium"
@@ -138,12 +142,12 @@ const TermsOfServicePage = () => {
             </ul>
           </section>
 
-          {/* Section 6: Disclaimer of Warranties */}
-          <section className="mb-10 p-6 rounded-lg bg-rose-100/50 border border-rose-200">
-            <h2 className="text-3xl font-bold text-rose-600 mb-4 border-b-2 border-rose-300 pb-2">
+          {/* Section 6: Disclaimer of Warranties - Themed */}
+          <section className="mb-10 p-6 rounded-lg bg-rose-100/50 dark:bg-gray-700/50 border border-rose-200 dark:border-gray-600 transition-colors duration-300">
+            <h2 className="text-3xl font-bold text-rose-600 dark:text-rose-400 mb-4 border-b-2 border-rose-300 dark:border-gray-600 pb-2">
               6. Disclaimer of Warranties
             </h2>
-            <p className="leading-relaxed text-gray-700">
+            <p className="leading-relaxed">
               The Services are provided on an &quot;as is&quot; and &quot;as
               available&quot; basis. We disclaim all warranties of any kind,
               whether express or implied, including, but not limited to, the
@@ -153,12 +157,12 @@ const TermsOfServicePage = () => {
             </p>
           </section>
 
-          {/* Section 7: Limitation of Liability */}
-          <section className="mb-10 p-6 rounded-lg bg-orange-50/50 border border-orange-100">
-            <h2 className="text-3xl font-bold text-orange-600 mb-4 border-b-2 border-orange-300 pb-2">
+          {/* Section 7: Limitation of Liability - Themed */}
+          <section className="mb-10 p-6 rounded-lg bg-orange-50/50 dark:bg-gray-700/50 border border-orange-100 dark:border-gray-600 transition-colors duration-300">
+            <h2 className="text-3xl font-bold text-orange-600 dark:text-orange-400 mb-4 border-b-2 border-orange-300 dark:border-gray-600 pb-2">
               7. Limitation of Liability
             </h2>
-            <p className="leading-relaxed text-gray-700">
+            <p className="leading-relaxed">
               To the fullest extent permitted by law, Goga shall not be liable
               for any indirect, incidental, special, consequential, or punitive
               damages, or any loss of profits or revenues, whether incurred
@@ -170,12 +174,12 @@ const TermsOfServicePage = () => {
             </p>
           </section>
 
-          {/* Section 8: Changes to the Terms */}
-          <section className="mb-10 p-6 rounded-lg bg-rose-100/50 border border-rose-200">
-            <h2 className="text-3xl font-bold text-rose-600 mb-4 border-b-2 border-rose-300 pb-2">
+          {/* Section 8: Changes to the Terms - Themed */}
+          <section className="mb-10 p-6 rounded-lg bg-rose-100/50 dark:bg-gray-700/50 border border-rose-200 dark:border-gray-600 transition-colors duration-300">
+            <h2 className="text-3xl font-bold text-rose-600 dark:text-rose-400 mb-4 border-b-2 border-rose-300 dark:border-gray-600 pb-2">
               8. Changes to the Terms
             </h2>
-            <p className="leading-relaxed text-gray-700">
+            <p className="leading-relaxed">
               We may update these Terms from time to time. If we make material
               changes, we will notify you by posting a new version on our
               website. Your continued use of the Services after the effective
@@ -184,15 +188,16 @@ const TermsOfServicePage = () => {
             </p>
           </section>
 
-          {/* Section 9: Contact Information */}
-          <section className="p-6 rounded-lg bg-orange-50/50 border border-orange-100">
-            <h2 className="text-3xl font-bold text-orange-600 mb-4 border-b-2 border-orange-300 pb-2">
+          {/* Section 9: Contact Information - Themed */}
+          <section className="p-6 rounded-lg bg-orange-50/50 dark:bg-gray-700/50 border border-orange-100 dark:border-gray-600 transition-colors duration-300">
+            <h2 className="text-3xl font-bold text-orange-600 dark:text-orange-400 mb-4 border-b-2 border-orange-300 dark:border-gray-600 pb-2">
               9. Contact Information
             </h2>
-            <p className="leading-relaxed text-gray-700">
+            <p className="leading-relaxed">
               If you have any questions about these Terms, please contact us at:
             </p>
             <p className="mt-3">
+              {/* Link color handled by prose class */}
               <a
                 href="mailto:gogagureshidze8@gmail.com"
                 className="text-orange-600 hover:text-orange-800 hover:underline text-lg font-medium"

@@ -28,13 +28,14 @@ export type Friend = {
   lastMessage: string;
 };
 
-// 💡 Keep Avatar & SendIcon **inside the file but do not export them**
+// 💡 Avatar component (themed)
 const Avatar = () => (
-  <div className="w-10 h-10 rounded-full bg-orange-300 flex items-center justify-center font-bold text-gray-700 text-lg">
+  <div className="w-10 h-10 rounded-full bg-orange-300 dark:bg-gray-600 flex items-center justify-center font-bold text-gray-700 dark:text-gray-100 text-lg transition-colors duration-300">
     A
   </div>
 );
 
+// 💡 SendIcon (uses currentColor, so it will adapt)
 const SendIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -126,27 +127,27 @@ export default function Messenger() {
 
   if (!isSignedIn)
     return (
-      <div className="flex justify-center items-center h-screen">
+      <div className="flex justify-center items-center h-screen bg-rose-50 dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
         <p>Please sign in to chat</p>
       </div>
     );
 
   if (isLoading)
     return (
-      <div className="flex justify-center items-center h-screen">
+      <div className="flex justify-center items-center h-screen bg-rose-50 dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
         <p>Loading ...</p>
       </div>
     );
 
   if (followers.length === 0)
     return (
-      <div className="flex justify-center items-center h-screen">
+      <div className="flex justify-center items-center h-screen bg-rose-50 dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
         <p>No followers found. Start following people to chat with them!</p>
       </div>
     );
 
   return (
-    <div className="flex h-[87dvh] bg-rose-50 font-sans text-gray-900 antialiased pt-4">
+    <div className="flex h-[87dvh] bg-rose-50 font-sans text-gray-900 dark:bg-gray-900 dark:text-white antialiased pt-4 transition-colors duration-300">
       {(!isMobile || !selectedFriend) && (
         <ChatListDesktop
           selectedFriend={selectedFriend}

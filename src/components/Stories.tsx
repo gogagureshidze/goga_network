@@ -50,7 +50,7 @@ export default async function Stories() {
   });
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow-md overflow-scroll text-sm scrollbar-hide">
+    <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-scroll text-sm scrollbar-hide">
       <div className="flex gap-8 w-max">
         <StoryList
           stories={stories.map(({ comments, ...rest }) => ({

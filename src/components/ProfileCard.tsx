@@ -50,7 +50,7 @@ async function ProfileCard() {
   }
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-6">
+    <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md dark:shadow-gray-900/50 text-sm flex flex-col gap-6 border border-gray-100 dark:border-gray-700 transition-colors">
       <div className="h-20 relative">
         <Image
           className="rounded-md object-cover"
@@ -59,7 +59,7 @@ async function ProfileCard() {
           src={user.cover || "/noCover.png"}
         />
         <Image
-          className="rounded-full w-12 h-12 absolute object-cover left-0 right-0 m-auto -bottom-6 ring-1 ring-white z-10"
+          className="rounded-full w-12 h-12 absolute object-cover left-0 right-0 m-auto -bottom-6 ring-2 ring-white dark:ring-gray-700 z-10 transition-all"
           width={48}
           height={48}
           alt="Profile picture"
@@ -68,7 +68,7 @@ async function ProfileCard() {
       </div>
 
       <div className="h-20 flex flex-col gap-2 items-center my-2">
-        <span className="font-semibold">
+        <span className="font-semibold text-gray-900 dark:text-gray-100 transition-colors">
           {user.name && user.surname
             ? user.name + " " + user.surname
             : usr?.username}
@@ -79,7 +79,7 @@ async function ProfileCard() {
             {followerUsers.map((f) => (
               <Image
                 key={f.id}
-                className="rounded-full object-cover w-6 h-6 border border-white"
+                className="rounded-full object-cover w-6 h-6 border-2 border-white dark:border-gray-700 transition-all"
                 width={24}
                 height={24}
                 alt={f.username || "Follower"}
@@ -87,13 +87,13 @@ async function ProfileCard() {
               />
             ))}
           </div>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-gray-500 dark:text-gray-400 transition-colors">
             {user._count.followings} Followers
           </span>
         </div>
 
         <Link href={`/profile/${username}`}>
-          <button className="bg-orange-300 hover:bg-rose-300 text-white font-semibold text-sm px-2 py-2 rounded-lg shadow-sm transition-all duration-200">
+          <button className="bg-gradient-to-r from-orange-400 to-rose-400 hover:from-orange-500 hover:to-rose-500 dark:from-orange-500 dark:to-rose-500 dark:hover:from-orange-600 dark:hover:to-rose-600 text-white font-semibold text-sm px-4 py-2 rounded-lg shadow-md hover:shadow-lg dark:shadow-orange-900/50 transition-all duration-200">
             My Profile
           </button>
         </Link>

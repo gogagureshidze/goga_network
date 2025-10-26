@@ -62,15 +62,15 @@ function Navbar({ users }: { users: User[] }) {
     user?.updatedAt,
     isLoaded,
   ]);
-const { isSignedIn } = useAuth();
-const router = useRouter();
+  const { isSignedIn } = useAuth();
+  const router = useRouter();
 
-useEffect(() => {
-  // When the user signs out, redirect them automatically
-  if (isLoaded && !isSignedIn) {
-    router.push("/sign-up"); // or "/sign-in" if you prefer
-  }
-}, [isSignedIn, isLoaded, router]);
+  useEffect(() => {
+    // When the user signs out, redirect them automatically
+    if (isLoaded && !isSignedIn) {
+      router.push("/sign-up"); // or "/sign-in" if you prefer
+    }
+  }, [isSignedIn, isLoaded, router]);
 
   // Debounced search filtering to improve performance
   const filteredUsers = useMemo(() => {
@@ -144,12 +144,12 @@ useEffect(() => {
   }, [isSearchOpen]);
 
   return (
-    <div className="h-24 flex justify-between items-center px-4 md:px-12 bg-rose-800 text-rose-100">
+    <div className="h-24 flex justify-between items-center px-4 md:px-12 bg-rose-800 text-rose-100 dark:bg-gray-800 dark:text-white border-b border-rose-700 dark:border-gray-700 transition-colors duration-300">
       {/* Logo */}
       <div className="block md:hidden lg:block w-[30%] mt-2">
         <Link
           href="/"
-          className="font-bold uppercase  text-orange-300 tracking-wide"
+          className="font-bold uppercase text-orange-300 dark:text-white tracking-wide"
         >
           <Shuffle
             text="Goga_Network"
@@ -175,27 +175,27 @@ useEffect(() => {
           {/* Home */}
           <Link
             href="/"
-            className="flex items-center gap-2 hover:text-rose-400 transition-all duration-300 hover:-translate-y-[1px]"
+            className="flex items-center gap-2 hover:text-rose-400 dark:text-white dark:hover:text-gray-300 transition-all duration-300 hover:-translate-y-[1px]"
           >
-            <House className="w-5 h-5 text-orange-300" />
+            <House className="w-5 h-5 text-orange-300 dark:text-gray-400" />
             <span>Home</span>
           </Link>
 
           {/* Friends */}
           <Link
             href="/friends"
-            className="flex items-center gap-2 hover:text-rose-400 transition-all duration-300 hover:-translate-y-[1px]"
+            className="flex items-center gap-2 hover:text-rose-400 dark:text-white dark:hover:text-gray-300 transition-all duration-300 hover:-translate-y-[1px]"
           >
-            <Handshake className="w-5 h-5 text-orange-300" />
+            <Handshake className="w-5 h-5 text-orange-300 dark:text-gray-400" />
             <span>Friends</span>
           </Link>
 
-          {/* Stories */}
+          {/* Requests */}
           <Link
             href="/requests"
-            className="flex items-center gap-2 hover:text-rose-400 transition-all duration-300 hover:-translate-y-[1px]"
+            className="flex items-center gap-2 hover:text-rose-400 dark:text-white dark:hover:text-gray-300 transition-all duration-300 hover:-translate-y-[1px]"
           >
-            <UserRoundPlus className="w-5 h-5 text-orange-300" />
+            <UserRoundPlus className="w-5 h-5 text-orange-300 dark:text-gray-400" />
             <span>Requests</span>
           </Link>
         </div>
@@ -204,15 +204,15 @@ useEffect(() => {
         {user && isLoaded && (
           <div
             onClick={toggleSearch}
-            className="hidden xl:flex ml-5 p-2 bg-rose-700 rounded-xl items-center cursor-pointer transition-all duration-300 hover:bg-rose-600"
+            className="hidden xl:flex ml-5 p-2 bg-rose-700 dark:bg-gray-900 rounded-xl items-center cursor-pointer transition-all duration-300 hover:bg-rose-600 dark:hover:bg-gray-700/50"
           >
             <input
               type="text"
-              className="bg-transparent outline-none placeholder-rose-300 text-sm cursor-pointer"
+              className="bg-transparent outline-none placeholder-rose-300 dark:placeholder-gray-400 text-sm cursor-pointer"
               placeholder="Search users..."
               readOnly
             />
-            <Search className="text-orange-300" />
+            <Search className="text-orange-300 dark:text-gray-400" />
           </div>
         )}
       </div>
@@ -222,7 +222,7 @@ useEffect(() => {
         {user && isLoaded && (
           <button
             onClick={toggleSearch}
-            className="xl:hidden text-orange-300 hover:text-rose-400 transition-all duration-300"
+            className="xl:hidden text-orange-300 dark:text-gray-400 hover:text-rose-400 dark:hover:text-white transition-all duration-300"
           >
             <Search className="w-6 h-6" />
           </button>
@@ -232,8 +232,8 @@ useEffect(() => {
         <ClerkLoading>
           <div className="flex items-center justify-center h-16">
             <div className="relative w-8 h-8">
-              <div className="w-8 h-8 rounded-full border-t-4 border-b-4 border-gray-200"></div>
-              <div className="absolute top-0 left-0 w-8 h-8 rounded-full border-t-4 border-b-4 border-orange-300 animate-spin"></div>
+              <div className="w-8 h-8 rounded-full border-t-4 border-b-4 border-rose-600 dark:border-gray-700"></div>
+              <div className="absolute top-0 left-0 w-8 h-8 rounded-full border-t-4 border-b-4 border-orange-300 dark:border-white animate-spin"></div>
             </div>
           </div>
         </ClerkLoading>
@@ -242,7 +242,7 @@ useEffect(() => {
           <SignedIn>
             <div className="flex items-center gap-3">
               <Link href="/chat">
-                <MessagesSquare className="hidden sm:inline-flex text-orange-300 cursor-pointer hover:text-rose-400 transition-all duration-300" />
+                <MessagesSquare className="hidden sm:inline-flex text-orange-300 dark:text-gray-400 cursor-pointer hover:text-rose-400 dark:hover:text-white transition-all duration-300" />
               </Link>
               <UserButton appearance={{ elements: { avatarBox: "w-8 h-8" } }} />
             </div>
@@ -251,9 +251,9 @@ useEffect(() => {
           <SignedOut>
             <Link
               href="/sign-in"
-              className="flex items-center gap-2 text-sm text-rose-100 hover:text-rose-400 transition-all duration-300 hover:-translate-y-[1px]"
+              className="flex items-center gap-2 text-sm text-rose-100 dark:text-white hover:text-rose-400 dark:hover:text-gray-300 transition-all duration-300 hover:-translate-y-[1px]"
             >
-              <LogIn className="w-5 h-5 text-orange-300" />
+              <LogIn className="w-5 h-5 text-orange-300 dark:text-gray-400" />
               <span>Login / Register</span>
             </Link>
           </SignedOut>
@@ -264,7 +264,7 @@ useEffect(() => {
 
       {/* Full-screen Search Overlay */}
       <div
-        className={`fixed inset-0 z-50 flex flex-col items-center justify-start bg-rose-900 bg-opacity-95 pt-20 transition-all duration-500
+        className={`fixed inset-0 z-50 flex flex-col items-center justify-start bg-rose-900 bg-opacity-95 dark:bg-gray-900 dark:bg-opacity-95 backdrop-blur-sm pt-20 transition-all duration-500
         ${
           isSearchOpen
             ? "opacity-100 scale-100"
@@ -272,23 +272,23 @@ useEffect(() => {
         }`}
       >
         <div className="w-full max-w-lg p-4 rounded-lg shadow-xl">
-          <div className="flex items-center gap-4 bg-rose-700 rounded-xl p-2">
-            <Search className="text-orange-300" />
+          <div className="flex items-center gap-4 bg-rose-700 dark:bg-gray-800 rounded-xl p-2">
+            <Search className="text-orange-300 dark:text-gray-400" />
             <input
               ref={searchInputRef}
               type="text"
               placeholder="Search users..."
               value={query}
               onChange={handleQueryChange}
-              className="flex-grow bg-transparent text-white placeholder-rose-200 outline-none"
+              className="flex-grow bg-transparent text-white placeholder-rose-200 dark:placeholder-gray-400 outline-none"
             />
             <button onClick={toggleSearch}>
-              <X className="text-rose-100 hover:text-orange-300 transition-colors" />
+              <X className="text-rose-100 dark:text-gray-400 hover:text-orange-300 dark:hover:text-white transition-colors" />
             </button>
           </div>
           <div className="mt-4 text-center">
             {query.trim() === "" ? (
-              <p className="text-rose-200 text-sm">
+              <p className="text-rose-200 dark:text-gray-400 text-sm">
                 Start typing to search for users.
               </p>
             ) : (
@@ -299,7 +299,7 @@ useEffect(() => {
                       key={user.id}
                       href={`/profile/${user.username}`}
                       onClick={toggleSearch}
-                      className="flex items-center gap-4 p-3 mb-2 rounded-lg bg-rose-800 hover:bg-rose-700 transition-colors duration-200"
+                      className="flex items-center gap-4 p-3 mb-2 rounded-lg bg-rose-800 hover:bg-rose-700 dark:bg-gray-800 dark:hover:bg-gray-700/50 transition-colors duration-200 border border-rose-700 dark:border-gray-700"
                     >
                       <Image
                         src={user.avatar || "/noAvatar.png"}
@@ -309,11 +309,11 @@ useEffect(() => {
                         className="rounded-full object-cover w-10 h-10"
                       />
                       <div className="flex flex-col items-start">
-                        <span className="font-semibold text-rose-100">
+                        <span className="font-semibold text-rose-100 dark:text-white">
                           {user.name || user.username}
                         </span>
                         {user.name && (
-                          <span className="text-xs text-rose-300">
+                          <span className="text-xs text-rose-300 dark:text-gray-400">
                             @{user.username}
                           </span>
                         )}
@@ -321,7 +321,9 @@ useEffect(() => {
                     </Link>
                   ))
                 ) : (
-                  <p className="text-rose-200 text-sm">No users found.</p>
+                  <p className="text-rose-200 dark:text-gray-400 text-sm">
+                    No users found.
+                  </p>
                 )}
               </div>
             )}

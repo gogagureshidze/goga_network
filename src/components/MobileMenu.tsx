@@ -34,28 +34,27 @@ function MobileMenu() {
         onClick={() => setIsOpen(!isOpen)}
       >
         <div
-          className={`w-6 h-1 bg-orange-300 rounded-sm origin-left transform transition duration-700 ${
+          className={`w-6 h-1 bg-orange-300 dark:bg-gray-400 rounded-sm origin-left transform transition-all duration-700 ${
             isOpen ? "rotate-45" : ""
           }`}
         ></div>
         <div
-          className={`w-6 h-1 bg-orange-300 rounded-sm transition duration-700 ${
+          className={`w-6 h-1 bg-orange-300 dark:bg-gray-400 rounded-sm transition-all duration-700 ${
             isOpen ? "opacity-0" : ""
           }`}
         ></div>
         <div
-          className={`w-6 h-1 bg-orange-300 rounded-sm origin-left transform transition duration-700 ${
+          className={`w-6 h-1 bg-orange-300 dark:bg-gray-400 rounded-sm origin-left transform transition-all duration-700 ${
             isOpen ? "-rotate-45" : ""
           }`}
         ></div>
       </div>
 
       {/* Dropdown Menu */}
-      {/* Dropdown Menu */}
       <div
-        className={`fixed inset-0 z-40 flex flex-col items-center justify-center bg-rose-100 transition-all duration-700 ease-in-out ${
+        className={`fixed inset-0 z-40 flex flex-col items-center justify-center bg-rose-100 dark:bg-gray-900 transition-all duration-700 ease-in-out ${
           isOpen
-            ? "opacity-95 pointer-events-auto"
+            ? "opacity-95 dark:opacity-95 pointer-events-auto"
             : "opacity-0 pointer-events-none overflow-hidden"
         }`}
       >
@@ -63,7 +62,7 @@ function MobileMenu() {
           <Link
             href="/"
             onClick={() => setIsOpen(false)}
-            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+            className={`text-lg sm:text-xl font-bold text-rose-800 hover:text-rose-900 dark:text-white dark:hover:text-gray-300 transition-all duration-700 ease-in-out transform ${
               isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
             } hover:-translate-y-[1px]`}
             style={{ transitionDelay: `0ms` }}
@@ -74,7 +73,7 @@ function MobileMenu() {
           <Link
             href="/friends"
             onClick={() => setIsOpen(false)}
-            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+            className={`text-lg sm:text-xl font-bold text-rose-800 hover:text-rose-900 dark:text-white dark:hover:text-gray-300 transition-all duration-700 ease-in-out transform ${
               isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
             } hover:-translate-y-[1px]`}
             style={{ transitionDelay: `100ms` }}
@@ -85,7 +84,7 @@ function MobileMenu() {
           <Link
             href={`/profile/${username}`}
             onClick={() => setIsOpen(false)}
-            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+            className={`text-lg sm:text-xl font-bold text-rose-800 hover:text-rose-900 dark:text-white dark:hover:text-gray-300 transition-all duration-700 ease-in-out transform ${
               isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
             } hover:-translate-y-[1px]`}
             style={{ transitionDelay: `200ms` }}
@@ -96,7 +95,7 @@ function MobileMenu() {
           <Link
             href="/requests"
             onClick={() => setIsOpen(false)}
-            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+            className={`text-lg sm:text-xl font-bold text-rose-800 hover:text-rose-900 dark:text-white dark:hover:text-gray-300 transition-all duration-700 ease-in-out transform ${
               isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
             } hover:-translate-y-[1px]`}
             style={{ transitionDelay: `300ms` }}
@@ -106,7 +105,7 @@ function MobileMenu() {
           <Link
             href={`/media/${userId}`}
             onClick={() => setIsOpen(false)}
-            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+            className={`text-lg sm:text-xl font-bold text-rose-800 hover:text-rose-900 dark:text-white dark:hover:text-gray-300 transition-all duration-700 ease-in-out transform ${
               isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
             } hover:-translate-y-[1px]`}
             style={{ transitionDelay: `300ms` }}
@@ -116,7 +115,7 @@ function MobileMenu() {
           <Link
             href="/chat"
             onClick={() => setIsOpen(false)}
-            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+            className={`text-lg sm:text-xl font-bold text-rose-800 hover:text-rose-900 dark:text-white dark:hover:text-gray-300 transition-all duration-700 ease-in-out transform ${
               isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
             } hover:-translate-y-[1px]`}
             style={{ transitionDelay: `300ms` }}
@@ -126,7 +125,7 @@ function MobileMenu() {
           <Link
             href="/settings"
             onClick={() => setIsOpen(false)}
-            className={`text-lg sm:text-xl font-bold hover:text-rose-900 text-rose-800 transition-all duration-700 ease-in-out transform ${
+            className={`text-lg sm:text-xl font-bold text-rose-800 hover:text-rose-900 dark:text-white dark:hover:text-gray-300 transition-all duration-700 ease-in-out transform ${
               isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-5"
             } hover:-translate-y-[1px]`}
             style={{ transitionDelay: `300ms` }}

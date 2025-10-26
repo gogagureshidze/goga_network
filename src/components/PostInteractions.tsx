@@ -29,7 +29,6 @@ const PostInteractions = ({
   const [isAnimating, setIsAnimating] = useState(false);
   const [pendingLike, setPendingLike] = useState<boolean | null>(null);
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
-  // Animation states
   const [showSparkles, setShowSparkles] = useState(false);
   const [countAnimation, setCountAnimation] = useState(false);
 
@@ -40,7 +39,7 @@ const PostInteractions = ({
   const isProcessingRef = useRef(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  // Update likes when props change (for navigation consistency)
+  // Update likes when props change
   useEffect(() => {
     setCurrentLikes(normalizedLikes);
   }, [likes]);
@@ -48,7 +47,7 @@ const PostInteractions = ({
   const isLiked = userId ? currentLikes.includes(userId) : false;
   const likeCount = currentLikes.length;
 
-  // Process the like request with proper queue management
+  // Process the like request
   const processLikeRequest = async (shouldLike: boolean) => {
     if (!userId || isProcessingRef.current) return;
 
@@ -56,26 +55,18 @@ const PostInteractions = ({
     const originalLikes = [...currentLikes];
 
     try {
-      // Cancel any pending request
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
 
-      // Create new abort controller for this request
       abortControllerRef.current = new AbortController();
-
-      console.log(
-        `Processing ${shouldLike ? "like" : "unlike"} for post ${postId}`
-      );
 
       const result = await switchLike(postId, shouldLike);
 
       if (result.success) {
-        // Update with server state
         setCurrentLikes(result.likeUserIds);
         setPendingLike(null);
       } else {
-        // Rollback on error
         console.error("Like operation failed:", result.error);
         setCurrentLikes(originalLikes);
         setPendingLike(null);
@@ -90,7 +81,6 @@ const PostInteractions = ({
       isProcessingRef.current = false;
       abortControllerRef.current = null;
 
-      // Process any queued request
       if (requestQueueRef.current !== null) {
         const nextRequest = requestQueueRef.current;
         requestQueueRef.current = null;
@@ -99,13 +89,12 @@ const PostInteractions = ({
     }
   };
 
-  // Handle like with proper debouncing and queue management
+  // Handle like with debouncing
   const handleLike = useCallback(() => {
     if (!userId) return;
 
     const targetLikeState = !isLiked;
 
-    // Update UI immediately
     const optimisticLikes = targetLikeState
       ? [...currentLikes, userId]
       : currentLikes.filter((id) => id !== userId);
@@ -126,18 +115,15 @@ const PostInteractions = ({
     }
     setTimeout(() => setCountAnimation(false), 300);
 
-    // Clear existing debounce timer
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
 
-    // If currently processing, queue this request
     if (isProcessingRef.current) {
       requestQueueRef.current = targetLikeState;
       return;
     }
 
-    // Debounce the server request (300ms delay)
     debounceTimerRef.current = setTimeout(() => {
       processLikeRequest(targetLikeState);
     }, 300);
@@ -155,7 +141,7 @@ const PostInteractions = ({
     };
   }, []);
 
-  // Create floating heart effects (simplified)
+  // Create floating heart effects
   const createHeartEffects = () => {
     if (!buttonRef.current) return;
 
@@ -164,7 +150,6 @@ const PostInteractions = ({
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
-    // Create 2-3 floating hearts
     const hearts = ["❤️", "💕", "💖"];
     const numHearts = 2 + Math.floor(Math.random() * 2);
 
@@ -254,8 +239,8 @@ const PostInteractions = ({
             transition-all duration-200 select-none
             ${
               isLiked
-                ? "bg-red-50 ring-1 ring-red-200"
-                : "bg-slate-100 hover:bg-slate-200"
+                ? "bg-red-50 dark:bg-red-900/20 ring-1 ring-red-200 dark:ring-red-800"
+                : "bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600"
             }
             ${pendingLike !== null ? "opacity-90" : ""}
           `}
@@ -273,7 +258,7 @@ const PostInteractions = ({
                   ${
                     isLiked
                       ? "text-red-500 fill-red-500"
-                      : "text-gray-500 hover:text-red-400"
+                      : "text-gray-500 dark:text-gray-400 hover:text-red-400"
                   }
                   ${isAnimating ? "heart-pulse" : ""}
                 `}
@@ -304,7 +289,11 @@ const PostInteractions = ({
             <span
               className={`
               font-medium transition-all duration-200
-              ${isLiked ? "text-red-600" : "text-gray-700"}
+              ${
+                isLiked
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-gray-700 dark:text-gray-300"
+              }
               ${countAnimation ? "count-bounce" : ""}
             `}
             >
@@ -314,18 +303,24 @@ const PostInteractions = ({
               </span>
             </span>
 
-            {/* Loading indicator for pending state */}
+            {/* Loading indicator */}
             {pendingLike !== null && (
               <div className="absolute -right-1 -top-1">
-                <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse" />
+                <div className="h-2 w-2 bg-blue-500 dark:bg-blue-400 rounded-full animate-pulse" />
               </div>
             )}
           </div>
 
           {/* Comments */}
-          <div className="flex items-center cursor-pointer gap-2 bg-slate-100 px-3 py-1.5 rounded-xl hover:bg-slate-200 transition-colors">
-            <MessageSquareText onClick={() => {setIsCommentModalOpen(!isCommentModalOpen)}} className="text-blue-500" size={18} />
-            <span className="text-gray-700 font-medium">
+          <div className="flex items-center cursor-pointer gap-2 bg-slate-100 dark:bg-gray-700 px-3 py-1.5 rounded-xl hover:bg-slate-200 dark:hover:bg-gray-600 transition-colors">
+            <MessageSquareText
+              onClick={() => {
+                setIsCommentModalOpen(!isCommentModalOpen);
+              }}
+              className="text-blue-500 dark:text-blue-400"
+              size={18}
+            />
+            <span className="text-gray-700 dark:text-gray-300 font-medium">
               {commentNumber}
               <span className="hidden sm:inline ml-1 font-normal text-xs">
                 {commentNumber === 1 ? "Comment" : "Comments"}
@@ -335,12 +330,14 @@ const PostInteractions = ({
         </div>
 
         {/* Share */}
-        <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl hover:bg-slate-200 transition-colors">
-          <ExternalLink className="text-green-500" size={18} />
-          <span className="text-gray-700 font-medium">
+        <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-700 px-3 py-1.5 rounded-xl hover:bg-slate-200 dark:hover:bg-gray-600 transition-colors cursor-pointer">
+          <ExternalLink
+            className="text-green-500 dark:text-green-400"
+            size={18}
+          />
+          <span className="text-gray-700 dark:text-gray-300 font-medium">
             0
             <span className="hidden sm:inline ml-1 font-normal text-xs">
-              {" "}
               Shares
             </span>
           </span>

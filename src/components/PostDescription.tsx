@@ -5,7 +5,7 @@ import Link from "next/link";
 
 interface PostDescriptionProps {
   text: string;
-  taggedUsernames: string[]; // List of valid tagged usernames
+  taggedUsernames: string[];
 }
 
 export default function PostDescription({
@@ -28,7 +28,10 @@ export default function PostDescription({
     // Add normal text before the @mention
     if (matchIndex > lastIndex) {
       parts.push(
-        <span key={`text-${key++}`}>
+        <span
+          key={`text-${key++}`}
+          className="text-gray-800 dark:text-gray-200"
+        >
           {text.substring(lastIndex, matchIndex)}
         </span>
       );
@@ -41,7 +44,7 @@ export default function PostDescription({
         <Link
           key={`link-${key++}`}
           href={`/profile/${username}`}
-          className="text-orange-500 hover:text-orange-600 font-semibold hover:underline transition-colors"
+          className="text-orange-500 dark:text-orange-400 hover:text-orange-600 dark:hover:text-orange-300 font-semibold hover:underline transition-colors"
           onClick={(e) => e.stopPropagation()}
         >
           @{username}
@@ -50,7 +53,10 @@ export default function PostDescription({
     } else {
       // Invalid tag - show in gray, not clickable
       parts.push(
-        <span key={`invalid-${key++}`} className="text-gray-500">
+        <span
+          key={`invalid-${key++}`}
+          className="text-gray-500 dark:text-gray-500"
+        >
           @{username}
         </span>
       );
@@ -61,12 +67,20 @@ export default function PostDescription({
 
   // Add remaining text after last mention
   if (lastIndex < text.length) {
-    parts.push(<span key={`text-${key++}`}>{text.substring(lastIndex)}</span>);
+    parts.push(
+      <span key={`text-${key++}`} className="text-gray-800 dark:text-gray-200">
+        {text.substring(lastIndex)}
+      </span>
+    );
   }
 
   return (
-    <p className="text-sm leading-relaxed text-gray-800 px-1">
-      {parts.length > 0 ? parts : text}
+    <p className="text-sm leading-relaxed px-1 transition-colors">
+      {parts.length > 0 ? (
+        parts
+      ) : (
+        <span className="text-gray-800 dark:text-gray-200">{text}</span>
+      )}
     </p>
   );
 }

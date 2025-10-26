@@ -800,18 +800,22 @@ export default function StoryList({
               className="flex flex-col items-center gap-2 cursor-pointer relative"
               onClick={() => open()}
             >
-              <div className="p-[3px] rounded-full bg-gradient-to-tr from-orange-300 via-pink-200 to-red-800">
+              {/* Add Story Button - Themed Gradient Border */}
+              <div className="p-[3px] rounded-full bg-gradient-to-tr from-orange-300 via-pink-200 to-red-800 dark:from-gray-600 dark:via-gray-700 dark:to-gray-800 transition-colors duration-300">
                 <Image
                   src={user.imageUrl || "/noAvatar.png"}
                   alt="Add Story"
                   width={80}
                   height={80}
-                  className="w-20 h-20 rounded-full object-cover bg-white"
+                  className="w-20 h-20 rounded-full object-cover bg-white dark:bg-gray-700 transition-colors duration-300" // Added dark bg for image container
                 />
               </div>
-              <span className="font-medium text-xs">Add a Story</span>
-              <div className="absolute -bottom-1 -right-1 flex items-center justify-center bg-white rounded-full p-1">
-                <div className="bg-orange-400 rounded-full w-5 h-5 flex items-center justify-center">
+              <span className="font-medium text-xs text-gray-800 dark:text-gray-300 transition-colors duration-300">
+                Add a Story
+              </span>
+              {/* Plus Icon - Themed */}
+              <div className="absolute -bottom-1 -right-1 flex items-center justify-center bg-white dark:bg-gray-800 rounded-full p-1 transition-colors duration-300">
+                <div className="bg-orange-400 dark:bg-orange-500 rounded-full w-5 h-5 flex items-center justify-center transition-colors duration-300">
                   <span className="text-white text-xl -mt-0">+</span>
                 </div>
               </div>
@@ -820,28 +824,28 @@ export default function StoryList({
         </CldUploadWidget>
       )}
       {/* Preview Modal */}
-      {/* Enhanced Preview Modal */}
+      {/* Enhanced Preview Modal - Themed */}
       {media.length > 0 && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-4"
           onClick={() => setMedia([])}
         >
           <div
-            className="relative flex flex-col bg-gradient-to-br from-rose-50 via-orange-50 to-rose-100 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden border border-orange-200"
+            className="relative flex flex-col bg-gradient-to-br from-rose-50 via-orange-50 to-rose-100 dark:bg-gradient-to-br dark:from-gray-800 dark:via-gray-800 dark:to-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden border border-orange-200 dark:border-gray-700 transition-colors duration-300"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header with gradient background */}
-            <div className="bg-gradient-to-r from-orange-400 to-rose-800 p-6 text-white">
+            {/* Header with gradient background - Themed */}
+            <div className="bg-gradient-to-r from-orange-400 to-rose-800 dark:bg-gradient-to-r dark:from-gray-700 dark:to-gray-800 p-6 text-white">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-2xl font-bold mb-1">Story Preview</h3>
-                  <p className="text-orange-100 text-sm opacity-90">
+                  <p className="text-orange-100 dark:text-gray-300 text-sm opacity-90">
                     Item ready to share
                   </p>
                 </div>
                 <button
                   onClick={() => setMedia([])}
-                  className="p-2 rounded-full hover:bg-white hover:bg-opacity-20 transition-all duration-200 group"
+                  className="p-2 rounded-full hover:bg-white hover:bg-opacity-20 dark:hover:bg-gray-600 transition-all duration-200 group"
                 >
                   <svg
                     className="w-6 h-6 group-hover:rotate-90 transition-transform duration-200"
@@ -860,20 +864,20 @@ export default function StoryList({
               </div>
             </div>
 
-            {/* Media Grid with enhanced styling */}
-            <div className="flex-1 p-6 overflow-y-auto flex justify-center">
+            {/* Media Grid Container - Themed */}
+            <div className="flex-1 p-6 overflow-y-auto flex justify-center dark:bg-gray-900 transition-colors duration-300">
               <div className="grid grid-flow-row auto-rows-auto gap-4 justify-items-center">
                 {media.map((item, index) => (
                   <div
                     key={item.public_id}
-                    className="relative group w-full max-w-xs bg-gradient-to-br from-orange-100 to-rose-100 rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-orange-200 hover:border-orange-300"
+                    className="relative group w-full max-w-xs bg-gradient-to-br from-orange-100 to-rose-100 dark:bg-gradient-to-br dark:from-gray-700 dark:to-gray-800 rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-orange-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-gray-600 "
                   >
-                    {/* Loading state */}
+                    {/* Loading state - Themed */}
                     {imageLoading[index] !== false && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-100 to-rose-100 z-10">
+                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-100 to-rose-100 dark:bg-gradient-to-br dark:from-gray-700 dark:to-gray-800 z-10">
                         <div className="flex flex-col items-center gap-2">
-                          <div className="w-8 h-8 border-3 border-orange-400 border-t-transparent rounded-full animate-spin"></div>
-                          <span className="text-xs text-orange-700 font-medium">
+                          <div className="w-8 h-8 border-3 border-orange-400 dark:border-gray-500 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-xs text-orange-700 dark:text-gray-400 font-medium">
                             Loading...
                           </span>
                         </div>
@@ -934,17 +938,17 @@ export default function StoryList({
                       />
                     )}
 
-                    {/* Media type indicator */}
+                    {/* Media type indicator - Works fine */}
                     <div className="absolute top-2 left-2 px-2 py-1 bg-black bg-opacity-70 rounded-full text-white text-xs font-medium">
                       {item.resource_type === "video" ? "Video" : "Photo"}
                     </div>
 
-                    {/* Remove button */}
+                    {/* Remove button - Themed */}
                     <button
                       onClick={() =>
                         setMedia((prev) => prev.filter((_, i) => i !== index))
                       }
-                      className="absolute -top-0 -right-0 w-8 h-8 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white rounded-full flex items-center justify-center text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110 border-2 border-white group z-20"
+                      className="absolute -top-0 -right-0 w-8 h-8 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 dark:bg-gradient-to-r dark:from-gray-600 dark:to-gray-700 dark:hover:from-gray-700 dark:hover:to-gray-700 text-white rounded-full flex items-center justify-center text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110 border-2 border-white dark:border-gray-800 group z-20"
                       title="Remove this item"
                     >
                       <svg
@@ -962,7 +966,7 @@ export default function StoryList({
                       </svg>
                     </button>
 
-                    {/* Hover overlay */}
+                    {/* Hover overlay - Works fine */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
                       <div className="absolute bottom-2 left-2 right-2">
                         <div className="text-white text-xs font-medium truncate">
@@ -975,11 +979,11 @@ export default function StoryList({
               </div>
             </div>
 
-            {/* Settings Section with custom switch */}
-            <div className="px-6 py-6 bg-gradient-to-r from-orange-50 to-rose-50 border-t border-orange-200">
-              <div className="flex items-center justify-between gap-4">
+            {/* Settings Section with custom switch - Themed */}
+            <div className="px-6 py-6 dark:bg-gray-900 border-t border-orange-200 dark:border-gray-700 transition-colors duration-300">
+              <div className="flex items-center justify-between gap-4 ">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-gradient-to-r from-orange-400 to-rose-600 rounded-lg">
+                  <div className="p-2 bg-gradient-to-r from-orange-400 to-rose-600 dark:bg-gradient-to-r dark:from-gray-600 dark:to-gray-700 rounded-lg">
                     <svg
                       className="w-5 h-5 text-white"
                       fill="currentColor"
@@ -993,27 +997,30 @@ export default function StoryList({
                     </svg>
                   </div>
                   <div>
-                    <span className="text-gray-800 font-semibold text-sm">
+                    <span className="text-gray-800 dark:text-white font-semibold text-sm">
                       Show likes to others?
                     </span>
-                    <p className="text-gray-600 text-xs hidden sm:block">
+                    <p className="text-gray-600 dark:text-gray-400 text-xs hidden sm:block">
                       Others can see who how many people liked your story
                     </p>
                   </div>
                 </div>
 
-                <div className="flex flex-col items-end gap-1">
+                <div className="flex flex-col items-end gap-1 ">
                   <div className="scale-[0.3] sm:scale-50 md:scale-60 -mr-6 sm:-mr-4">
+                    {/* Simplified Custom Switch for Dark Mode (Original uses hex codes) */}
                     <div
-                      className={`w-48 aspect-video rounded-xl transition-colors duration-300 border-4 border-[#121331] ${
-                        showLikes ? "bg-[#3a3347]" : "bg-[#ebe6ef]"
+                      className={`w-48 aspect-video rounded-xl transition-colors duration-300 border-4 border-[#121331] dark:border-gray-600 ${
+                        showLikes
+                          ? "bg-[#3a3347] dark:bg-gray-400"
+                          : "bg-[#ebe6ef] dark:bg-gray-600"
                       }`}
                     >
                       <div className="flex h-full w-full px-2 items-center gap-x-2">
-                        <div className="w-6 h-6 flex-shrink-0 rounded-full border-4 border-[#121331]" />
+                        <div className="w-6 h-6 flex-shrink-0 rounded-full border-4 border-[#121331] dark:border-gray-600" />
                         <label
                           htmlFor="likes-switch"
-                          className={`w-full h-10 border-4 border-[#121331] rounded cursor-pointer transition-transform duration-300 ${
+                          className={`w-full h-10 border-4 border-[#121331] dark:border-gray-600 rounded cursor-pointer transition-transform duration-300 ${
                             showLikes ? "scale-x-[-1]" : ""
                           }`}
                         >
@@ -1024,21 +1031,31 @@ export default function StoryList({
                             checked={showLikes}
                             onChange={() => setShowLikes(!showLikes)}
                           />
-                          <div className="w-full h-full bg-[#f24c00] relative">
-                            <div className="w-0 h-0 z-20 border-l-[24px] border-l-transparent border-r-[24px] border-r-transparent border-t-[20px] border-t-[#121331] relative">
-                              <div className="w-0 h-0 absolute border-l-[18px] border-l-transparent border-r-[18px] border-r-transparent border-t-[15px] border-t-[#e44901] -top-5 -left-[18px]" />
-                            </div>
-                            <div className="w-[24px] h-9 z-10 absolute top-[9px] left-0 bg-[#f24c00] border-r-2 border-b-4 border-[#121331] transform skew-y-[39deg]" />
-                            <div className="w-[25px] h-9 z-10 absolute top-[9px] left-[24px] bg-[#c44002] border-r-4 border-l-2 border-b-4 border-[#121331] transform skew-y-[-39deg]" />
+                          {/* Simplified background for dark mode, original used complex SVG-like divs */}
+                          <div
+                            className={`w-full h-full relative ${
+                              showLikes
+                                ? "bg-orange-500 dark:bg-gray-500"
+                                : "bg-gray-300 dark:bg-gray-700"
+                            }`}
+                          >
+                            {/* You might need a simpler visual indicator here for dark mode if the SVG style breaks */}
+                            <div
+                              className={`absolute top-1 left-1 w-8 h-8 rounded bg-white dark:bg-gray-300 transition-transform duration-300 ${
+                                showLikes
+                                  ? "translate-x-[calc(100%-36px)]"
+                                  : "translate-x-0"
+                              }`}
+                            ></div>
                           </div>
                         </label>
-                        <div className="w-6 h-1 flex-shrink-0 bg-[#121331] rounded-full" />
+                        <div className="w-6 h-1 flex-shrink-0 bg-[#121331] dark:bg-gray-600 rounded-full" />
                       </div>
                     </div>
                   </div>
 
-                  {/* Switch state indicator */}
-                  <div className="text-[10px] sm:text-xs font-medium text-gray-600 text-right mr-10">
+                  {/* Switch state indicator - Themed */}
+                  <div className="text-[10px] sm:text-xs font-medium text-gray-600 dark:text-gray-400 text-right mr-10">
                     {showLikes ? (
                       <span className="flex items-center gap-1">
                         <span className="text-green-600">➤</span>
@@ -1057,19 +1074,19 @@ export default function StoryList({
               </div>
             </div>
 
-            {/* Action Buttons with enhanced styling */}
-            <div className="p-6 bg-gradient-to-r from-rose-50 to-orange-50 border-t border-orange-200">
+            {/* Action Buttons with enhanced styling - Themed */}
+            <div className="p-6 bg-gradient-to-r from-rose-50 to-orange-50 dark:bg-gradient-to-r dark:from-gray-800 dark:to-gray-900 border-t border-orange-200 dark:border-gray-700 transition-colors duration-300">
               <div className="flex gap-3">
                 <button
                   onClick={() => setMedia([])}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-gray-200 to-gray-300 hover:from-gray-300 hover:to-gray-400 text-gray-800 rounded-xl font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] border border-gray-300"
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-gray-200 to-gray-300 hover:from-gray-300 hover:to-gray-400 dark:from-gray-700 dark:to-gray-600 dark:hover:from-gray-600 dark:hover:to-gray-600 text-gray-800 dark:text-gray-200 rounded-xl font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] border border-gray-300 dark:border-gray-600"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAddStory}
                   disabled={isPending}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-orange-400 to-rose-600 hover:from-orange-500 hover:to-rose-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:scale-100 disabled:shadow-none flex items-center justify-center gap-2 border border-orange-500"
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-orange-400 to-rose-600 hover:from-orange-500 hover:to-rose-700 dark:from-gray-600 dark:to-gray-700 dark:hover:from-gray-700 dark:hover:to-gray-700 disabled:from-gray-400 disabled:to-gray-500 dark:disabled:from-gray-700 dark:disabled:to-gray-700 text-white rounded-xl font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:scale-100 disabled:shadow-none flex items-center justify-center gap-2 border border-orange-500 dark:border-gray-600"
                 >
                   {isPending ? (
                     <>
@@ -1158,8 +1175,6 @@ export default function StoryList({
                 onLoadStart={() => setMediaLoading(true)}
               />
             )}
-
-            {/* Rest of your code stays the same... */}
 
             {/* Video mute/unmute button */}
             {isStoryVideo(currentStory) && (

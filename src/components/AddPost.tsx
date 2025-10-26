@@ -83,7 +83,7 @@ function AddPost() {
     if (media.length === 0) return;
 
     setIsGeneratingDesc(true);
-    setDesc('')
+    setDesc("");
     setProgress(0);
     setLoadingMessage(LOADING_MESSAGES[0]);
 
@@ -139,7 +139,7 @@ function AddPost() {
   return (
     <>
       {user && (
-        <div className="p-4 bg-white rounded-lg shadow-md flex flex-col gap-4 text-sm">
+        <div className="p-4 bg-white rounded-lg shadow-md flex flex-col gap-4 text-sm dark:bg-gray-800 transition-colors duration-300">
           <div className="flex gap-4">
             <Link href={`/profile/${user.username}`}>
               <Image
@@ -147,7 +147,7 @@ function AddPost() {
                 alt="Profile"
                 width={40}
                 height={40}
-                className="cursor-pointer w-12 h-12 object-cover rounded-full ring-orange-200 ring-2"
+                className="cursor-pointer w-12 h-12 object-cover rounded-full ring-orange-200 dark:ring-gray-600 ring-2 transition-colors duration-300"
               />
             </Link>
             <form
@@ -159,7 +159,7 @@ function AddPost() {
                   placeholder={
                     isGeneratingDesc ? loadingMessage : "What is on your mind?"
                   }
-                  className="flex-1 p-2 bg-slate-100 rounded-lg resize-none"
+                  className="flex-1 p-2 bg-slate-100 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 rounded-lg resize-none transition-colors duration-300"
                   name="desc"
                   value={desc}
                   onChange={(e) => {
@@ -173,10 +173,12 @@ function AddPost() {
                 />
               </div>
               <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-500">{desc.length}/2000</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-300">
+                  {desc.length}/2000
+                </p>
                 <button
                   type="submit"
-                  className="bg-orange-300 hover:bg-rose-300 text-white font-semibold text-sm px-4 py-2 rounded-lg shadow-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-gradient-to-r from-orange-400 to-rose-400 hover:from-orange-500 hover:to-rose-500 dark:from-orange-500 dark:to-rose-500 dark:hover:from-orange-600 dark:hover:to-rose-600 text-white font-semibold text-sm px-4 py-2 rounded-lg shadow-md hover:shadow-lg dark:shadow-orange-900/50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isPending || isGeneratingDesc}
                 >
                   {isPending ? "Posting..." : "Post"}
@@ -200,7 +202,7 @@ function AddPost() {
                 <button
                   type="button"
                   onClick={() => open()}
-                  className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-green-600 bg-green-50/50 hover:bg-green-100 transition-colors duration-200"
+                  className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-green-600 bg-green-50/50 hover:bg-green-100 dark:text-gray-300 dark:bg-gray-700/50 dark:hover:bg-gray-700 transition-colors duration-200"
                 >
                   <ImagePlus className="w-6 h-6" />
                   <span className="font-medium text-sm hidden md:block">
@@ -224,7 +226,7 @@ function AddPost() {
                 <button
                   type="button"
                   onClick={() => open()}
-                  className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-blue-950 bg-blue-50/50 hover:bg-blue-100 transition-colors duration-200"
+                  className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-blue-950 bg-blue-50/50 hover:bg-blue-100 dark:text-gray-300 dark:bg-gray-700/50 dark:hover:bg-gray-700 transition-colors duration-200"
                 >
                   <Clapperboard className="w-6 h-6" />
                   <span className="font-medium text-sm hidden md:block">
@@ -237,7 +239,7 @@ function AddPost() {
             <button
               type="button"
               onClick={() => setIsEventModalOpen(true)}
-              className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-amber-400 bg-amber-50/50 hover:bg-amber-100 transition-colors duration-200"
+              className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-amber-400 bg-amber-50/50 hover:bg-amber-100 dark:text-gray-300 dark:bg-gray-700/50 dark:hover:bg-gray-700 transition-colors duration-200"
             >
               <CalendarArrowUp className="w-6 h-6" />
               <span className="font-medium text-sm hidden md:block">Event</span>
@@ -246,7 +248,7 @@ function AddPost() {
             <button
               type="button"
               onClick={() => setIsPollModalOpen(true)}
-              className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-orange-600 bg-orange-50/50 hover:bg-orange-100 transition-colors duration-200"
+              className="flex items-center justify-center flex-1 gap-2 p-2 rounded-lg text-orange-600 bg-orange-50/50 hover:bg-orange-100 dark:text-gray-300 dark:bg-gray-700/50 dark:hover:bg-gray-700 transition-colors duration-200"
             >
               <Vote className="w-6 h-6" />
               <span className="font-medium text-sm hidden md:block">Poll</span>
@@ -261,12 +263,12 @@ function AddPost() {
                   type="button"
                   onClick={handleGenerateDescription}
                   disabled={isGeneratingDesc}
-                  className="relative overflow-hidden flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-90 disabled:cursor-wait shadow-lg"
+                  className="relative overflow-hidden flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 dark:bg-gradient-to-r dark:from-gray-600 dark:to-gray-700 dark:hover:from-gray-700 dark:hover:to-gray-700 transition-all duration-200 disabled:opacity-90 disabled:cursor-wait shadow-lg"
                 >
                   {/* Progress bar background */}
                   {isGeneratingDesc && (
                     <div
-                      className="absolute inset-0 bg-white/20 transition-all duration-300 ease-out"
+                      className="absolute inset-0 bg-white/20 dark:bg-white/10 transition-all duration-300 ease-out"
                       style={{ width: `${progress}%` }}
                     />
                   )}
@@ -288,18 +290,18 @@ function AddPost() {
 
                 {/* Progress percentage */}
                 {isGeneratingDesc && (
-                  <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+                  <div className="flex items-center justify-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                     <div className="flex gap-1">
                       <div
-                        className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
+                        className="w-2 h-2 bg-purple-500 dark:bg-gray-400 rounded-full animate-bounce"
                         style={{ animationDelay: "0ms" }}
                       />
                       <div
-                        className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
+                        className="w-2 h-2 bg-purple-500 dark:bg-gray-400 rounded-full animate-bounce"
                         style={{ animationDelay: "200ms" }}
                       />
                       <div
-                        className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"
+                        className="w-2 h-2 bg-purple-500 dark:bg-gray-400 rounded-full animate-bounce"
                         style={{ animationDelay: "350ms" }}
                       />
                     </div>
@@ -318,9 +320,9 @@ function AddPost() {
                     <button
                       type="button"
                       onClick={() => handleRemoveMedia(idx)}
-                      className="absolute top-1 right-1 bg-white rounded-full p-1 shadow-md hover:bg-gray-100 transition-all duration-200 z-10"
+                      className="absolute top-1 right-1 bg-white dark:bg-gray-800 rounded-full p-1 shadow-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 z-10"
                     >
-                      <X className="w-4 h-4 text-gray-600" />
+                      <X className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                     </button>
                     {file.resource_type === "image" ? (
                       <Image
@@ -344,6 +346,7 @@ function AddPost() {
         </div>
       )}
 
+      {/* These modals will need to be themed as well, but I don't have their code. */}
       <EventPostModal
         isOpen={isEventModalOpen}
         onClose={() => setIsEventModalOpen(false)}

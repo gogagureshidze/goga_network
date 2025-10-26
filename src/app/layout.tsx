@@ -5,12 +5,13 @@ import ClickSpark from "@/components/ClickSpark";
 import Navbar from "@/components/Navbar";
 import PageTransition from "@/components/PageTransition";
 import prisma from "@/lib/client";
-import Providers from "./providers";
+import Provider from "./providers";
 import Footer from "@/components/Footer";
 import GlobalLoader from "@/components/GlobalLoader";
 import { UserProvider } from "@/contexts/UserContext";
 import ActivityTracker from "@/components/ActivityTracker";
 import { updateLastActive } from "@/actions/activityActions";
+import { Providers } from "./themeProvider";
 
 // Define the Funnel Display font with the variable property
 const funnel_display = Funnel_Display({
@@ -46,7 +47,11 @@ export default async function RootLayout({
   }));
 
   return (
-    <html lang="en" className={funnel_display.variable}>
+    <html
+      suppressHydrationWarning
+      lang="en"
+      className={funnel_display.variable}
+    >
       <head>
         <link rel="preconnect" href="https://img.clerk.com" />
         <link
@@ -58,32 +63,32 @@ export default async function RootLayout({
           content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
         />
       </head>
-      <body className="font-sans">
+      <body className="font-sans bg-rose-50 dark:bg-gray-900 transition-colors">
         <Providers>
-          <UserProvider>
-            {/* <SocketProvider> */}
-            <ClickSpark
-              sparkColor="#e65800ff"
-              sparkSize={10}
-              sparkRadius={15}
-              sparkCount={8}
-              duration={500}
-            >
-              <div className="w-full px-4 text-orange-50 bg-rose-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64">
-                <Navbar users={users} />
-              </div>
-              <div className="md:px-8 px-4 text-gray-800 bg-rose-50 lg:px-16 xl:px-32 2xl:px-64 pb-4">
-                <GlobalLoader />
-                {users && (
-                  <ActivityTracker updateLastActive={updateLastActive} />
-                )}
+          <Provider>
+            <UserProvider>
+              <ClickSpark
+                sparkColor="#e65800ff"
+                sparkSize={10}
+                sparkRadius={15}
+                sparkCount={8}
+                duration={500}
+              >
+                <div className="w-full px-4 text-orange-50 bg-rose-800 dark:bg-gray-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64 transition-colors">
+                  <Navbar users={users} />
+                </div>
+                <div className="md:px-8 px-4 text-gray-800 dark:text-gray-200 bg-rose-50 dark:bg-gray-900 lg:px-16 xl:px-32 2xl:px-64 pb-4 transition-colors">
+                  <GlobalLoader />
+                  {users && (
+                    <ActivityTracker updateLastActive={updateLastActive} />
+                  )}
 
-                <PageTransition>{children}</PageTransition>
-              </div>
-              <Footer />
-            </ClickSpark>
-          </UserProvider>
-          {/* </SocketProvider> */}
+                  <PageTransition>{children}</PageTransition>
+                </div>
+                <Footer />
+              </ClickSpark>
+            </UserProvider>
+          </Provider>
         </Providers>
       </body>
     </html>

@@ -22,10 +22,15 @@ async function FriendRequests() {
   if (!requests.length) return null;
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4">
+    <div className="p-4 bg-white rounded-lg shadow-md text-sm flex flex-col gap-4 dark:bg-gray-800 transition-colors duration-300">
       <div className="flex items-center justify-between font-medium">
-        <span className="text-gray-500">Friend Requests</span>
-        <Link href="/requests" className="text-orange-300 text-sm">
+        <span className="text-gray-500 dark:text-gray-400">
+          Friend Requests
+        </span>
+        <Link
+          href="/requests"
+          className="text-orange-500 dark:text-white text-sm"
+        >
           See all
         </Link>
       </div>

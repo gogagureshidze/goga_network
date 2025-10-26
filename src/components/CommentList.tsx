@@ -101,7 +101,7 @@ const removeCommentFromTree = (
   }, [] as CommentWithUser[]);
 };
 
-// 🆕 TYPING INDICATOR COMPONENT
+// TYPING INDICATOR COMPONENT
 const TypingIndicator = memo(function TypingIndicator({
   usernames,
 }: {
@@ -109,7 +109,6 @@ const TypingIndicator = memo(function TypingIndicator({
 }) {
   if (usernames.length === 0) return null;
 
-  // Only show first 3 users max
   const maxDisplay = 3;
   const displayUsernames = usernames.slice(0, maxDisplay);
   const remainingCount = usernames.length - maxDisplay;
@@ -123,7 +122,6 @@ const TypingIndicator = memo(function TypingIndicator({
   } else if (usernames.length === 3) {
     displayText = `${displayUsernames[0]}, ${displayUsernames[1]}, and ${displayUsernames[2]} are typing`;
   } else {
-    // 4 or more users - show first 3 and count remaining
     displayText = `${displayUsernames[0]}, ${displayUsernames[1]}, ${
       displayUsernames[2]
     }, and ${remainingCount} ${
@@ -132,18 +130,18 @@ const TypingIndicator = memo(function TypingIndicator({
   }
 
   return (
-    <div className="flex items-center gap-2 text-xs text-gray-500 px-2 py-1 bg-gray-50 rounded-lg animate-pulse py-2">
+    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 px-2 py-1 bg-gray-50 dark:bg-gray-700 rounded-lg animate-pulse py-2 transition-colors">
       <div className="flex gap-1">
         <span
-          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+          className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"
           style={{ animationDelay: "0ms" }}
         ></span>
         <span
-          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+          className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"
           style={{ animationDelay: "150ms" }}
         ></span>
         <span
-          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+          className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"
           style={{ animationDelay: "300ms" }}
         ></span>
       </div>
@@ -152,7 +150,7 @@ const TypingIndicator = memo(function TypingIndicator({
   );
 });
 
-// --- CommentItem Component (Memoized) ---
+// CommentItem Component (Memoized)
 const CommentItem = memo(function CommentItem({
   comment,
   user,
@@ -189,7 +187,6 @@ const CommentItem = memo(function CommentItem({
     : comment.replies?.slice(0, 3);
   const hasMoreReplies = (comment.replies?.length || 0) > 3;
 
-  // Keep only 3 levels of indentation to prevent mobile overflow
   const maxDepth = 3;
   const shouldIndent = depth < maxDepth;
 
@@ -205,22 +202,24 @@ const CommentItem = memo(function CommentItem({
             alt={comment.user.username || "User"}
             width={28}
             height={28}
-            className="rounded-full w-6 h-6 sm:w-7 sm:h-7"
+            className="rounded-full w-6 h-6 sm:w-7 sm:h-7 ring-2 ring-orange-200 dark:ring-orange-600"
           />
         </Link>
-        <div className="bg-slate-100 rounded-xl px-2 sm:px-3 py-2 text-sm flex-1 min-w-0">
+        <div className="bg-slate-100 dark:bg-gray-700 rounded-xl px-2 sm:px-3 py-2 text-sm flex-1 min-w-0 transition-colors">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <Link href={`/profile/${comment.user.username}`}>
-              <span className="font-semibold text-xs sm:text-sm">
+              <span className="font-semibold text-xs sm:text-sm text-gray-900 dark:text-gray-100">
                 {comment.user.username}
               </span>
             </Link>
-            <span className="text-xs text-gray-500 flex-shrink-0">
+            <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
               {formatTimeAgo(comment.createdAt)}
             </span>
           </div>
-          <p className="text-xs sm:text-sm break-words">{comment.desc}</p>
-          <div className="flex items-center gap-3 sm:gap-4 mt-1 text-xs text-gray-500">
+          <p className="text-xs sm:text-sm break-words text-gray-800 dark:text-gray-200">
+            {comment.desc}
+          </p>
+          <div className="flex items-center gap-3 sm:gap-4 mt-1 text-xs text-gray-500 dark:text-gray-400">
             <button
               onClick={() => handleLike(comment.id)}
               className="flex items-center gap-1 transition-colors"
@@ -230,20 +229,22 @@ const CommentItem = memo(function CommentItem({
                 className={`cursor-pointer transition-all duration-200 ${
                   hasLiked
                     ? "text-red-500 fill-red-500 scale-110"
-                    : "text-gray-400 hover:text-red-400 hover:scale-105"
+                    : "text-gray-400 dark:text-gray-500 hover:text-red-400 hover:scale-105"
                 }`}
                 size={12}
               />
               <span
                 className={
-                  hasLiked ? "text-red-500 font-medium" : "text-gray-500"
+                  hasLiked
+                    ? "text-red-500 dark:text-red-400 font-medium"
+                    : "text-gray-500 dark:text-gray-400"
                 }
               >
                 {comment.likes?.length || 0}
               </span>
             </button>
             <button
-              className="hover:underline"
+              className="hover:underline transition-colors"
               onClick={() =>
                 setReplyingTo(isReplyingToThisComment ? null : comment.id)
               }
@@ -255,33 +256,36 @@ const CommentItem = memo(function CommentItem({
 
         {/* 3-DOT MENU */}
         <div className="relative flex-shrink-0">
-          <button onClick={() => setShowMenu(!showMenu)} className="p-1">
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          >
             <MoreVertical
               size={16}
-              className="text-gray-500 hover:text-gray-700"
+              className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
             />
           </button>
           {showMenu && (
-            <div className="absolute right-0 top-6 w-32 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200">
+            <div className="absolute right-0 top-6 w-32 bg-white dark:bg-gray-800 rounded-md shadow-lg dark:shadow-gray-900/50 py-1 z-10 border border-gray-200 dark:border-gray-700">
               <button
                 onClick={() => {
                   setShowActivityModal(true);
                   setShowMenu(false);
                 }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
               >
                 <Heart size={14} /> Activity
               </button>
 
               {isCommentOwner && (
                 <>
-                  <div className="border-t border-gray-200"></div>
+                  <div className="border-t border-gray-200 dark:border-gray-700"></div>
                   <button
                     onClick={() => {
                       handleDeleteComment(comment.id);
                       setShowMenu(false);
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2"
+                    className="w-full text-left px-4 py-2 text-sm text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors"
                   >
                     <svg
                       width="14"
@@ -315,9 +319,13 @@ const CommentItem = memo(function CommentItem({
         <div
           className={`flex flex-col gap-2 mt-2 ${
             shouldIndent ? "ml-4 sm:ml-10" : "ml-0"
-          } ${shouldIndent ? "border-l-2 border-gray-300 pl-2 sm:pl-4" : ""}`}
+          } ${
+            shouldIndent
+              ? "border-l-2 border-gray-300 dark:border-gray-600 pl-2 sm:pl-4"
+              : ""
+          }`}
         >
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
             <Image
               src={comment.user.avatar || "/noAvatar.png"}
               alt="Profile"
@@ -335,7 +343,7 @@ const CommentItem = memo(function CommentItem({
               alt="Profile"
               width={28}
               height={28}
-              className="rounded-full w-6 h-6 sm:w-7 sm:h-7 ring-2 ring-orange-300 cursor-pointer flex-shrink-0"
+              className="rounded-full w-6 h-6 sm:w-7 sm:h-7 ring-2 ring-orange-300 dark:ring-orange-600 cursor-pointer flex-shrink-0"
             />
             <form
               onSubmit={(e) => {
@@ -380,10 +388,10 @@ const CommentItem = memo(function CommentItem({
                   addReplyComment(comment.postId, desc, comment.id);
                 });
               }}
-              className="relative flex-1 bg-slate-100 rounded-xl px-3 sm:px-4 py-2 text-sm min-w-0"
+              className="relative flex-1 bg-slate-100 dark:bg-gray-700 rounded-xl px-3 sm:px-4 py-2 text-sm min-w-0 transition-colors"
             >
               <input
-                className="w-full pr-8 sm:pr-10 bg-transparent outline-none text-xs sm:text-sm"
+                className="w-full pr-8 sm:pr-10 bg-transparent outline-none text-xs sm:text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
                 type="text"
                 name="reply-input"
                 placeholder={isReplying ? "Sending..." : "Reply..."}
@@ -396,7 +404,9 @@ const CommentItem = memo(function CommentItem({
               >
                 <SendHorizonal
                   className={`cursor-pointer w-4 h-4 sm:w-5 sm:h-5 ${
-                    isReplying ? "text-gray-300" : "text-orange-300"
+                    isReplying
+                      ? "text-gray-300 dark:text-gray-600"
+                      : "text-orange-300 dark:text-orange-400"
                   }`}
                 />
               </button>
@@ -409,7 +419,9 @@ const CommentItem = memo(function CommentItem({
       {repliesToDisplay && repliesToDisplay.length > 0 && (
         <div
           className={`${shouldIndent ? "pl-4 sm:pl-8" : "pl-0"} mt-2 ${
-            shouldIndent ? "border-l-2 border-gray-300" : ""
+            shouldIndent
+              ? "border-l-2 border-gray-300 dark:border-gray-600"
+              : ""
           }`}
         >
           {repliesToDisplay.map((reply) => (
@@ -431,7 +443,7 @@ const CommentItem = memo(function CommentItem({
           {hasMoreReplies && (
             <button
               onClick={() => setShowAllReplies(!showAllReplies)}
-              className="text-xs sm:text-sm text-gray-500 hover:text-gray-700 hover:underline mt-2"
+              className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:underline mt-2 transition-colors"
             >
               {showAllReplies
                 ? "Hide replies"
@@ -444,7 +456,7 @@ const CommentItem = memo(function CommentItem({
   );
 });
 
-// --- CommentList Component ---
+// CommentList Component
 function CommentList({
   comments,
   postId,
@@ -461,7 +473,7 @@ function CommentList({
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [isCommenting, setIsCommenting] = useState(false);
 
-  // 🆕 SOCKET & TYPING STATE
+  // SOCKET & TYPING STATE
   const [socket, setSocket] = useState<Socket | null>(null);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -556,7 +568,7 @@ function CommentList({
     }
   );
 
-  // 🆕 SOCKET CONNECTION SETUP
+  // SOCKET CONNECTION SETUP
   useEffect(() => {
     if (!user) return;
 
@@ -572,7 +584,6 @@ function CommentList({
 
     newSocket.on("connect", () => {
       console.log(`✅ Connected to socket server for post ${postId}`);
-      // Join the post room
       newSocket.emit("joinPost", { postId });
     });
 
@@ -580,13 +591,12 @@ function CommentList({
       console.error("❌ Socket connection error:", error);
     });
 
-    // 🆕 LISTEN FOR TYPING UPDATES
+    // LISTEN FOR TYPING UPDATES
     newSocket.on(
       "typingUpdate",
       (data: { postId: number; typingUsers: string[] }) => {
         if (data.postId === postId) {
           console.log(`⌨️ Typing update for post ${postId}:`, data.typingUsers);
-          // Filter out current user from typing list
           const otherUsers = data.typingUsers.filter(
             (u) => u !== user.username
           );
@@ -609,23 +619,20 @@ function CommentList({
     };
   }, [user, postId, SOCKET_SERVER_URL]);
 
-  // 🆕 HANDLE TYPING INDICATOR
+  // HANDLE TYPING INDICATOR
   const handleTyping = useCallback(() => {
     if (!socket || !user || !user.username) return;
 
-    // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    // Emit typing started
     socket.emit("userTyping", {
       postId,
       username: user.username,
       isTyping: true,
     });
 
-    // Set timeout to stop typing after 3 seconds of inactivity
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit("userTyping", {
         postId,
@@ -711,7 +718,7 @@ function CommentList({
       setReplyingTo(null);
       setIsCommenting(false);
 
-      // 🆕 EMIT COMMENT SUBMITTED TO STOP TYPING INDICATOR
+      // EMIT COMMENT SUBMITTED
       if (socket) {
         socket.emit("commentSubmitted", { postId });
         socket.emit("userTyping", {
@@ -721,7 +728,6 @@ function CommentList({
         });
       }
 
-      // Clear typing timeout
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
@@ -764,15 +770,15 @@ function CommentList({
               alt="Profile"
               width={32}
               height={32}
-              className="rounded-full w-8 h-8 ring-2 ring-orange-300 cursor-pointer"
+              className="rounded-full w-8 h-8 ring-2 ring-orange-300 dark:ring-orange-600 cursor-pointer"
             />
           </Link>
           <form
             onSubmit={handleSubmit}
-            className="relative flex-1 bg-slate-100 rounded-xl mb-0.5 px-4 py-2 text-sm"
+            className="relative flex-1 bg-slate-100 dark:bg-gray-700 rounded-xl mb-0.5 px-4 py-2 text-sm transition-colors"
           >
             <input
-              className="w-full pr-10 bg-transparent outline-none"
+              className="w-full pr-10 bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
               type="text"
               placeholder={
                 isCommenting ? "Posting comment..." : "Write a comment..."
@@ -780,14 +786,16 @@ function CommentList({
               value={desc}
               onChange={(e) => {
                 setDesc(e.target.value);
-                handleTyping(); // 🆕 TRIGGER TYPING INDICATOR
+                handleTyping();
               }}
               disabled={isCommenting}
             />
             <button type="submit" disabled={isCommenting}>
               <SendHorizonal
                 className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${
-                  isCommenting ? "text-gray-300" : "text-orange-300"
+                  isCommenting
+                    ? "text-gray-300 dark:text-gray-600"
+                    : "text-orange-300 dark:text-orange-400"
                 }`}
               />
             </button>
@@ -795,7 +803,7 @@ function CommentList({
         </div>
       )}
 
-      {/* 🆕 TYPING INDICATOR */}
+      {/* TYPING INDICATOR */}
       {typingUsers.length > 0 && (
         <div className="mb-4">
           <TypingIndicator usernames={typingUsers} />
@@ -805,7 +813,7 @@ function CommentList({
       {hasMoreComments && (
         <button
           onClick={() => setShowAll(!showAll)}
-          className="text-sm text-gray-500 hover:text-gray-700 hover:underline mb-2"
+          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:underline mb-2 transition-colors"
         >
           {showAll ? "Hide comments" : `Show all ${totalComments} comments`}
         </button>

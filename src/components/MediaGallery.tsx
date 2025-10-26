@@ -105,30 +105,35 @@ export default function MediaGallery({
   const isOwnGallery = currentUserId === id;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-rose-100 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-rose-100 dark:bg-none dark:bg-gray-900 py-12 transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-6 flex flex-col gap-8 text-center">
         {/* Header */}
         <div className="mb-10">
-          <h1 className="text-5xl font-black bg-gradient-to-r from-rose-600 via-orange-500 to-rose-700 bg-clip-text text-transparent mb-2">
+          <h1 className="text-5xl font-black bg-gradient-to-r from-rose-600 via-orange-500 to-rose-700 bg-clip-text text-transparent dark:bg-none dark:text-white mb-2">
             {isOwnGallery
               ? "Your Media Gallery"
               : `${userName}'s Media Gallery`}
           </h1>
 
-          <p className="text-lg text-gray-700">
+          <p className="text-lg text-gray-700 dark:text-gray-400">
             {isOwnGallery ? (
               <>
                 Welcome back,{" "}
-                <span className="font-bold text-orange-600">{userName}</span>!
+                <span className="font-bold text-orange-600 dark:text-white">
+                  {userName}
+                </span>
+                !
               </>
             ) : (
               <>
                 This is{" "}
-                <span className="font-bold text-orange-600">{userName}</span>
+                <span className="font-bold text-orange-600 dark:text-white">
+                  {userName}
+                </span>
                 {"'s"} library of photos and videos.
               </>
             )}
-            <span className="text-gray-600 ml-2">
+            <span className="text-gray-600 dark:text-gray-500 ml-2">
               ({allMedia.length} items)
             </span>
           </p>
@@ -137,10 +142,10 @@ export default function MediaGallery({
         {/* Empty gallery */}
         {allMedia.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-24 h-24 bg-gradient-to-br from-orange-400 to-rose-500 rounded-full flex items-center justify-center mb-6">
+            <div className="w-24 h-24 bg-gradient-to-br from-orange-400 to-rose-500 dark:bg-none dark:bg-gray-700 rounded-full flex items-center justify-center mb-6">
               <span className="text-4xl">📸</span>
             </div>
-            <p className="text-xl text-gray-600 font-medium">
+            <p className="text-xl text-gray-600 dark:text-gray-400 font-medium">
               No media found yet
             </p>
             {isOwnGallery && (
@@ -156,13 +161,13 @@ export default function MediaGallery({
               <div
                 key={file.id}
                 onClick={() => openLightbox(index)}
-                className="group relative overflow-hidden rounded-2xl shadow-lg bg-white cursor-pointer transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-orange-300/50"
+                className="group relative overflow-hidden rounded-2xl shadow-lg bg-white dark:bg-gray-800 cursor-pointer transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-orange-300/50 dark:hover:shadow-gray-700/50"
               >
                 {file.type === "photo" ? (
                   <div className="relative w-full aspect-square">
                     {loadingImages.has(file.id) && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-100 to-rose-100 z-10">
-                        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-100 to-rose-100 dark:bg-none dark:bg-gray-700 z-10">
+                        <div className="w-8 h-8 border-4 border-orange-500 dark:border-gray-500 border-t-transparent rounded-full animate-spin" />
                       </div>
                     )}
                     <Image
@@ -176,8 +181,8 @@ export default function MediaGallery({
                 ) : (
                   <div className="relative w-full aspect-square">
                     {loadingVideos.has(file.id) && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-100 to-rose-100 z-10">
-                        <div className="w-8 h-8 border-4 border-rose-500 border-t-transparent rounded-full animate-spin" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-orange-100 to-rose-100 dark:bg-none dark:bg-gray-700 z-10">
+                        <div className="w-8 h-8 border-4 border-rose-500 dark:border-gray-500 border-t-transparent rounded-full animate-spin" />
                       </div>
                     )}
                     <video
@@ -187,7 +192,7 @@ export default function MediaGallery({
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                      <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center">
+                      <div className="w-12 h-12 bg-white/90 dark:bg-gray-900/90 rounded-full flex items-center justify-center">
                         <span className="text-2xl">▶️</span>
                       </div>
                     </div>
@@ -198,7 +203,7 @@ export default function MediaGallery({
           </div>
         )}
 
-        {/* Lightbox */}
+        {/* Lightbox - This UI is already dark and works for both themes */}
         {selectedIndex !== null && (
           <div
             className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"

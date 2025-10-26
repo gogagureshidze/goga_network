@@ -126,7 +126,50 @@
   }
 }
 
+/* Add these styles to your globals.css file */
 
+/* Dark mode color scheme */
+:root {
+  --color-bg-light: theme('colors.rose.50');
+  --color-bg-dark: theme('colors.gray.900');
+  --color-text-light: theme('colors.gray.800');
+  --color-text-dark: theme('colors.gray.200');
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 200ms;
+  transition-timing-function: ease-in-out;
+}
+
+/* Prevent transition on page load */
+.preload * {
+  transition: none !important;
+}
+
+/* Dark mode specific overrides if needed */
+.dark {
+  color-scheme: dark;
+}
+
+/* Scrollbar styling for dark mode */
+.dark ::-webkit-scrollbar {
+  width: 10px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: theme('colors.gray.800');
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: theme('colors.gray.600');
+  border-radius: 5px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: theme('colors.gray.500');
+}
 
 @layer base {
   * {

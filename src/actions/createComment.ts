@@ -24,12 +24,12 @@ export const addComment = async (postId: number, desc: string) => {
       },
     });
 
-    // THIS IS THE CRITICAL LINE OF CODE
-    // It tells Next.js to re-fetch the data for the current page.
-          revalidateTag("feed-posts");
-                revalidateTag("profile-posts");
-    
-    revalidatePath("/");
+    await Promise.all([
+      revalidateTag("feed-posts"),
+      revalidateTag("profile-posts"),
+      revalidateTag(`post-${postId}`),
+      revalidatePath("/", "layout"),
+    ]);
 
     return createdComment;
   } catch (err) {
