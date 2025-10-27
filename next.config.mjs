@@ -1,10 +1,12 @@
 /** @type {import('next').NextConfig} */
+
+import withPWA from "next-pwa";
+
 const nextConfig = {
   experimental: {
     reactCompiler: true,
   },
   eslint: {
-    // ❗ This tells Next.js NOT to fail the build on lint errors
     ignoreDuringBuilds: true,
   },
   images: {
@@ -23,14 +25,21 @@ const nextConfig = {
       },
       {
         protocol: "https",
-        hostname: "img.clerk.com", // ✅ Added Clerk image host
+        hostname: "img.clerk.com",
       },
       {
         protocol: "https",
-        hostname: "res.cloudinary.com", // ✅ Added Clerk image host
+        hostname: "res.cloudinary.com",
       },
     ],
   },
 };
 
-export default nextConfig;
+// ✅ Wrap config with PWA
+const withPWAConfig = withPWA({
+  dest: "public",
+  register: true,
+  skipWaiting: true,
+});
+
+export default withPWAConfig(nextConfig);
