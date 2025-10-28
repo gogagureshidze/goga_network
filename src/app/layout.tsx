@@ -82,19 +82,7 @@ export default async function RootLayout({
           href="/apple-splash/apple-splash-2048-2732.jpg"
           media="(device-width: 1024px) and (device-height: 1366px)"
         />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('SW registered'))
-            .catch(err => console.log('SW error:', err));
-        });
-      }
-    `,
-          }}
-        />
+
       </head>
       <body className="font-sans bg-rose-50 dark:bg-gray-900 transition-colors">
         <Providers>
