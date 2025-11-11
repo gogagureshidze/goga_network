@@ -1,7 +1,8 @@
+// createComment.ts
 "use server";
 
 import { currentUser } from "@clerk/nextjs/server";
-import { revalidatePath, revalidateTag } from "next/cache"; // 👈 Don't forget this import
+import { revalidateTag } from "next/cache";
 import prisma from "@/lib/client";
 
 export const addComment = async (postId: number, desc: string) => {
@@ -20,16 +21,23 @@ export const addComment = async (postId: number, desc: string) => {
         postId,
       },
       include: {
-        user: true,
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        likes: {
+          select: {
+            userId: true,
+          },
+        },
       },
     });
 
-    await Promise.all([
-      revalidateTag("feed-posts"),
-      revalidateTag("profile-posts"),
-      revalidateTag(`post-${postId}`),
-      revalidatePath("/", "layout"),
-    ]);
+    revalidateTag("feed-posts");
+    revalidateTag("profile-posts");
 
     return createdComment;
   } catch (err) {

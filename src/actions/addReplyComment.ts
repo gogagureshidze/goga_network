@@ -1,36 +1,50 @@
+// addReplyComment.ts
 "use server";
 
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
-import { revalidatePath, revalidateTag } from "next/cache";
-
+import { revalidateTag } from "next/cache";
 
 export async function addReplyComment(
   postId: number,
   desc: string,
   parentId?: number
 ) {
-const user = await currentUser();
-const userId = user?.id;
+  const user = await currentUser();
+  const userId = user?.id;
 
   if (!userId) {
     throw new Error("User is not authenticated!");
   }
 
   try {
-    await prisma.comment.create({
+    const createdComment = await prisma.comment.create({
       data: {
         desc,
         userId,
         postId,
         parentId,
       },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+          },
+        },
+        likes: {
+          select: {
+            userId: true,
+          },
+        },
+      },
     });
-      revalidateTag("feed-posts");
-            revalidateTag("profile-posts");
 
-    // Revalidate the path to fetch the new comment data from the server.
-    revalidatePath("/");
+    revalidateTag("feed-posts");
+    revalidateTag("profile-posts");
+
+    return createdComment;
   } catch (err) {
     console.error(err);
     throw new Error("Something went wrong");

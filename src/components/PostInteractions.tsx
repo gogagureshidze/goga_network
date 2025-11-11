@@ -9,12 +9,16 @@ interface PostInteractionsProps {
   postId: number;
   likes: Array<{ userId: string }> | string[];
   commentNumber?: number;
+  onToggleComments: () => void;
+  isCommentsOpen: boolean;
 }
 
 const PostInteractions = ({
   postId,
   likes,
   commentNumber = 0,
+  onToggleComments,
+  isCommentsOpen,
 }: PostInteractionsProps) => {
   const { user } = useUser();
   const userId = user?.id;
@@ -28,7 +32,6 @@ const PostInteractions = ({
   const [currentLikes, setCurrentLikes] = useState<string[]>(normalizedLikes);
   const [isAnimating, setIsAnimating] = useState(false);
   const [pendingLike, setPendingLike] = useState<boolean | null>(null);
-  const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
   const [showSparkles, setShowSparkles] = useState(false);
   const [countAnimation, setCountAnimation] = useState(false);
 
@@ -311,22 +314,40 @@ const PostInteractions = ({
             )}
           </div>
 
-          {/* Comments */}
-          <div className="flex items-center cursor-pointer gap-2 bg-slate-100 dark:bg-gray-700 px-3 py-1.5 rounded-xl hover:bg-slate-200 dark:hover:bg-gray-600 transition-colors">
+          {/* Comments Button */}
+          <button
+            onClick={onToggleComments}
+            className={`
+              flex items-center gap-2 px-3 py-1.5 rounded-xl 
+              transition-all duration-200
+              ${
+                isCommentsOpen
+                  ? "bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-200 dark:ring-blue-800"
+                  : "bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600"
+              }
+            `}
+          >
             <MessageSquareText
-              onClick={() => {
-                setIsCommentModalOpen(!isCommentModalOpen);
-              }}
-              className="text-blue-500 dark:text-blue-400"
+              className={`transition-colors ${
+                isCommentsOpen
+                  ? "text-blue-600 dark:text-blue-400"
+                  : "text-blue-500 dark:text-blue-400"
+              }`}
               size={18}
             />
-            <span className="text-gray-700 dark:text-gray-300 font-medium">
+            <span
+              className={`font-medium transition-colors ${
+                isCommentsOpen
+                  ? "text-blue-600 dark:text-blue-400"
+                  : "text-gray-700 dark:text-gray-300"
+              }`}
+            >
               {commentNumber}
               <span className="hidden sm:inline ml-1 font-normal text-xs">
                 {commentNumber === 1 ? "Comment" : "Comments"}
               </span>
             </span>
-          </div>
+          </button>
         </div>
 
         {/* Share */}

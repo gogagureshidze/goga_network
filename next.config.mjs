@@ -3,6 +3,7 @@
 import withPWA from "next-pwa";
 
 const nextConfig = {
+  reactStrictMode: false,
   experimental: {
     reactCompiler: true,
   },

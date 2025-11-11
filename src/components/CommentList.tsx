@@ -3,15 +3,7 @@
 import { useUser } from "@clerk/nextjs";
 import { Heart, SendHorizonal, MoreVertical } from "lucide-react";
 import Image from "next/image";
-import {
-  useOptimistic,
-  useState,
-  useTransition,
-  useCallback,
-  memo,
-  useEffect,
-  useRef,
-} from "react";
+import { useState, useCallback, memo, useEffect, useRef } from "react";
 import CommentActivityModal from "./CommentActivityModal";
 import { addComment } from "../actions/createComment";
 import { addReplyComment } from "../actions/addReplyComment";
@@ -20,7 +12,6 @@ import { deleteComment } from "../actions/deleteComment";
 import Link from "next/link";
 import { io, Socket } from "socket.io-client";
 
-// Type definition for a comment including user details and nested replies
 type CommentWithUser = {
   id: number;
   desc: string;
@@ -41,7 +32,6 @@ type CommentWithUser = {
   replies?: CommentWithUser[];
 };
 
-// Helper function to format time
 const formatTimeAgo = (date: Date | string) => {
   const d = new Date(date);
   const now = new Date();
@@ -61,7 +51,6 @@ const formatTimeAgo = (date: Date | string) => {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
-// Helper function to build a nested comment tree from a flat list
 const buildCommentTree = (flatComments: CommentWithUser[]) => {
   const commentMap: { [key: number]: CommentWithUser } = {};
   const rootComments: CommentWithUser[] = [];
@@ -84,24 +73,6 @@ const buildCommentTree = (flatComments: CommentWithUser[]) => {
   return rootComments;
 };
 
-// Helper function to remove a comment from the tree
-const removeCommentFromTree = (
-  comments: CommentWithUser[],
-  commentId: number
-): CommentWithUser[] => {
-  return comments.reduce((acc, comment) => {
-    if (comment.id === commentId) {
-      return acc;
-    }
-    const updatedReplies = comment.replies
-      ? removeCommentFromTree(comment.replies, commentId)
-      : [];
-    acc.push({ ...comment, replies: updatedReplies });
-    return acc;
-  }, [] as CommentWithUser[]);
-};
-
-// TYPING INDICATOR COMPONENT
 const TypingIndicator = memo(function TypingIndicator({
   usernames,
 }: {
@@ -150,17 +121,14 @@ const TypingIndicator = memo(function TypingIndicator({
   );
 });
 
-// CommentItem Component (Memoized)
 const CommentItem = memo(function CommentItem({
   comment,
   user,
   handleLike,
   setReplyingTo,
   replyingTo,
-  isPending,
-  addOptimisticComment,
-  startTransition,
   handleDeleteComment,
+  handleReplySubmit,
   depth = 0,
 }: {
   comment: CommentWithUser;
@@ -168,17 +136,14 @@ const CommentItem = memo(function CommentItem({
   handleLike: (commentId: number) => void;
   setReplyingTo: (id: number | null) => void;
   replyingTo: number | null;
-  isPending: boolean;
-  addOptimisticComment: (action: any) => void;
-  startTransition: (callback: () => void) => void;
   handleDeleteComment: (commentId: number) => void;
+  handleReplySubmit: (desc: string, parentId: number) => void;
   depth?: number;
 }) {
   const hasLiked = comment.likes.some((like) => like.userId === user?.id);
   const isReplyingToThisComment = replyingTo === comment.id;
   const [showAllReplies, setShowAllReplies] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [isReplying, setIsReplying] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const isCommentOwner = user?.id === comment.userId;
 
@@ -223,7 +188,6 @@ const CommentItem = memo(function CommentItem({
             <button
               onClick={() => handleLike(comment.id)}
               className="flex items-center gap-1 transition-colors"
-              disabled={isPending}
             >
               <Heart
                 className={`cursor-pointer transition-all duration-200 ${
@@ -254,7 +218,6 @@ const CommentItem = memo(function CommentItem({
           </div>
         </div>
 
-        {/* 3-DOT MENU */}
         <div className="relative flex-shrink-0">
           <button
             onClick={() => setShowMenu(!showMenu)}
@@ -306,7 +269,6 @@ const CommentItem = memo(function CommentItem({
         </div>
       </div>
 
-      {/* Activity Modal */}
       {showActivityModal && (
         <CommentActivityModal
           commentId={comment.id}
@@ -314,7 +276,6 @@ const CommentItem = memo(function CommentItem({
         />
       )}
 
-      {/* Reply form */}
       {isReplyingToThisComment && user && (
         <div
           className={`flex flex-col gap-2 mt-2 ${
@@ -348,45 +309,15 @@ const CommentItem = memo(function CommentItem({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const desc = (
-                  e.currentTarget.elements.namedItem(
-                    "reply-input"
-                  ) as HTMLInputElement
-                ).value;
-                if (!desc.trim() || isReplying) return;
+                const input = e.currentTarget.elements.namedItem(
+                  "reply-input"
+                ) as HTMLInputElement;
+                const desc = input.value;
+                if (!desc.trim()) return;
 
-                setIsReplying(true);
-                const newCommentId = Date.now();
-                const newComment: CommentWithUser = {
-                  id: newCommentId,
-                  desc,
-                  postId: comment.postId,
-                  likes: [],
-                  userId: user.id,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                  user: {
-                    id: user.id,
-                    username: user.username || "Anonymous",
-                    avatar: user.imageUrl,
-                  },
-                  parentId: comment.id,
-                };
-
-                startTransition(() => {
-                  addOptimisticComment({
-                    type: "add",
-                    newComment: newComment,
-                  });
-                  setReplyingTo(null);
-                  setIsReplying(false);
-                  (
-                    e.currentTarget.elements.namedItem(
-                      "reply-input"
-                    ) as HTMLInputElement
-                  ).value = "";
-                  addReplyComment(comment.postId, desc, comment.id);
-                });
+                handleReplySubmit(desc, comment.id);
+                input.value = "";
+                setReplyingTo(null);
               }}
               className="relative flex-1 bg-slate-100 dark:bg-gray-700 rounded-xl px-3 sm:px-4 py-2 text-sm min-w-0 transition-colors"
             >
@@ -394,28 +325,19 @@ const CommentItem = memo(function CommentItem({
                 className="w-full pr-8 sm:pr-10 bg-transparent outline-none text-xs sm:text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
                 type="text"
                 name="reply-input"
-                placeholder={isReplying ? "Sending..." : "Reply..."}
-                disabled={isReplying}
+                placeholder="Reply..."
               />
               <button
                 type="submit"
-                disabled={isReplying}
                 className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2"
               >
-                <SendHorizonal
-                  className={`cursor-pointer w-4 h-4 sm:w-5 sm:h-5 ${
-                    isReplying
-                      ? "text-gray-300 dark:text-gray-600"
-                      : "text-orange-300 dark:text-orange-400"
-                  }`}
-                />
+                <SendHorizonal className="cursor-pointer w-4 h-4 sm:w-5 sm:h-5 text-orange-300 dark:text-orange-400" />
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Render nested replies */}
       {repliesToDisplay && repliesToDisplay.length > 0 && (
         <div
           className={`${shouldIndent ? "pl-4 sm:pl-8" : "pl-0"} mt-2 ${
@@ -432,10 +354,8 @@ const CommentItem = memo(function CommentItem({
                 handleLike={handleLike}
                 setReplyingTo={setReplyingTo}
                 replyingTo={replyingTo}
-                isPending={isPending}
-                addOptimisticComment={addOptimisticComment}
-                startTransition={startTransition}
                 handleDeleteComment={handleDeleteComment}
+                handleReplySubmit={handleReplySubmit}
                 depth={depth + 1}
               />
             </div>
@@ -456,24 +376,27 @@ const CommentItem = memo(function CommentItem({
   );
 });
 
-// CommentList Component
 function CommentList({
-  comments,
+  comments: initialComments,
   postId,
   username,
+  onCommentAdded,
+  onCommentDeleted,
 }: {
   comments: CommentWithUser[];
   postId: number;
   username: string | null | undefined;
+  onCommentAdded?: () => void;
+  onCommentDeleted?: () => void;
 }) {
   const { user } = useUser();
   const [desc, setDesc] = useState("");
-  const [isPending, startTransition] = useTransition();
   const [showAll, setShowAll] = useState(false);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [isCommenting, setIsCommenting] = useState(false);
 
-  // SOCKET & TYPING STATE
+  // LOCAL STATE - this is the source of truth
+  const [comments, setComments] = useState<CommentWithUser[]>(initialComments);
+
   const [socket, setSocket] = useState<Socket | null>(null);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -483,96 +406,8 @@ function CommentList({
       ? "wss://socket.goga.network"
       : "http://localhost:3001";
 
-  const [optimisticComments, addOptimisticComment] = useOptimistic(
-    comments,
-    (
-      state,
-      action: {
-        type: "add" | "like" | "delete";
-        newComment?: CommentWithUser;
-        likedComment?: { commentId: number; userId: string };
-        deletedComment?: { commentId: number };
-      }
-    ) => {
-      switch (action.type) {
-        case "add":
-          const newComment = { ...action.newComment!, replies: [] };
-          if (newComment.parentId) {
-            const findAndAddReply = (
-              comments: CommentWithUser[],
-              parentId: number,
-              reply: CommentWithUser
-            ): CommentWithUser[] => {
-              return comments.map((comment) => {
-                if (comment.id === parentId) {
-                  return {
-                    ...comment,
-                    replies: [...(comment.replies || []), reply],
-                  };
-                } else if (comment.replies && comment.replies.length > 0) {
-                  return {
-                    ...comment,
-                    replies: findAndAddReply(comment.replies, parentId, reply),
-                  };
-                }
-                return comment;
-              });
-            };
-            return findAndAddReply(state, newComment.parentId, newComment);
-          }
-          return [newComment, ...state];
-
-        case "like":
-          const { commentId: likedId, userId: likedUserId } =
-            action.likedComment!;
-
-          const toggleLikeRecursive = (
-            comments: CommentWithUser[]
-          ): CommentWithUser[] => {
-            return comments.map((comment) => {
-              if (comment.id === likedId) {
-                const currentLikes = comment.likes || [];
-                const hasLiked = currentLikes.some(
-                  (like) => like.userId === likedUserId
-                );
-
-                const newLikes = hasLiked
-                  ? currentLikes.filter((like) => like.userId !== likedUserId)
-                  : [...currentLikes, { userId: likedUserId }];
-
-                return {
-                  ...comment,
-                  likes: newLikes,
-                };
-              }
-
-              if (comment.replies && comment.replies.length > 0) {
-                return {
-                  ...comment,
-                  replies: toggleLikeRecursive(comment.replies),
-                };
-              }
-
-              return comment;
-            });
-          };
-
-          return toggleLikeRecursive(state);
-
-        case "delete":
-          return removeCommentFromTree(state, action.deletedComment!.commentId);
-
-        default:
-          return state;
-      }
-    }
-  );
-
-  // SOCKET CONNECTION SETUP
   useEffect(() => {
     if (!user) return;
-
-    console.log(`💬 Setting up socket for post ${postId}`);
 
     const newSocket = io(SOCKET_SERVER_URL, {
       query: { userId: user.id },
@@ -583,20 +418,13 @@ function CommentList({
     });
 
     newSocket.on("connect", () => {
-      console.log(`✅ Connected to socket server for post ${postId}`);
       newSocket.emit("joinPost", { postId });
     });
 
-    newSocket.on("connect_error", (error) => {
-      console.error("❌ Socket connection error:", error);
-    });
-
-    // LISTEN FOR TYPING UPDATES
     newSocket.on(
       "typingUpdate",
       (data: { postId: number; typingUsers: string[] }) => {
         if (data.postId === postId) {
-          console.log(`⌨️ Typing update for post ${postId}:`, data.typingUsers);
           const otherUsers = data.typingUsers.filter(
             (u) => u !== user.username
           );
@@ -608,7 +436,6 @@ function CommentList({
     setSocket(newSocket);
 
     return () => {
-      console.log(`🔌 Cleaning up socket for post ${postId}`);
       newSocket.emit("leavePost", { postId });
       newSocket.removeAllListeners();
       newSocket.disconnect();
@@ -619,7 +446,6 @@ function CommentList({
     };
   }, [user, postId, SOCKET_SERVER_URL]);
 
-  // HANDLE TYPING INDICATOR
   const handleTyping = useCallback(() => {
     if (!socket || !user || !user.username) return;
 
@@ -646,56 +472,132 @@ function CommentList({
     (commentId: number) => {
       if (!user) return;
 
-      const findComment = (
-        comments: CommentWithUser[],
-        id: number
-      ): CommentWithUser | null => {
-        for (const comment of comments) {
-          if (comment.id === id) return comment;
-          if (comment.replies) {
-            const found = findComment(comment.replies, id);
-            if (found) return found;
+      // Update UI immediately
+      setComments((prev) =>
+        prev.map((comment) => {
+          if (comment.id === commentId) {
+            const hasLiked = comment.likes.some(
+              (like) => like.userId === user.id
+            );
+            const newLikes = hasLiked
+              ? comment.likes.filter((like) => like.userId !== user.id)
+              : [...comment.likes, { userId: user.id }];
+            return { ...comment, likes: newLikes };
           }
-        }
-        return null;
-      };
+          return comment;
+        })
+      );
 
-      const currentComment = findComment(optimisticComments, commentId);
-      const isCurrentlyLiked =
-        currentComment?.likes.some((like) => like.userId === user.id) || false;
+      // Find current state for server
+      const currentComment = comments.find((c) => c.id === commentId);
+      const isCurrentlyLiked = currentComment?.likes.some(
+        (like) => like.userId === user.id
+      );
 
-      startTransition(() => {
-        addOptimisticComment({
-          type: "like",
-          likedComment: { commentId, userId: user.id },
-        });
+      // Send to server
+      likeComment(commentId, !isCurrentlyLiked).catch((err) => {
+        console.error("Like failed:", err);
+        // Revert on error
+        setComments((prev) =>
+          prev.map((comment) => {
+            if (comment.id === commentId) {
+              return currentComment || comment;
+            }
+            return comment;
+          })
+        );
       });
-
-      likeComment(commentId, !isCurrentlyLiked).catch(console.error);
     },
-    [user, addOptimisticComment, optimisticComments, startTransition]
+    [user, comments]
   );
 
   const handleDeleteComment = useCallback(
     (commentId: number) => {
-      startTransition(() => {
-        addOptimisticComment({ type: "delete", deletedComment: { commentId } });
-        deleteComment(commentId);
+      // Update UI immediately
+      setComments((prev) => {
+        const findAllChildren = (parentId: number): number[] => {
+          const children = prev
+            .filter((c) => c.parentId === parentId)
+            .map((c) => c.id);
+          return [
+            ...children,
+            ...children.flatMap((childId) => findAllChildren(childId)),
+          ];
+        };
+        const idsToRemove = [commentId, ...findAllChildren(commentId)];
+
+        // ✅ DECREMENT COUNTER FOR EACH COMMENT REMOVED
+        if (onCommentDeleted) {
+          idsToRemove.forEach(() => onCommentDeleted());
+        }
+
+        return prev.filter((c) => !idsToRemove.includes(c.id));
+      });
+
+      // Send to server
+      deleteComment(commentId).catch((err) => {
+        console.error("Delete failed:", err);
       });
     },
-    [startTransition, addOptimisticComment]
+    [onCommentDeleted]
+  );
+
+  const handleReplySubmit = useCallback(
+    async (desc: string, parentId: number) => {
+      if (!user) return;
+
+      const tempId = -Date.now();
+      const tempComment: CommentWithUser = {
+        id: tempId,
+        desc,
+        postId,
+        likes: [],
+        userId: user.id,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        user: {
+          id: user.id,
+          username: user.username || "Anonymous",
+          avatar: user.imageUrl,
+        },
+        parentId,
+      };
+
+      // Add temp comment immediately
+      setComments((prev) => [tempComment, ...prev]);
+
+      // ✅ INCREMENT COUNTER FOR REPLIES TOO
+      if (onCommentAdded) {
+        onCommentAdded();
+      }
+
+      try {
+        // Send to server and get real comment back
+        const realComment = await addReplyComment(postId, desc, parentId);
+
+        // Replace temp comment with real one
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === tempId ? { ...realComment, user: tempComment.user } : c
+          )
+        );
+      } catch (err) {
+        console.error("Reply failed:", err);
+        // Remove failed comment
+        setComments((prev) => prev.filter((c) => c.id !== tempId));
+      }
+    },
+    [user, postId, onCommentAdded]
   );
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!desc.trim() || !user || isCommenting) return;
+      if (!desc.trim() || !user) return;
 
-      setIsCommenting(true);
-      const newCommentId = Date.now();
-
-      const newComment: CommentWithUser = {
-        id: newCommentId,
+      const tempId = -Date.now();
+      const tempComment: CommentWithUser = {
+        id: tempId,
         desc,
         postId,
         likes: [],
@@ -707,18 +609,18 @@ function CommentList({
           username: user.username || username || "Anonymous",
           avatar: user.imageUrl,
         },
-        parentId: replyingTo || undefined,
+        parentId: null,
       };
 
-      addOptimisticComment({
-        type: "add",
-        newComment: newComment,
-      });
+      // Add temp comment immediately
+      setComments((prev) => [tempComment, ...prev]);
       setDesc("");
-      setReplyingTo(null);
-      setIsCommenting(false);
 
-      // EMIT COMMENT SUBMITTED
+      // ✅ INCREMENT THE COUNTER IMMEDIATELY
+      if (onCommentAdded) {
+        onCommentAdded();
+      }
+
       if (socket) {
         socket.emit("commentSubmitted", { postId });
         socket.emit("userTyping", {
@@ -732,28 +634,27 @@ function CommentList({
         clearTimeout(typingTimeoutRef.current);
       }
 
-      startTransition(() => {
-        if (replyingTo) {
-          addReplyComment(postId, desc, replyingTo);
-        } else {
-          addComment(postId, desc);
-        }
-      });
+      try {
+        // Send to server and get real comment back
+        const realComment = await addComment(postId, desc);
+
+        // Replace temp comment with real one
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === tempId ? { ...realComment, user: tempComment.user } : c
+          )
+        );
+      } catch (err) {
+        console.error("Comment failed:", err);
+        // Remove failed comment
+        setComments((prev) => prev.filter((c) => c.id !== tempId));
+      }
     },
-    [
-      desc,
-      user,
-      postId,
-      username,
-      replyingTo,
-      startTransition,
-      addOptimisticComment,
-      isCommenting,
-      socket,
-    ]
+    [desc, user, postId, username, socket, onCommentAdded]
   );
 
-  const nestedComments = buildCommentTree(optimisticComments);
+  // Build tree from flat list
+  const nestedComments = buildCommentTree(comments);
   const commentsToDisplay = showAll
     ? nestedComments
     : nestedComments.slice(0, 3);
@@ -780,30 +681,20 @@ function CommentList({
             <input
               className="w-full pr-10 bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
               type="text"
-              placeholder={
-                isCommenting ? "Posting comment..." : "Write a comment..."
-              }
+              placeholder="Write a comment..."
               value={desc}
               onChange={(e) => {
                 setDesc(e.target.value);
                 handleTyping();
               }}
-              disabled={isCommenting}
             />
-            <button type="submit" disabled={isCommenting}>
-              <SendHorizonal
-                className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${
-                  isCommenting
-                    ? "text-gray-300 dark:text-gray-600"
-                    : "text-orange-300 dark:text-orange-400"
-                }`}
-              />
+            <button type="submit">
+              <SendHorizonal className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-orange-300 dark:text-orange-400" />
             </button>
           </form>
         </div>
       )}
 
-      {/* TYPING INDICATOR */}
       {typingUsers.length > 0 && (
         <div className="mb-4">
           <TypingIndicator usernames={typingUsers} />
@@ -827,10 +718,8 @@ function CommentList({
             handleLike={handleLike}
             setReplyingTo={setReplyingTo}
             replyingTo={replyingTo}
-            isPending={isPending}
-            addOptimisticComment={addOptimisticComment}
-            startTransition={startTransition}
             handleDeleteComment={handleDeleteComment}
+            handleReplySubmit={handleReplySubmit}
             depth={0}
           />
         </div>

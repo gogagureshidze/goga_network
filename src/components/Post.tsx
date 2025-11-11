@@ -1,13 +1,15 @@
+import { memo, useContext, useState, useEffect } from "react";
 import Image from "next/image";
 import MediaGrid from "./MediaGrid";
 import Link from "next/link";
 import PostInfo from "./PostInfo";
-import Comments from "./Comments";
 import PostInteractions from "./PostInteractions";
 import EventCard from "./EventCard";
 import PollCard from "./PollCard";
 import PostDescription from "./PostDescription";
 import ActivityStatus from "./ActivityStatus";
+import Comments from "./Comments";
+import { CommentContext } from "./Observer";
 
 // Helper function to format time
 function formatTimeAgo(date: Date | string) {
@@ -39,7 +41,6 @@ function formatTimeAgo(date: Date | string) {
     return `${diffInWeeks}w`;
   }
 
-  // For older posts, show the actual date
   return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -47,22 +48,42 @@ function formatTimeAgo(date: Date | string) {
   });
 }
 
-export default function Post({ post }: { post: any }) {
+// Post component with React.memo for optimal performance
+const PostComponent = ({ post }: { post: any }) => {
+  const { openComments, toggleComments } = useContext(CommentContext);
+  const isCommentsOpen = openComments.has(post.id);
+
+  // Track comment count locally
+  const [commentCount, setCommentCount] = useState(post._count?.comments || 0);
+
   const isEventPost = !!post.event;
   const isPollPost = !!post.poll;
   const taggedUsernames = post.tags?.map((tag: any) => tag.user.username) || [];
   const taggedUserIds = post.tags?.map((tag: any) => tag.userId) || [];
 
-  // Check if we should show activity (user has it enabled)
   const showActivity = post.user?.showActivityStatus && post.user?.lastActiveAt;
 
+  // Increment counter when comment added
+  const handleCommentAdded = () => {
+    setCommentCount((prev: number) => prev + 1);
+  };
+
+  // Decrement counter when comment deleted
+  const handleCommentDeleted = () => {
+    setCommentCount((prev: number) => Math.max(0, prev - 1));
+  };
+
+  // Sync with server data on prop change
+  useEffect(() => {
+    setCommentCount(post._count?.comments || 0);
+  }, [post._count?.comments]);
+
   return (
-    <div className="flex flex-col gap-4 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900/50 border border-gray-100 dark:border-gray-700 transition-colors">
+    <div className="flex flex-col gap-4 p-4 mb-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900/50 border border-gray-100 dark:border-gray-700 transition-colors">
       {/* Header */}
       <div className="flex items-center justify-between">
         <Link href={`/profile/${post.user?.username}`}>
           <div className="flex items-center gap-4">
-            {/* Avatar */}
             <div className="relative">
               <Image
                 src={post.user?.avatar || "/noAvatar.png"}
@@ -78,7 +99,6 @@ export default function Post({ post }: { post: any }) {
                 {post.user?.username}
               </span>
 
-              {/* Activity Status */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   {formatTimeAgo(post.createdAt)}
@@ -124,9 +144,32 @@ export default function Post({ post }: { post: any }) {
       <PostInteractions
         postId={post.id}
         likes={post.likes}
-        commentNumber={post._count?.comments || 0}
+        commentNumber={commentCount}
+        onToggleComments={() => toggleComments(post.id)}
+        isCommentsOpen={isCommentsOpen}
       />
-      <Comments postId={post.id} />
+
+      {/* Comments - Only show when toggled */}
+      {isCommentsOpen && (
+        <Comments
+          postId={post.id}
+          onCommentAdded={handleCommentAdded}
+          onCommentDeleted={handleCommentDeleted}
+        />
+      )}
     </div>
   );
-}
+};
+
+// Custom comparison function for better memo performance
+const areEqual = (prevProps: { post: any }, nextProps: { post: any }) => {
+  // Only re-render if the post ID or key data changes
+  return (
+    prevProps.post.id === nextProps.post.id &&
+    prevProps.post.likes?.length === nextProps.post.likes?.length &&
+    prevProps.post._count?.comments === nextProps.post._count?.comments
+  );
+};
+
+// Export memoized component with custom comparison
+export default memo(PostComponent, areEqual);
