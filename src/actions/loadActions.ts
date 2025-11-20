@@ -1,11 +1,8 @@
 // lib/actions.ts
 "use server";
 import prisma from "@/lib/client";
-
 import { currentUser } from "@clerk/nextjs/server";
 import { unstable_cache } from "next/cache";
-
-// --- START: Code Moved from Feed.tsx ---
 
 const postSelectFields = {
   id: true,
@@ -94,20 +91,6 @@ const postSelectFields = {
   likes: {
     select: { userId: true },
   },
-  comments: {
-    select: {
-      id: true,
-      desc: true,
-      createdAt: true,
-      userId: true,
-      user: {
-        select: {
-          avatar: true,
-          username: true,
-        },
-      },
-    },
-  },
 };
 
 const getCachedBlockedUsers = unstable_cache(
@@ -137,7 +120,6 @@ const getCachedFollowing = unstable_cache(
     const following = await prisma.follower.findMany({
       where: { followerId: userId },
       select: { followingId: true },
-      take: 100, // You might want to remove or increase this limit
     });
     return following.map((f) => f.followingId);
   },
@@ -145,9 +127,7 @@ const getCachedFollowing = unstable_cache(
   { revalidate: 1800, tags: ["following-list"] }
 );
 
-// --- END: Code Moved from Feed.tsx ---
-
-const POSTS_PER_PAGE = 10; // How many posts to fetch at a time
+const POSTS_PER_PAGE = 10;
 
 export async function fetchPosts({
   page,
@@ -163,7 +143,6 @@ export async function fetchPosts({
 
   try {
     const excludedUserIds = await getCachedBlockedUsers(currentUserId);
-    // 'page' is 1-based. (page 1 - 1) * 10 = 0. (page 2 - 1) * 10 = 10.
     const skipAmount = (page - 1) * POSTS_PER_PAGE;
 
     // --- Profile Page Feed ---
@@ -185,37 +164,41 @@ export async function fetchPosts({
         take: POSTS_PER_PAGE,
         skip: skipAmount,
       });
-    
-      // Filter for tagged posts (same logic as your original)
+
       return posts.filter(
         (post) => post.user.username === username || post.tags?.length > 0
       );
     }
 
-    // --- Main User Feed (Simplified for pagination) ---
+    // --- Main User Feed (FIXED) ---
     const followingIds = await getCachedFollowing(currentUserId);
 
-    // Get private users the current user doesn't follow
+    // Get private users that current user doesn't follow
     const privateUsers = await prisma.user.findMany({
-      where: { isPrivate: true, NOT: { id: { in: followingIds } } },
+      where: {
+        isPrivate: true,
+        NOT: {
+          id: { in: [...followingIds, currentUserId] },
+        },
+      },
       select: { id: true },
     });
-    const privateUsersToExclude = privateUsers
-      .map((u) => u.id)
-      .filter((id) => id !== currentUserId);
+    const privateUsersToExclude = privateUsers.map((u) => u.id);
 
+    // ALL users to exclude (blocked + private unfollowed)
+    const allExcludedIds = [
+      currentUserId,
+      ...excludedUserIds,
+      ...privateUsersToExclude,
+    ];
+
+    // SIMPLE, CLEAN QUERY - no conflicting conditions
     const posts = await prisma.post.findMany({
       where: {
         userId: {
-          notIn: [currentUserId, ...excludedUserIds, ...privateUsersToExclude],
+          notIn: allExcludedIds,
         },
-        // Optionally, prioritize posts from users you follow
-        ...(followingIds.length > 0 && {
-          OR: [
-            { userId: { in: followingIds } },
-            { user: { isPrivate: false } }, // Or any public post
-          ],
-        }),
+        // That's it. No OR conditions that conflict with notIn.
       },
       select: postSelectFields,
       orderBy: { createdAt: "desc" },
@@ -226,6 +209,6 @@ export async function fetchPosts({
     return posts;
   } catch (error) {
     console.error("Error fetching posts:", error);
-    return []; // Return empty on error
+    return [];
   }
 }

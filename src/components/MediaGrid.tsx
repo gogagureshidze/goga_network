@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-// Correct the import path if necessary based on your project structure
 import Image from "next/image";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import ModalPortal from "./ModalPortalWrapper";
 
 interface MediaGridProps {
   media: { type: "photo" | "video"; url: string }[];
@@ -85,7 +85,7 @@ export default function MediaGrid({ media }: MediaGridProps) {
       document.body.style.overflow = ""; // Ensure scroll is restored on unmount
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, media.length, currentIndex]); // Added currentIndex to ensure next/prevSlide have latest value
+  }, [isOpen, media.length, currentIndex]);
 
   const handleGridLoadComplete = (idx: number) => {
     setGridLoadingStates((prev) => {
@@ -115,7 +115,6 @@ export default function MediaGrid({ media }: MediaGridProps) {
     } else {
       setSliderLoadingStates((prev) => ({ ...prev, [index]: false })); // Stop spinner on error
     }
-    // Optionally: Visually indicate error on the item
   };
 
   return (
@@ -128,8 +127,8 @@ export default function MediaGrid({ media }: MediaGridProps) {
       >
         {displayedMedia.map((file, idx) => (
           <div
-            key={file.url + "-grid-" + idx} // More unique key
-            className="relative w-full aspect-square cursor-pointer group bg-gray-100 dark:bg-gray-800 rounded-md overflow-hidden" // Base bg for loading
+            key={file.url + "-grid-" + idx}
+            className="relative w-full aspect-square cursor-pointer group bg-gray-100 dark:bg-gray-800 rounded-md overflow-hidden"
             onClick={() => openSlider(idx)}
           >
             {/* Show spinner only for photos that are loading */}
@@ -141,26 +140,24 @@ export default function MediaGrid({ media }: MediaGridProps) {
                 alt={`Media grid item ${idx + 1}`}
                 fill
                 className={`object-cover transition-opacity duration-300 ${
-                  gridLoadingStates[idx] ? "opacity-0" : "opacity-100" // Fade in on load
+                  gridLoadingStates[idx] ? "opacity-0" : "opacity-100"
                 }`}
-                style={{ imageOrientation: "from-image" }} // Attempt for iOS rotation
-                // Refined sizes prop: Assumes 2 columns up to large screens, then potentially more
+                style={{ imageOrientation: "from-image" }}
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 25vw"
-                priority={idx < 2} // **OPTIMIZATION**: Prioritize first two images
-                quality={75} // Good balance
-                onLoadingComplete={() => handleGridLoadComplete(idx)} // **OPTIMIZATION**: Use onLoadingComplete
-                onError={() => handleLoadingError("grid", idx, file.url)} // Handle image errors
+                priority={idx < 2}
+                quality={75}
+                onLoadingComplete={() => handleGridLoadComplete(idx)}
+                onError={() => handleLoadingError("grid", idx, file.url)}
               />
             ) : (
-              // Video specific rendering
               <>
                 <video
-                  src={file.url + "#t=0.1"} // Hint for thumbnail
+                  src={file.url + "#t=0.1"}
                   className="w-full h-full object-cover"
                   preload="metadata"
                   muted
                   playsInline
-                  onError={() => handleLoadingError("grid", idx, file.url)} // Handle video errors
+                  onError={() => handleLoadingError("grid", idx, file.url)}
                 />
                 {/* Play icon overlay for videos */}
                 <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
@@ -191,114 +188,116 @@ export default function MediaGrid({ media }: MediaGridProps) {
         ))}
       </div>
 
-      {/* Slider Modal - Themed */}
+      {/* Slider Modal - Using Portal */}
       {isOpen && (
-        // Added fade-in animation to modal itself
-        <div
-          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-2 sm:p-4 animate-fadeIn"
-          onClick={closeSlider}
-        >
-          {/* Close Button - Themed */}
-          <button
-            aria-label="Close media viewer"
-            className="absolute top-2 right-2 sm:top-4 sm:right-4 text-white p-2 rounded-full bg-black/40 hover:bg-black/60 z-[51] transition"
+        <ModalPortal>
+          <div
+            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-2 sm:p-4 animate-fadeIn"
             onClick={closeSlider}
           >
-            <X size={24} />
-          </button>
+            {/* Close Button - Themed */}
+            <button
+              aria-label="Close media viewer"
+              className="absolute top-2 right-2 sm:top-4 sm:right-4 text-white p-2 rounded-full bg-black/40 hover:bg-black/60 z-[10000] transition"
+              onClick={closeSlider}
+            >
+              <X size={24} />
+            </button>
 
-          {/* Prev/Next Buttons - Themed */}
-          {media.length > 1 && (
-            <>
-              <button
-                aria-label="Previous media item"
-                className="absolute left-1 sm:left-4 top-1/2 -translate-y-1/2 text-white p-2 rounded-full bg-black/30 hover:bg-black/50 z-[51] transition"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  prevSlide();
-                }}
-              >
-                <ChevronLeft size={32} />
-              </button>
-              <button
-                aria-label="Next media item"
-                className="absolute right-1 sm:right-4 top-1/2 -translate-y-1/2 text-white p-2 rounded-full bg-black/30 hover:bg-black/50 z-[51] transition"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  nextSlide();
-                }}
-              >
-                <ChevronRight size={32} />
-              </button>
-            </>
-          )}
-
-          {/* Current Media Container */}
-          <div
-            className="relative max-w-[95vw] max-h-[90vh] flex items-center justify-center"
-            onClick={(e) => e.stopPropagation()} // Prevent closing modal when clicking media
-          >
-            {/* Spinner for Slider - Themed */}
-            {media[currentIndex].type === "photo" &&
-              sliderLoadingStates[currentIndex] === true && ( // Check for explicit true
-                <div className="absolute inset-0 flex items-center justify-center z-10">
-                  <div className="w-10 h-10 border-4 border-white dark:border-gray-300 border-t-transparent rounded-full animate-spin" />
-                </div>
-              )}
-
-            {media[currentIndex].type === "photo" ? (
-              <Image
-                // Add key to potentially help React update state correctly on src change
-                key={media[currentIndex].url + "-slider"}
-                src={media[currentIndex].url}
-                alt={`Media slider item ${currentIndex + 1}`}
-                width={1200}
-                height={1200}
-                style={{
-                  imageOrientation: "from-image", // Keep attempt for iOS rotation
-                  maxWidth: "95vw",
-                  maxHeight: "90vh",
-                  width: "auto",
-                  height: "auto",
-                }}
-                className={`object-contain transition-opacity duration-300 rounded-md ${
-                  // Fade in based on loading state
-                  sliderLoadingStates[currentIndex] === true
-                    ? "opacity-0"
-                    : "opacity-100"
-                }`}
-                quality={85}
-                priority // Always prioritize the current slider image
-                onLoadingComplete={() => handleSliderLoadComplete(currentIndex)} // **OPTIMIZATION**: Use onLoadingComplete
-                onError={() =>
-                  handleLoadingError(
-                    "slider",
-                    currentIndex,
-                    media[currentIndex].url
-                  )
-                }
-              />
-            ) : (
-              <video
-                key={media[currentIndex].url + "-slider"} // Add key here too
-                src={media[currentIndex].url}
-                controls
-                autoPlay
-                className="max-w-[95vw] max-h-[90vh] rounded-md"
-                preload="auto"
-                playsInline
-                onError={() =>
-                  handleLoadingError(
-                    "slider",
-                    currentIndex,
-                    media[currentIndex].url
-                  )
-                }
-              />
+            {/* Prev/Next Buttons - Themed */}
+            {media.length > 1 && (
+              <>
+                <button
+                  aria-label="Previous media item"
+                  className="absolute left-1 sm:left-4 top-1/2 -translate-y-1/2 text-white p-2 rounded-full bg-black/30 hover:bg-black/50 z-[10000] transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    prevSlide();
+                  }}
+                >
+                  <ChevronLeft size={32} />
+                </button>
+                <button
+                  aria-label="Next media item"
+                  className="absolute right-1 sm:right-4 top-1/2 -translate-y-1/2 text-white p-2 rounded-full bg-black/30 hover:bg-black/50 z-[10000] transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    nextSlide();
+                  }}
+                >
+                  <ChevronRight size={32} />
+                </button>
+              </>
             )}
+
+            {/* Current Media Container */}
+            <div
+              className="relative max-w-[95vw] max-h-[90vh] flex items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Spinner for Slider - Themed */}
+              {media[currentIndex].type === "photo" &&
+                sliderLoadingStates[currentIndex] === true && (
+                  <div className="absolute inset-0 flex items-center justify-center z-10">
+                    <div className="w-10 h-10 border-4 border-white dark:border-gray-300 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+
+              {media[currentIndex].type === "photo" ? (
+                <Image
+                  key={media[currentIndex].url + "-slider"}
+                  src={media[currentIndex].url}
+                  alt={`Media slider item ${currentIndex + 1}`}
+                  width={1200}
+                  height={1200}
+                  style={{
+                    imageOrientation: "from-image",
+                    maxWidth: "95vw",
+                    maxHeight: "90vh",
+                    width: "auto",
+                    height: "auto",
+                  }}
+                  className={`object-contain transition-opacity duration-300 rounded-md ${
+                    sliderLoadingStates[currentIndex] === true
+                      ? "opacity-0"
+                      : "opacity-100"
+                  }`}
+                  quality={85}
+                  priority
+                  onLoadingComplete={() =>
+                    handleSliderLoadComplete(currentIndex)
+                  }
+                  onError={() =>
+                    handleLoadingError(
+                      "slider",
+                      currentIndex,
+                      media[currentIndex].url
+                    )
+                  }
+                />
+              ) : (
+                <video
+                  key={media[currentIndex].url + "-slider"}
+                  src={media[currentIndex].url}
+                  controls
+                  autoPlay
+                  className="max-w-[95vw] max-h-[90vh] rounded-md"
+                  preload="auto"
+                  playsInline
+                  onError={() =>
+                    handleLoadingError(
+                      "slider",
+                      currentIndex,
+                      media[currentIndex].url
+                    )
+                  }
+                />
+              )}
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
+
       {/* Basic fade-in animation */}
       <style jsx>{`
         @keyframes fadeIn {

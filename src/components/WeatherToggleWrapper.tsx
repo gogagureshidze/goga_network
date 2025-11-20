@@ -27,18 +27,18 @@ export default function WeatherToggleWrapper({
     }
   }, [showWeather]);
 
-  // Don’t render until localStorage value is loaded
+  // Don't render until localStorage value is loaded
   if (showWeather === null) {
     return null;
   }
 
   return (
-    <div className="space-y-4">
-      {/* Toggle button */}
-      <div className="flex justify-between items-center gap-2 bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 transition-colors duration-300">
+    <div className="space-y-3">
+      {/* Compact toggle button */}
+      <div className="flex justify-between items-center gap-2 bg-white p-3 rounded-lg shadow-md dark:bg-gray-800 transition-colors duration-300">
         <label
           className="
-            text-lg font-extrabold tracking-wider 
+            text-sm sm:text-base font-bold tracking-wide
             bg-gradient-to-r from-orange-500 via-rose-600 to-rose-800
             bg-clip-text text-transparent
             dark:bg-none dark:text-white
@@ -49,7 +49,7 @@ export default function WeatherToggleWrapper({
         </label>
         <button
           onClick={() => setShowWeather((prev) => !prev)}
-          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+          className={`px-3 py-1.5 text-sm rounded-lg font-semibold transition-all ${
             showWeather
               ? "bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-purple-600 hover:to-pink-600 text-white dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white"
               : "bg-gray-300 hover:bg-gray-400 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200"

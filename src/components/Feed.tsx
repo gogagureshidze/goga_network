@@ -1,33 +1,22 @@
 // components/Feed.tsx
 import { currentUser } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
-import PostList from "./Observer"; // <-- Import the new client component
-import { fetchPosts } from "../actions/loadActions"; // <-- Import the new server action
-// We also need this for the private profile check
+import PostList from "./Observer";
+import { fetchPosts } from "../actions/loadActions";
 
-// ⛔ postSelectFields, getCachedBlockedUsers, getCachedFollowing,
-// getCachedProfilePosts, and getCachedFeedPosts are all
-// REMOVED from this file. Their logic is now in lib/actions.ts
-
-// 🆕 Helper to check if viewer can see profile (This logic stays)
 async function canViewProfile(
   viewerId: string,
   profileUserId: string,
   profileUsername: string
 ) {
-  // Get the profile user's privacy status
   const profileUser = await prisma.user.findFirst({
     where: { username: profileUsername },
     select: { isPrivate: true },
   });
 
-  // If not private, everyone can see
   if (!profileUser?.isPrivate) return true;
-
-  // If viewing own profile, can see
   if (viewerId === profileUserId) return true;
 
-  // Check if viewer follows the private account
   const isFollowing = await prisma.follower.findFirst({
     where: {
       followerId: viewerId,
@@ -41,9 +30,11 @@ async function canViewProfile(
 async function Feed({
   username,
   userId,
+  showOnMobile = false,
 }: {
   username?: string;
   userId?: string;
+  showOnMobile?: boolean;
 }) {
   const user = await currentUser();
   const currentUserId = user?.id;
@@ -59,10 +50,7 @@ async function Feed({
   }
 
   try {
-    let posts: any[] = [];
-
     if (username) {
-      // --- Profile View Logic ---
       const profileUser = await prisma.user.findFirst({
         where: { username },
         select: { id: true, isPrivate: true },
@@ -76,7 +64,6 @@ async function Feed({
         );
       }
 
-      // Check if it's a private account and viewer doesn't follow
       if (profileUser.isPrivate && profileUser.id !== currentUserId) {
         const canView = await canViewProfile(
           currentUserId,
@@ -85,7 +72,6 @@ async function Feed({
         );
 
         if (!canView) {
-          // 🆕 Show private account message
           return (
             <div className="bg-white shadow-md rounded-lg flex flex-col dark:bg-gray-800 items-center gap-4 p-12 transition-colors duration-300">
               <div className="w-20 h-20 rounded-full bg-gradient-to-br from-orange-100 to-rose-100 dark:bg-gray-700 flex items-center justify-center transition-colors duration-300">
@@ -117,26 +103,17 @@ async function Feed({
       }
     }
 
-    // --- ⬇️ SIMPLIFIED FETCHING ⬇️ ---
-    // Fetch ONLY page 1 for the initial server render
     const initialPosts = await fetchPosts({ page: 1, username });
-
-    // Check if there are likely more posts (page size is 10)
     const hasMorePosts = initialPosts.length >= 10;
 
-    // ⛔ REMOVE the 'Simple scoring' block.
-    // All sorting should be done in the database (`orderBy`)
-    // for pagination to work correctly.
-
     return (
-      <div className="bg-rose-50 dark:bg-gray-900 shadow-md rounded-lg flex flex-col gap-8 p-4">
-        {/* ⬇️ Render the client component ⬇️ */}
-        <PostList
-          initialPosts={initialPosts}
-          username={username}
-          hasMorePosts={hasMorePosts}
-        />
-      </div>
+      <PostList
+        initialPosts={initialPosts}
+        username={username}
+        hasMorePosts={hasMorePosts} 
+        userName={user.username || "User"}
+        showOnMobile={showOnMobile}
+      />
     );
   } catch (error) {
     console.error("Feed error:", error);

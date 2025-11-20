@@ -4,6 +4,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { revalidateTag } from "next/cache";
 
 export const deletePost = async (postId: number) => {
+
   const user = await currentUser();
   const userId = user?.id;
   if (!userId) throw new Error("User is not authenticated!");

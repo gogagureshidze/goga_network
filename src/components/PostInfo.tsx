@@ -5,35 +5,38 @@ import { EllipsisVertical, Trash2, Heart } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import PostActivityModal from "./PostActivityModal"; // Assuming this is themed
+import { useRouter } from "next/navigation";
 
 function PostInfo({
   postId,
   postOwnerId,
   taggedUserIds = [] as string[], // Pass tagged user IDs here
+  onDelete,
 }: {
   postId: number;
   postOwnerId: string;
   taggedUserIds?: string[];
+  onDelete?: () => void; // ⭐ ADD THIS
 }) {
   const [open, setOpen] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const router = useRouter();
 
   const { userId } = useAuth();
-
   const handleDelete = async () => {
-    if (deleteLoading) return; // Prevent double-click
+    if (deleteLoading) return;
     setDeleteLoading(true);
 
     try {
-      await deletePost(postId);
-      // No need to manually update UI here if the parent component re-fetches or refreshes
+      await deletePost(postId); // FIRST delete from database
+      onDelete?.();
     } catch (error) {
       console.error("Failed to delete post:", error);
       alert("Failed to delete post. Please try again.");
     } finally {
       setDeleteLoading(false);
-      setOpen(false); // Close menu
+      setOpen(false);
     }
   };
 

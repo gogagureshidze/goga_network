@@ -275,10 +275,10 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
             <div className="mt-4 space-y-2">
               {daysUntil && (
                 <div className="p-3 bg-gradient-to-r from-blue-100 to-cyan-100 dark:bg-gray-700 rounded-lg border-2 border-blue-300 dark:border-gray-600">
-                  <p className="text-sm font-semibold text-blue-800 dark:text-gray-200 flex items-center gap-2">
+                  <p className="text-sm font-semibold text-blue-800 dark:text-black flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
                     Event starts:{" "}
-                    <span className="text-cyan-700 dark:text-gray-300">
+                    <span className="text-cyan-700 dark:text-grey-900">
                       {daysUntil}
                     </span>
                   </p>
@@ -287,10 +287,10 @@ const EventPostModal: React.FC<EventPostModalProps> = ({
 
               {duration && (
                 <div className="p-3 bg-gradient-to-r from-purple-100 to-pink-100 dark:bg-gray-700 rounded-lg border-2 border-purple-300 dark:border-gray-600">
-                  <p className="text-sm font-semibold text-purple-800 dark:text-gray-200 flex items-center gap-2">
+                  <p className="text-sm font-semibold text-purple-800 dark:text-black flex items-center gap-2">
                     <Clock className="w-4 h-4" />
                     Duration:{" "}
-                    <span className="text-pink-600 dark:text-gray-300">
+                    <span className="text-pink-600 dark:text-gray-900">
                       {duration}
                     </span>
                   </p>

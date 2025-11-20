@@ -33,7 +33,7 @@ export async function generateDescription(
 
     // Use Gemini 2.0 Flash for multimodal content
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash-exp",
+      model: "models/gemini-2.5-flash",
     });
 
     // Prepare the prompt parts
@@ -52,7 +52,7 @@ export async function generateDescription(
 
 RULES:
 - Write ONLY the caption text itself - no options, no labels, no markdown, no explanations
-- Maximum 2-3 sentences
+- Maximum 2-3 sentences use relatable emojis if appropriate
 - Be conversational and natural, like texting a friend and specific to the content
 - Don't be overly dramatic or poetic
 - Don't use excessive emojis (max 1-2 if any)

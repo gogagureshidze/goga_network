@@ -48,7 +48,7 @@ const PostInteractions = ({
   }, [likes]);
 
   const isLiked = userId ? currentLikes.includes(userId) : false;
-  const likeCount = currentLikes.length;
+  const currentLikeCount = currentLikes.length;
 
   // Process the like request
   const processLikeRequest = async (shouldLike: boolean) => {
@@ -300,9 +300,9 @@ const PostInteractions = ({
               ${countAnimation ? "count-bounce" : ""}
             `}
             >
-              {likeCount}
+              {currentLikeCount}
               <span className="hidden sm:inline ml-1 font-normal text-xs">
-                {likeCount === 1 ? "Like" : "Likes"}
+                {currentLikeCount === 1 ? "Like" : "Likes"}
               </span>
             </span>
 

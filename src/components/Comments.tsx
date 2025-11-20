@@ -9,7 +9,7 @@ type CommentType = any;
 // Loading Skeleton Component
 const CommentSkeleton = () => (
   <div className="space-y-4 animate-pulse">
-    {[1, 2, 3].map((i) => (
+    {[1, 2,].map((i) => (
       <div key={i} className="flex items-start gap-3">
         {/* Avatar skeleton */}
         <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full flex-shrink-0"></div>
