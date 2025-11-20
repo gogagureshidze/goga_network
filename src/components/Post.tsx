@@ -72,8 +72,21 @@ const PostComponent = ({
   const handleCommentDeleted = () => {
     setCommentCount((prev: number) => Math.max(0, prev - 1));
   };
-
-
+  const [shouldRenderComments, setShouldRenderComments] =
+    useState(isCommentsOpen);
+  useEffect(() => {
+    if (isCommentsOpen) {
+      // Start rendering immediately when opening
+      setShouldRenderComments(true);
+    } else {
+      // Set a timeout to remove the component from the DOM *after* the transition
+      const timer = setTimeout(() => {
+        setShouldRenderComments(false);
+      }, 300); // 👈 Must match the transition duration (duration-300)
+      return () => clearTimeout(timer);
+    }
+  }, [isCommentsOpen]);
+  // ⭐️ END NEW EFFECT ⭐️
   const isEventPost = !!post.event;
   const isPollPost = !!post.poll;
   const taggedUsernames = post.tags?.map((tag: any) => tag.user.username) || [];
@@ -151,13 +164,25 @@ const PostComponent = ({
       />
 
       {/* Comments */}
-      {isCommentsOpen && (
-        <Comments
-          postId={post.id}
-          onCommentAdded={handleCommentAdded}
-          onCommentDeleted={handleCommentDeleted}
-        />
-      )}
+      <div
+        className={`
+          overflow-hidden
+          transition-all duration-300 ease-in-out
+          ${
+            isCommentsOpen
+              ? "max-h-[1000px] opacity-100 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700"
+              : "max-h-0 opacity-0 mt-0 pt-0 border-t-0"
+          }
+        `}
+      >
+        {shouldRenderComments && (
+          <Comments
+            postId={post.id}
+            onCommentAdded={handleCommentAdded}
+            onCommentDeleted={handleCommentDeleted}
+          />
+        )}
+      </div>
     </div>
   );
 };
