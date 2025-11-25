@@ -1,3 +1,4 @@
+// components/Observer.tsx
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
@@ -5,6 +6,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useInView } from "react-intersection-observer";
 import Post from "./Post";
 import { fetchPosts } from "../actions/loadActions";
+import { fetchSinglePost } from "../actions/loadActions";
 import OnlineUsers from "./OnlineUsers";
 import WeatherToggleWrapper from "./WeatherToggleWrapper";
 
@@ -57,6 +59,9 @@ export default function PostList({
   const [isLoading, setIsLoading] = useState(false);
   const [openComments, setOpenComments] = useState<Set<number>>(new Set());
   const [hiddenPosts, setHiddenPosts] = useState<Set<number>>(new Set());
+  const [refreshingPosts, setRefreshingPosts] = useState<Set<number>>(
+    new Set()
+  );
 
   const loadingLock = useRef(false);
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
@@ -105,6 +110,33 @@ export default function PostList({
     });
   }, []);
 
+  // Handler for when a poll vote is successfully cast
+  const handlePollVoteSuccess = useCallback(async (postId: number) => {
+    // Mark this post as refreshing
+    setRefreshingPosts((prev) => new Set(prev).add(postId));
+
+    try {
+      // Fetch the updated post with fresh poll data
+      const updatedPost = await fetchSinglePost(postId);
+
+      if (updatedPost) {
+        // Update the specific post in the posts array
+        setPosts((prevPosts) =>
+          prevPosts.map((post) => (post.id === postId ? updatedPost : post))
+        );
+      }
+    } catch (error) {
+      console.error("Failed to refresh poll:", error);
+    } finally {
+      // Remove from refreshing set immediately after data is updated
+      setRefreshingPosts((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(postId);
+        return newSet;
+      });
+    }
+  }, []);
+
   const widgetCount = showOnMobile ? 2 : 1;
   const totalItems = widgetCount + posts.length + (hasMore ? 1 : 0);
 
@@ -120,7 +152,6 @@ export default function PostList({
   });
 
   const removePost = useCallback((postId: number) => {
-    // Just hide it visually, keep it in the array
     setHiddenPosts((prev) => new Set(prev).add(postId));
   }, []);
 
@@ -233,6 +264,7 @@ export default function PostList({
           if (!post) return null;
 
           const isHidden = hiddenPosts.has(post.id);
+          const isRefreshing = refreshingPosts.has(post.id);
 
           return (
             <div
@@ -245,7 +277,7 @@ export default function PostList({
                 left: 0,
                 width: "100%",
                 paddingBottom: "16px",
-                opacity: isHidden ? 0 : 1,
+                opacity: isHidden ? 0 : isRefreshing ? 0.6 : 1,
                 transform: isHidden
                   ? `translateY(${virtualItem.start}px) scale(0.95)`
                   : `translateY(${virtualItem.start}px) scale(1)`,
@@ -258,6 +290,7 @@ export default function PostList({
                 isCommentsOpen={openComments.has(post.id)}
                 toggleComments={toggleComments}
                 removePost={removePost}
+                onPollVoteSuccess={handlePollVoteSuccess}
               />
             </div>
           );

@@ -1,4 +1,4 @@
-import { memo, useState, useEffect } from "react"; // 👈 NO useContext
+import { memo, useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import MediaGrid from "./MediaGrid";
@@ -9,11 +9,9 @@ import PollCard from "./PollCard";
 import PostDescription from "./PostDescription";
 import ActivityStatus from "./ActivityStatus";
 import Comments from "./Comments";
-// 👈 NO Context import
 
-// Helper function (no changes)
+// Helper function
 function formatTimeAgo(date: Date | string) {
-  // ... (your formatTimeAgo function)
   const d = new Date(date);
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - d.getTime()) / 1000);
@@ -48,17 +46,18 @@ function formatTimeAgo(date: Date | string) {
 interface PostComponentProps {
   post: any;
   isCommentsOpen: boolean;
-  removePost: (postId: number) => void; // ⭐ ADD THIS
+  removePost: (postId: number) => void;
   toggleComments: (postId: number) => void;
+  onPollVoteSuccess?: (postId: number) => void; // ⭐ ADD THIS
 }
 
 const PostComponent = ({
   post,
-  isCommentsOpen, // 👈 Get from props
-  toggleComments, // 👈 Get from props
-  removePost, // ⭐ ADD THIS
+  isCommentsOpen,
+  toggleComments,
+  removePost,
+  onPollVoteSuccess, // ⭐ ADD THIS
 }: PostComponentProps) => {
-  // 👈 NO useContext
   const [commentCount, setCommentCount] = useState(post._count?.comments || 0);
 
   useEffect(() => {
@@ -72,21 +71,21 @@ const PostComponent = ({
   const handleCommentDeleted = () => {
     setCommentCount((prev: number) => Math.max(0, prev - 1));
   };
+
   const [shouldRenderComments, setShouldRenderComments] =
     useState(isCommentsOpen);
+
   useEffect(() => {
     if (isCommentsOpen) {
-      // Start rendering immediately when opening
       setShouldRenderComments(true);
     } else {
-      // Set a timeout to remove the component from the DOM *after* the transition
       const timer = setTimeout(() => {
         setShouldRenderComments(false);
-      }, 300); // 👈 Must match the transition duration (duration-300)
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [isCommentsOpen]);
-  // ⭐️ END NEW EFFECT ⭐️
+
   const isEventPost = !!post.event;
   const isPollPost = !!post.poll;
   const taggedUsernames = post.tags?.map((tag: any) => tag.user.username) || [];
@@ -136,7 +135,7 @@ const PostComponent = ({
           taggedUserIds={taggedUserIds}
           postId={post.id}
           postOwnerId={post.userId}
-          onDelete={() => removePost(post.id)} // ⭐ NEW
+          onDelete={() => removePost(post.id)}
         />
       </div>
 
@@ -147,7 +146,11 @@ const PostComponent = ({
 
       {/* Post Content */}
       {isPollPost ? (
-        <PollCard poll={post.poll} />
+        <PollCard
+          poll={post.poll}
+          postId={post.id}
+          onVoteSuccess={onPollVoteSuccess} // ⭐ PASS THE CALLBACK
+        />
       ) : isEventPost ? (
         <EventCard event={post.event} />
       ) : (
@@ -187,9 +190,7 @@ const PostComponent = ({
   );
 };
 
-// ⭐️ THE PERFORMANCE FIX ⭐️
-// This function checks the props and prevents re-rendering
-// if only *other* posts have changed.
+// Performance optimization - prevent unnecessary re-renders
 const areEqual = (
   prevProps: PostComponentProps,
   nextProps: PostComponentProps
@@ -199,8 +200,9 @@ const areEqual = (
     prevProps.post._count?.likes === nextProps.post._count?.likes &&
     prevProps.post._count?.comments === nextProps.post._count?.comments &&
     prevProps.post.likes?.length === nextProps.post.likes?.length &&
-    // This is the most important check for lag
-    prevProps.isCommentsOpen === nextProps.isCommentsOpen
+    prevProps.isCommentsOpen === nextProps.isCommentsOpen &&
+    // ⭐ Check poll data for changes
+    JSON.stringify(prevProps.post.poll) === JSON.stringify(nextProps.post.poll)
   );
 };
 

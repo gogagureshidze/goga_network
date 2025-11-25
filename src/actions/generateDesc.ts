@@ -54,7 +54,7 @@ RULES:
 - Write ONLY the caption text itself - no options, no labels, no markdown, no explanations
 - Maximum 2-3 sentences use relatable emojis if appropriate
 - Be conversational and natural, like texting a friend and specific to the content
-- Don't be overly dramatic or poetic
+- Don't be overly dramatic or poetic dia
 - Don't use excessive emojis (max 1-2 if any)
 - Just describe what you see in a chill, authentic way
 

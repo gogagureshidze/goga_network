@@ -212,3 +212,21 @@ export async function fetchPosts({
     return [];
   }
 }
+
+export async function fetchSinglePost(postId: number) {
+  const user = await currentUser();
+  if (!user) return null;
+
+  try {
+    // Force fresh data by using a direct query without cache
+    const post = await prisma.post.findUnique({
+      where: { id: postId },
+      select: postSelectFields,
+    });
+
+    return post;
+  } catch (error) {
+    console.error("Error fetching single post:", error);
+    return null;
+  }
+}
