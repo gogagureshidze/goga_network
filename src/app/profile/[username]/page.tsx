@@ -33,6 +33,8 @@ const getCachedUser = unstable_cache(
         createdAt: true,
         bioPattern: true,
         isPrivate: true, // 🆕 Include privacy status
+        showStoryLikes: true,
+        allowStoryComments: true,
         _count: {
           select: {
             posts: true,
@@ -137,6 +139,8 @@ async function ProfilePage({ params }: { params: any }) {
         createdAt: true,
         bioPattern: true,
         isPrivate: true, // 🆕
+        showStoryLikes: true,
+        allowStoryComments: true,
         _count: {
           select: {
             posts: true,
