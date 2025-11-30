@@ -1,5 +1,3 @@
-// contexts/UserContext.tsx
-
 "use client";
 
 import {
@@ -13,7 +11,6 @@ import {
 import { useUser } from "@clerk/nextjs";
 import { getUserData } from "@/actions/getUserData";
 
-// ... (Your UserData type is fine)
 type UserData = {
   id: string;
   username?: string;
@@ -29,6 +26,8 @@ type UserData = {
   showActivityStatus?: boolean;
   bioPattern?: string;
   isPrivate: boolean;
+  allowStoryComments?: boolean;
+  showStoryLikes?: boolean;
 };
 
 type UserContextType = {
@@ -44,14 +43,28 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Define the fetching function
-  const fetchUserData = useCallback(async () => {
-    // 1. Don't fetch anything until Clerk is fully loaded
-    if (!isLoaded) {
-      return;
-    }
+  const mapDbUserToUserData = (dbUser: any): UserData => ({
+    id: dbUser.id,
+    username: dbUser.username ?? undefined,
+    name: dbUser.name ?? undefined,
+    surname: dbUser.surname ?? undefined,
+    avatar: dbUser.avatar ?? undefined,
+    cover: dbUser.cover ?? undefined,
+    description: dbUser.description ?? undefined,
+    city: dbUser.city ?? undefined,
+    school: dbUser.school ?? undefined,
+    work: dbUser.work ?? undefined,
+    website: dbUser.website ?? undefined,
+    showActivityStatus: dbUser.showActivityStatus ?? undefined,
+    bioPattern: dbUser.bioPattern ?? undefined,
+    isPrivate: dbUser.isPrivate,
+    allowStoryComments: dbUser.allowStoryComments ?? undefined,
+    showStoryLikes: dbUser.showStoryLikes ?? undefined,
+  });
 
-    // 2. If Clerk is loaded but there's no user, they are logged out.
+  const fetchUserData = useCallback(async () => {
+    if (!isLoaded) return;
+
     if (!user) {
       setUserData(null);
       setIsLoading(false);
@@ -60,9 +73,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true);
     try {
-      const dbUser = await getUserData(); 
+      const dbUser = await getUserData();
       if (dbUser) {
-        setUserData(dbUser);
+        setUserData(mapDbUserToUserData(dbUser));
       } else {
         setUserData(null);
       }
@@ -72,25 +85,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [user, isLoaded]); 
+  }, [user, isLoaded]);
 
   useEffect(() => {
     fetchUserData();
-  }, [fetchUserData]); 
+  }, [fetchUserData]);
 
-  // Manual refresh function
   const refreshUser = async () => {
     console.log("Context: Refreshing user data...");
     await fetchUserData();
   };
 
-  const value = {
-    userData,
-    refreshUser,
-    isLoading,
-  };
-
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+  return (
+    <UserContext.Provider value={{ userData, refreshUser, isLoading }}>
+      {children}
+    </UserContext.Provider>
+  );
 }
 
 export function useUserContext() {

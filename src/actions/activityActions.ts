@@ -5,10 +5,6 @@ import prisma from "@/lib/client";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { clerkClient } from "@clerk/nextjs/server";
 
-// Update user's last active timestamp
-//! ⚠️ IMPORTANT: DO NOT add revalidatePath or revalidateTag here.
-//! FOR future we will try to use socket insetad of this approach.
-// This function MUST NOT BE called frequently in the background.
 
 let lastRevalidatedAt: number | null = null;
 

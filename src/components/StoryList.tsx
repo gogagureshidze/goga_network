@@ -25,7 +25,9 @@ import { useUser } from "@clerk/nextjs";
 import { Heart, MoreVertical, Eye, Trash2, Loader2 } from "lucide-react";
 import StoryActivityModal from "./StoryActivityModal";
 import Link from "next/link";
+import { useUserContext } from "@/contexts/UserContext";
 
+ 
 type StoryWithUser = Story & {
   user: User;
   likes: Like[];
@@ -65,22 +67,22 @@ type OptimisticAction =
   | { type: "DELETE_STORY"; storyId: number };
 
 // Debounce utility
-function useDebounce<T extends (...args: any[]) => any>(
-  callback: T,
-  delay: number
-): (...args: Parameters<T>) => void {
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+// function useDebounce<T extends (...args: any[]) => any>(
+//   callback: T,
+//   delay: number
+// ): (...args: Parameters<T>) => void {
+//   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  return useCallback(
-    (...args: Parameters<T>) => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      timeoutRef.current = setTimeout(() => callback(...args), delay);
-    },
-    [callback, delay]
-  );
-}
+//   return useCallback(
+//     (...args: Parameters<T>) => {
+//       if (timeoutRef.current) {
+//         clearTimeout(timeoutRef.current);
+//       }
+//       timeoutRef.current = setTimeout(() => callback(...args), delay);
+//     },
+//     [callback, delay]
+//   );
+// }
 
 // Rate limiting utility
 function useRateLimit(maxCalls: number, timeWindow: number) {
@@ -125,17 +127,22 @@ export default function StoryList({
     deletingComments: new Set(),
     addingComments: new Set(),
   });
-
   const [media, setMedia] = useState<any[]>([]);
   const [isPending, startTransition] = useTransition();
   const { user, isLoaded } = useUser();
   const [activeUserStoryId, setActiveUserStoryId] = useState<string | null>(
     null
   );
+
+   const {
+     userData,
+     refreshUser,
+     isLoading: isContextLoading,
+   } = useUserContext();
   const [commentMap, setCommentMap] = useState<{ [key: string]: string }>({});
   const [isMuted, setIsMuted] = useState(true);
   const [isInputActive, setIsInputActive] = useState(false);
-  const [showLikes, setShowLikes] = useState(true);
+  const [showLikes, setShowLikes] = useState(userData?.showStoryLikes ?? true);
 
   const [showStoryMenu, setShowStoryMenu] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -240,6 +247,10 @@ export default function StoryList({
                   showActivityStatus:
                     (user?.publicMetadata?.showActivityStatus as boolean) ??
                     true,
+                  allowStoryComments:
+                    (user?.publicMetadata?.allowStoryComments as boolean) ?? true,
+                  showStoryLikes:
+                    (user?.publicMetadata?.showStoryLikes as boolean) ?? true,
                 },
                 stories: action.stories,
               };
@@ -379,6 +390,10 @@ export default function StoryList({
         isPrivate: (user?.publicMetadata?.isPrivate as boolean) ?? false,
         showActivityStatus:
           (user?.publicMetadata?.showActivityStatus as boolean) ?? true,
+        allowStoryComments:
+          (user?.publicMetadata?.allowStoryComments as boolean) ?? true,
+        showStoryLikes:
+          (user?.publicMetadata?.showStoryLikes as boolean) ?? true,
         createdAt: new Date(),
         lastActiveAt: new Date(),
       },
@@ -486,6 +501,10 @@ export default function StoryList({
           lastActiveAt: new Date(),
           showActivityStatus:
             (user?.publicMetadata?.showActivityStatus as boolean) ?? true,
+          allowStoryComments:
+            (user?.publicMetadata?.allowStoryComments as boolean) ?? true,
+          showStoryLikes:
+            (user?.publicMetadata?.showStoryLikes as boolean) ?? true,
         },
         likes: [],
       };
@@ -763,6 +782,7 @@ export default function StoryList({
   const hasLiked =
     currentStory?.likes.some((like) => like.userId === userId) || false;
   const isOwner = currentStory?.userId === userId;
+  const storyOwnerAllowsComments = activeGroup?.user.allowStoryComments ?? true;
 
   return (
     <>
@@ -1228,105 +1248,111 @@ export default function StoryList({
             </div>
 
             {/* Comments section */}
-            <div className="absolute bottom-16 left-4 right-4 z-30 max-h-48 overflow-y-auto flex flex-col gap-2 px-2 py-1">
-              {currentStory.comments && currentStory.comments.length > 0 ? (
-                currentStory.comments.map((c) => {
-                  const hasLikedByAuthor =
-                    c.likes.some((l) => l.userId === activeGroup.user.id) ||
-                    false;
-                  const isDeleting = pendingActions.deletingComments.has(c.id);
-                  const isLikingComment = pendingActions.likingComments.has(
-                    c.id
-                  );
+            {storyOwnerAllowsComments && (
+              <>
+                <div className="absolute bottom-16 left-4 right-4 z-30 max-h-48 overflow-y-auto flex flex-col gap-2 px-2 py-1">
+                  {currentStory.comments && currentStory.comments.length > 0 ? (
+                    currentStory.comments.map((c) => {
+                      const hasLikedByAuthor =
+                        c.likes.some((l) => l.userId === activeGroup.user.id) ||
+                        false;
+                      const isDeleting = pendingActions.deletingComments.has(
+                        c.id
+                      );
+                      const isLikingComment = pendingActions.likingComments.has(
+                        c.id
+                      );
 
-                  return (
-                    <div
-                      key={c.id}
-                      className={`flex items-start gap-2 p-2 rounded-lg bg-black bg-opacity-40 hover:bg-opacity-60 transition-colors ${
-                        isDeleting ? "opacity-50" : ""
-                      }`}
-                    >
-                      <Link href={`/profile/${c.user.username}`}>
-                        <Image
-                          src={c.user.avatar || "/noAvatar.png"}
-                          alt={c.user.username || "User"}
-                          width={32}
-                          height={32}
-                          className="rounded-full object-cover w-8 h-8"
-                        />
-                      </Link>
-                      <div className="flex-1">
-                        <span className="text-white font-semibold text-sm">
-                          {c.user.name || c.user.username}
-                        </span>
-                        <p className="text-white text-sm">{c.desc}</p>
-                        {hasLikedByAuthor && (
-                          <div className="flex items-center text-xs text-gray-300 gap-1 mt-1">
-                            <Heart
-                              size={12}
-                              className="text-red-500 fill-red-500"
-                            />
-                            <span>Liked by author</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Comment like button for story owner */}
-                      {userId === activeGroup.user.id && c.id > 0 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleLikeComment(currentStory.id, c.id);
-                          }}
-                          disabled={isLikingComment}
-                          className="disabled:opacity-50"
+                      return (
+                        <div
+                          key={c.id}
+                          className={`flex items-start gap-2 p-2 rounded-lg bg-black bg-opacity-40 hover:bg-opacity-60 transition-colors ${
+                            isDeleting ? "opacity-50" : ""
+                          }`}
                         >
-                          {isLikingComment ? (
-                            <Loader2
-                              size={16}
-                              className="animate-spin text-white"
+                          <Link href={`/profile/${c.user.username}`}>
+                            <Image
+                              src={c.user.avatar || "/noAvatar.png"}
+                              alt={c.user.username || "User"}
+                              width={32}
+                              height={32}
+                              className="rounded-full object-cover w-8 h-8"
                             />
-                          ) : (
-                            <Heart
-                              size={16}
-                              className={`transition-colors duration-200 ${
-                                c.likes.some((l) => l.userId === userId)
-                                  ? "text-red-500 fill-red-500"
-                                  : "text-white"
-                              }`}
-                            />
-                          )}
-                        </button>
-                      )}
-
-                      {/* Delete button for comment owner or story owner */}
-                      {(userId === activeGroup.user.id ||
-                        userId === c.user.id) &&
-                        c.id > 0 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteComment(c.id);
-                            }}
-                            disabled={isDeleting}
-                            className="ml-2 text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
-                          >
-                            {isDeleting ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              "Delete"
+                          </Link>
+                          <div className="flex-1">
+                            <span className="text-white font-semibold text-sm">
+                              {c.user.name || c.user.username}
+                            </span>
+                            <p className="text-white text-sm">{c.desc}</p>
+                            {hasLikedByAuthor && (
+                              <div className="flex items-center text-xs text-gray-300 gap-1 mt-1">
+                                <Heart
+                                  size={12}
+                                  className="text-red-500 fill-red-500"
+                                />
+                                <span>Liked by author</span>
+                              </div>
                             )}
-                          </button>
-                        )}
-                    </div>
-                  );
-                })
-              ) : (
-                <span className="text-white text-sm opacity-70">
-                  No comments yet...
-                </span>
-              )}
-            </div>
+                          </div>
+
+                          {/* Comment like button for story owner */}
+                          {userId === activeGroup.user.id && c.id > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLikeComment(currentStory.id, c.id);
+                              }}
+                              disabled={isLikingComment}
+                              className="disabled:opacity-50"
+                            >
+                              {isLikingComment ? (
+                                <Loader2
+                                  size={16}
+                                  className="animate-spin text-white"
+                                />
+                              ) : (
+                                <Heart
+                                  size={16}
+                                  className={`transition-colors duration-200 ${
+                                    c.likes.some((l) => l.userId === userId)
+                                      ? "text-red-500 fill-red-500"
+                                      : "text-white"
+                                  }`}
+                                />
+                              )}
+                            </button>
+                          )}
+
+                          {/* Delete button for comment owner or story owner */}
+                          {(userId === activeGroup.user.id ||
+                            userId === c.user.id) &&
+                            c.id > 0 && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteComment(c.id);
+                                }}
+                                disabled={isDeleting}
+                                className="ml-2 text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
+                              >
+                                {isDeleting ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  "Delete"
+                                )}
+                              </button>
+                            )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <span className="text-white text-sm opacity-70">
+                      No comments yet...
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
 
             {/* Bottom actions */}
             <div className="absolute bottom-4 left-4 right-4 z-40 flex items-center gap-2">
@@ -1354,45 +1380,51 @@ export default function StoryList({
                   </span>
                 )}
               </button>
-
-              <input
-                type="text"
-                value={commentMap[currentStory.id] || ""}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value.length <= 500) {
-                    setCommentMap((prev) => ({
-                      ...prev,
-                      [currentStory.id]: value,
-                    }));
-                  }
-                }}
-                onFocus={() => setIsInputActive(true)}
-                onBlur={() => setIsInputActive(false)}
-                placeholder="Add a comment..."
-                className="flex-1 rounded-full px-3 py-1 text-sm outline-none bg-black bg-opacity-40 text-white placeholder-gray-300"
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleAddComment(currentStory.id);
-                  }
-                }}
-                disabled={pendingActions.addingComments.has(currentStory.id)}
-              />
-
-              {commentMap[currentStory.id]?.trim() && (
-                <button
-                  onClick={() => handleAddComment(currentStory.id)}
-                  disabled={pendingActions.addingComments.has(currentStory.id)}
-                  className="bg-blue-500 text-white rounded-full p-2 h-8 w-8 flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50"
-                >
-                  {pendingActions.addingComments.has(currentStory.id) ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    "➔"
+              {storyOwnerAllowsComments && (
+                <>
+                  <input
+                    type="text"
+                    value={commentMap[currentStory.id] || ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value.length <= 500) {
+                        setCommentMap((prev) => ({
+                          ...prev,
+                          [currentStory.id]: value,
+                        }));
+                      }
+                    }}
+                    onFocus={() => setIsInputActive(true)}
+                    onBlur={() => setIsInputActive(false)}
+                    placeholder="Add a comment..."
+                    className="flex-1 rounded-full px-3 py-1 text-sm outline-none bg-black bg-opacity-40 text-white placeholder-gray-300"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleAddComment(currentStory.id);
+                      }
+                    }}
+                    disabled={pendingActions.addingComments.has(
+                      currentStory.id
+                    )}
+                  />
+                  {commentMap[currentStory.id]?.trim() && (
+                    <button
+                      onClick={() => handleAddComment(currentStory.id)}
+                      disabled={pendingActions.addingComments.has(
+                        currentStory.id
+                      )}
+                      className="bg-blue-500 text-white rounded-full p-2 h-8 w-8 flex items-center justify-center transition-transform hover:scale-110 disabled:opacity-50"
+                    >
+                      {pendingActions.addingComments.has(currentStory.id) ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        "➔"
+                      )}
+                    </button>
                   )}
-                </button>
+                </>
               )}
             </div>
 

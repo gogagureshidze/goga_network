@@ -17,7 +17,7 @@ model User {
   surname                String?
   description            String?
   city                   String?
-  isPrivate              Boolean         @default(false) // 🆕 NEW FIELD
+  isPrivate              Boolean         @default(false)
   school                 String?
   work                   String?
   website                String?
@@ -25,6 +25,10 @@ model User {
   createdAt              DateTime        @default(now())
   lastActiveAt           DateTime        @default(now())
   showActivityStatus     Boolean         @default(true)
+  
+  // 🆕 NEW STORY SETTINGS
+  allowStoryComments     Boolean         @default(true)
+  showStoryLikes         Boolean         @default(true)
   
   blockedBy              Block[]         @relation("BlocksReceived")
   blocks                 Block[]         @relation("BlocksSent")
@@ -36,6 +40,7 @@ model User {
   likes                  Like[]
   posts                  Post[]
   stories                Story[]
+  archivedStories        ArchivedStory[] // 🆕 NEW RELATION
   storyComments          StoryComment[]
   storyViews             StoryView[]
   conversations1         Conversation[]  @relation("User1Conversations")
@@ -65,7 +70,7 @@ model Media {
   id      Int     @id @default(autoincrement())
   url     String
   safeUrl String?
-  type    String // "photo" | "video"
+  type    String
   postId  Int
   post    Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
 }
@@ -155,12 +160,82 @@ model Story {
   img       String
   createdAt DateTime       @default(now())
   expiresAt DateTime
-  showLikes Boolean        @default(true) // ✨ New field to store the user's preference
+  showLikes Boolean        @default(true)
   userId    String
-  user      User           @relation(fields: [userId], references: [id])
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   likes     Like[]
   views     StoryView[]
   comments  StoryComment[]
+  
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// 🆕 NEW MODEL FOR ARCHIVED STORIES
+model ArchivedStory {
+  id              Int      @id @default(autoincrement())
+  originalStoryId Int?     // Reference to original story (optional, in case it was deleted)
+  img             String
+  createdAt       DateTime // Original creation date
+  archivedAt      DateTime @default(now()) // When it was archived
+  expiresAt       DateTime // Original expiry date
+  showLikes       Boolean  @default(true)
+  userId          String
+  
+  // Snapshot data (frozen at archive time)
+  likesCount      Int      @default(0)
+  viewsCount      Int      @default(0)
+  commentsCount   Int      @default(0)
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes           ArchivedStoryLike[]
+  views           ArchivedStoryView[]
+  comments        ArchivedStoryComment[]
+  
+  @@index([userId])
+  @@index([archivedAt])
+}
+
+// 🆕 ARCHIVED STORY INTERACTIONS
+model ArchivedStoryLike {
+  id              Int           @id @default(autoincrement())
+  archivedStoryId Int
+  userId          String
+  username        String?
+  userAvatar      String?
+  createdAt       DateTime
+  
+  archivedStory   ArchivedStory @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
+  
+  @@index([archivedStoryId])
+}
+
+model ArchivedStoryView {
+  id              Int           @id @default(autoincrement())
+  archivedStoryId Int
+  userId          String
+  username        String?
+  userAvatar      String?
+  createdAt       DateTime
+  
+  archivedStory   ArchivedStory @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
+  
+  @@index([archivedStoryId])
+}
+
+model ArchivedStoryComment {
+  id              Int           @id @default(autoincrement())
+  archivedStoryId Int
+  desc            String
+  userId          String
+  username        String?
+  userAvatar      String?
+  createdAt       DateTime
+  likesCount      Int           @default(0)
+  
+  archivedStory   ArchivedStory @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
+  
+  @@index([archivedStoryId])
 }
 
 model StoryComment {
@@ -171,7 +246,6 @@ model StoryComment {
   storyId   Int
   userId    String
 
-  // Relations
   story Story  @relation(fields: [storyId], references: [id], onDelete: Cascade)
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   likes Like[]
@@ -189,7 +263,7 @@ model StoryView {
   story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([storyId, userId]) // one view per user per story
+  @@unique([storyId, userId])
   @@index([storyId])
   @@index([userId])
 }
@@ -211,16 +285,14 @@ model Conversation {
 
 model Message {
   id             Int      @id @default(autoincrement())
-  text           String? // Make the text field optional, as a message can just be an image
+  text           String?
   createdAt      DateTime @default(now())
   senderId       String
   receiverId     String
   conversationId Int
   isRead         Boolean  @default(false)
-
-  // New fields for media
-  mediaUrl  String? // URL to the hosted image or video
-  mediaType String? // "image" or "video"
+  mediaUrl       String?
+  mediaType      String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation("SentMessages", fields: [senderId], references: [id])
@@ -272,7 +344,7 @@ model PollVote {
   option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
   user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, optionId]) // prevent double-voting same option
+  @@unique([userId, optionId])
 }
 
 model PostTag {
@@ -280,7 +352,7 @@ model PostTag {
   postId    Int
   userId    String
   createdAt DateTime @default(now())
-  deleted   Boolean  @default(false) // <-- new field
+  deleted   Boolean  @default(false)
 
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

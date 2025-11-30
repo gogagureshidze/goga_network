@@ -58,12 +58,13 @@ export default function PostList({
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [isLoading, setIsLoading] = useState(false);
   const [openComments, setOpenComments] = useState<Set<number>>(new Set());
-  const [hiddenPosts, setHiddenPosts] = useState<Set<number>>(new Set());
+  const [fadingOut, setFadingOut] = useState<Set<number>>(new Set());
   const [refreshingPosts, setRefreshingPosts] = useState<Set<number>>(
     new Set()
   );
 
   const loadingLock = useRef(false);
+  const postElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
     null
   );
@@ -110,17 +111,14 @@ export default function PostList({
     });
   }, []);
 
-  // Handler for when a poll vote is successfully cast
   const handlePollVoteSuccess = useCallback(async (postId: number) => {
-    // Mark this post as refreshing
     setRefreshingPosts((prev) => new Set(prev).add(postId));
 
     try {
-      // Fetch the updated post with fresh poll data
+      await new Promise((resolve) => setTimeout(resolve, 100));
       const updatedPost = await fetchSinglePost(postId);
 
       if (updatedPost) {
-        // Update the specific post in the posts array
         setPosts((prevPosts) =>
           prevPosts.map((post) => (post.id === postId ? updatedPost : post))
         );
@@ -128,7 +126,6 @@ export default function PostList({
     } catch (error) {
       console.error("Failed to refresh poll:", error);
     } finally {
-      // Remove from refreshing set immediately after data is updated
       setRefreshingPosts((prev) => {
         const newSet = new Set(prev);
         newSet.delete(postId);
@@ -136,6 +133,47 @@ export default function PostList({
       });
     }
   }, []);
+
+  const removePost = useCallback(
+    (postId: number) => {
+      if (!scrollElement) return;
+
+      // Get the element and its position before deletion
+      const postElement = postElementsRef.current.get(postId);
+      const scrollTop = scrollElement.scrollTop;
+      let deletedPostTop = 0;
+      let deletedPostHeight = 0;
+
+      if (postElement) {
+        const rect = postElement.getBoundingClientRect();
+        const containerRect = scrollElement.getBoundingClientRect();
+        deletedPostTop = rect.top - containerRect.top + scrollTop;
+        deletedPostHeight = rect.height;
+      }
+
+      // Start fade out
+      setFadingOut((prev) => new Set(prev).add(postId));
+
+      // Remove after animation
+      setTimeout(() => {
+        setPosts((prevPosts) => prevPosts.filter((post) => post.id !== postId));
+        setFadingOut((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(postId);
+          return newSet;
+        });
+
+        // Adjust scroll position to prevent jump
+        requestAnimationFrame(() => {
+          if (scrollElement && deletedPostTop < scrollTop) {
+            // If deleted post was above current scroll position, adjust scroll
+            scrollElement.scrollTop = scrollTop - deletedPostHeight;
+          }
+        });
+      }, 300);
+    },
+    [scrollElement]
+  );
 
   const widgetCount = showOnMobile ? 2 : 1;
   const totalItems = widgetCount + posts.length + (hasMore ? 1 : 0);
@@ -150,10 +188,6 @@ export default function PostList({
     },
     overscan: 5,
   });
-
-  const removePost = useCallback((postId: number) => {
-    setHiddenPosts((prev) => new Set(prev).add(postId));
-  }, []);
 
   if (posts.length === 0 && !hasMore) {
     return (
@@ -263,13 +297,20 @@ export default function PostList({
           const post = posts[postIndex];
           if (!post) return null;
 
-          const isHidden = hiddenPosts.has(post.id);
+          const isFadingOut = fadingOut.has(post.id);
           const isRefreshing = refreshingPosts.has(post.id);
 
           return (
             <div
               key={post.id}
-              ref={rowVirtualizer.measureElement}
+              ref={(el) => {
+                rowVirtualizer.measureElement(el);
+                if (el) {
+                  postElementsRef.current.set(post.id, el);
+                } else {
+                  postElementsRef.current.delete(post.id);
+                }
+              }}
               data-index={index}
               style={{
                 position: "absolute",
@@ -277,12 +318,10 @@ export default function PostList({
                 left: 0,
                 width: "100%",
                 paddingBottom: "16px",
-                opacity: isHidden ? 0 : isRefreshing ? 0.6 : 1,
-                transform: isHidden
-                  ? `translateY(${virtualItem.start}px) scale(0.95)`
-                  : `translateY(${virtualItem.start}px) scale(1)`,
-                transition: "opacity 0.3s ease-out, transform 0.3s ease-out",
-                pointerEvents: isHidden ? "none" : "auto",
+                transform: `translateY(${virtualItem.start}px)`,
+                opacity: isFadingOut ? 0 : isRefreshing ? 0.6 : 1,
+                transition: "opacity 0.3s ease-out",
+                pointerEvents: isFadingOut ? "none" : "auto",
               }}
             >
               <Post

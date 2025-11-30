@@ -24,26 +24,32 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { togglePrivateAccount } from "../../actions/togglePrivateAction";
 import { toggleActivityStatus } from "../../actions/activityActions";
+import {
+  toggleAllowStoryComments,
+  toggleShowStoryLikes,
+} from "../../actions/storySettingsActions";
 import { useUserContext } from "../../contexts/UserContext";
 
 export default function SettingsPage() {
   const { user, isLoaded: isClerkLoaded } = useUser();
   const router = useRouter();
-const { theme, setTheme, resolvedTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const {
     userData,
     refreshUser,
     isLoading: isContextLoading,
   } = useUserContext();
+
   const isPrivate = userData?.isPrivate ?? false;
   const showActivityStatusState = userData?.showActivityStatus ?? true;
+  const allowStoryCommentsState = userData?.allowStoryComments ?? true;
+  const showStoryLikesState = userData?.showStoryLikes ?? true;
 
   const [isToggleLoading, setIsToggleLoading] = useState(false);
   const [isActivityToggleLoading, setIsActivityToggleLoading] = useState(false);
+  const [isStoryCommentsLoading, setIsStoryCommentsLoading] = useState(false);
+  const [isStoryLikesLoading, setIsStoryLikesLoading] = useState(false);
 
-  // These other states are fine because they are local to this page
-  const [allowStoryComments, setAllowStoryComments] = useState(true);
-  const [showStoryLikes, setShowStoryLikes] = useState(true);
   const [notifications, setNotifications] = useState({
     likes: true,
     comments: true,
@@ -81,13 +87,36 @@ const { theme, setTheme, resolvedTheme } = useTheme();
     }
   };
 
- 
-  // Loading state: Wait for BOTH Clerk and your context to be ready
+  const handleToggleStoryComments = async () => {
+    setIsStoryCommentsLoading(true);
+    try {
+      await toggleAllowStoryComments();
+      await refreshUser();
+    } catch (error) {
+      console.error("Failed to toggle story comments:", error);
+      alert("Failed to update story comments setting");
+    } finally {
+      setIsStoryCommentsLoading(false);
+    }
+  };
+
+  const handleToggleStoryLikes = async () => {
+    setIsStoryLikesLoading(true);
+    try {
+      await toggleShowStoryLikes();
+      await refreshUser();
+    } catch (error) {
+      console.error("Failed to toggle story likes:", error);
+      alert("Failed to update story likes setting");
+    } finally {
+      setIsStoryLikesLoading(false);
+    }
+  };
+
   if (!isClerkLoaded || (isContextLoading && !userData)) {
     return <div className="loader-spiner"></div>;
   }
 
-  // Not logged in
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-rose-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
@@ -103,11 +132,9 @@ const { theme, setTheme, resolvedTheme } = useTheme();
     );
   }
 
-
   return (
     <div className="min-h-screen bg-rose-50 dark:bg-gray-900 transition-colors">
       <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-rose-800 to-orange-400 dark:from-white dark:to-white bg-clip-text text-transparent">
             Settings
@@ -156,7 +183,6 @@ const { theme, setTheme, resolvedTheme } = useTheme();
           </div>
 
           <div className="divide-y divide-gray-100 dark:divide-gray-700">
-            {/* Private Account */}
             <div className="p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
               <div className="flex items-start gap-4 flex-1">
                 <Lock
@@ -199,7 +225,6 @@ const { theme, setTheme, resolvedTheme } = useTheme();
               </button>
             </div>
 
-            {/* Activity Status */}
             <div className="p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
               <div className="flex items-start gap-4 flex-1">
                 <Eye
@@ -286,21 +311,42 @@ const { theme, setTheme, resolvedTheme } = useTheme();
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                     Let others comment on your stories
                   </p>
+                  {allowStoryCommentsState && (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-2 font-medium">
+                      💬 Comments enabled on your stories
+                    </p>
+                  )}
+                  {!allowStoryCommentsState && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-medium">
+                      🔒 Comments disabled on your stories
+                    </p>
+                  )}
                 </div>
               </div>
               <button
-                onClick={() => setAllowStoryComments(!allowStoryComments)}
+                onClick={handleToggleStoryComments}
+                disabled={isStoryCommentsLoading}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  allowStoryComments
+                  allowStoryCommentsState
                     ? "bg-orange-500"
                     : "bg-gray-300 dark:bg-gray-600"
+                } ${
+                  isStoryCommentsLoading ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    allowStoryComments ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
+                {isStoryCommentsLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                ) : (
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      allowStoryCommentsState
+                        ? "translate-x-6"
+                        : "translate-x-1"
+                    }`}
+                  />
+                )}
               </button>
             </div>
 
@@ -318,26 +364,48 @@ const { theme, setTheme, resolvedTheme } = useTheme();
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                     Display like count on your stories
                   </p>
+                  {showStoryLikesState && (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-2 font-medium">
+                      ❤️ Likes are visible on your stories
+                    </p>
+                  )}
+                  {!showStoryLikesState && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-medium">
+                      🔒 Likes are hidden on your stories
+                    </p>
+                  )}
                 </div>
               </div>
               <button
-                onClick={() => setShowStoryLikes(!showStoryLikes)}
+                onClick={handleToggleStoryLikes}
+                disabled={isStoryLikesLoading}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  showStoryLikes
+                  showStoryLikesState
                     ? "bg-orange-500"
                     : "bg-gray-300 dark:bg-gray-600"
+                } ${
+                  isStoryLikesLoading ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    showStoryLikes ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
+                {isStoryLikesLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                ) : (
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      showStoryLikesState ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                )}
               </button>
             </div>
 
             {/* Story Archive */}
-            <button className="p-6 w-full flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left">
+            <button
+              onClick={() => router.push("/story-archive")}
+              className="p-6 w-full flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
+            >
               <div className="flex items-start gap-4 flex-1">
                 <Archive
                   className="text-gray-400 dark:text-gray-500 mt-1"
