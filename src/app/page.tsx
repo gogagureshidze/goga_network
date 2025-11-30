@@ -5,9 +5,12 @@ import LeftMenu from "@/components/LeftMenu";
 import Stories from "@/components/Stories";
 import AddPost from "@/components/AddPost";
 import RightMenu from "@/components/RightMenu";
+import { checkAndArchiveExpiredStories } from "@/actions/storySettingsActions";
 
 const Homepage = async () => {
   const user = await currentUser();
+    await checkAndArchiveExpiredStories();
+
   if (!user) {
     redirect("/sign-in");
   }

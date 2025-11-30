@@ -13,7 +13,6 @@ import {
   Shield,
   Cookie,
   Trash2,
-  LogOut,
   ChevronRight,
   Globe,
   Moon,
@@ -403,7 +402,7 @@ export default function SettingsPage() {
 
             {/* Story Archive */}
             <button
-              onClick={() => router.push("/story-archive")}
+              onClick={() => router.push("/story")}
               className="p-6 w-full flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
             >
               <div className="flex items-start gap-4 flex-1">

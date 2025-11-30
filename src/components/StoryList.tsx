@@ -12,6 +12,8 @@ import {
 import { Story, User, Like } from "@/generated/prisma";
 import { CldUploadWidget } from "next-cloudinary";
 import Image from "next/image";
+import { archiveStory } from "../actions/storySettingsActions";
+import { Archive } from "lucide-react";
 import {
   useOptimistic,
   useState,
@@ -143,6 +145,9 @@ export default function StoryList({
   const [isMuted, setIsMuted] = useState(true);
   const [isInputActive, setIsInputActive] = useState(false);
   const [showLikes, setShowLikes] = useState(userData?.showStoryLikes ?? true);
+
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   const [showStoryMenu, setShowStoryMenu] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -1474,6 +1479,17 @@ export default function StoryList({
                       <Trash2 size={16} />
                       Delete story
                     </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowArchiveConfirm(true);
+                        setShowStoryMenu(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2 text-sm text-blue-600 hover:bg-blue-950"
+                    >
+                      <Archive size={16} />
+                      Archive story
+                    </button>
                   </div>
                 )}
               </div>
@@ -1496,6 +1512,61 @@ export default function StoryList({
                 goNextStory();
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveConfirm && currentStory && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-5"
+          onClick={() => setShowArchiveConfirm(false)}
+        >
+          <div
+            className="bg-black rounded-lg p-6 max-w-sm w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg text-blue-500 font-semibold mb-4">
+              Archive Story?
+            </h3>
+            <p className="text-slate-300 mb-6">
+              Your story will be saved to your archive. You can view or repost
+              it later.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowArchiveConfirm(false)}
+                className="flex-1 px-4 py-2 text-sm bg-gray-200 text-gray-800 rounded-md font-medium hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setIsArchiving(true);
+                  try {
+                    await archiveStory(currentStory.id);
+                    setActiveUserStoryId(null);
+                    setShowArchiveConfirm(false);
+                  } catch (err) {
+                    console.error("Failed to archive story:", err);
+                    alert("Failed to archive story. Please try again.");
+                  } finally {
+                    setIsArchiving(false);
+                  }
+                }}
+                disabled={isArchiving}
+                className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isArchiving ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Archiving...
+                  </>
+                ) : (
+                  "Archive"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
