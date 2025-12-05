@@ -49,6 +49,10 @@ model User {
   receivedMessages       Message[]       @relation("ReceivedMessages")
   pollVotes              PollVote[]
   postTags               PostTag[]
+  highlights             Highlight[]
+  highlightViews    HighlightView[]
+  highlightLikes    HighlightLike[]
+  highlightComments HighlightComment[]
 }
 
 model Post {
@@ -166,6 +170,8 @@ model Story {
   likes     Like[]
   views     StoryView[]
   comments  StoryComment[]
+    highlightStories HighlightStory[]
+
   
   @@index([userId])
   @@index([expiresAt])
@@ -191,6 +197,7 @@ model ArchivedStory {
   likes           ArchivedStoryLike[]
   views           ArchivedStoryView[]
   comments        ArchivedStoryComment[]
+  highlightStories HighlightStory[]
   
   @@index([userId])
   @@index([archivedAt])
@@ -360,4 +367,80 @@ model PostTag {
   @@unique([postId, userId])
   @@index([postId])
   @@index([userId])
+}
+
+
+model Highlight {
+  id          Int              @id @default(autoincrement())
+  title       String
+  desc        String?
+  coverUrl    String?
+  createdAt   DateTime         @default(now())
+
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stories     HighlightStory[]
+  views       HighlightView[]
+  likes       HighlightLike[]
+  comments    HighlightComment[]
+}
+
+model HighlightStory {
+  id              Int            @id @default(autoincrement())
+  highlightId     Int
+  order           Int            @default(0)
+
+  // Link to the parent Highlight
+  highlight       Highlight      @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+
+  // 1️⃣ Link to ACTIVE Story (Optional)
+  storyId         Int?
+  story           Story?         @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  // 2️⃣ Link to ARCHIVED Story (Optional)
+  archivedStoryId Int?
+  archivedStory   ArchivedStory? @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
+
+  // Indexes for performance
+  @@index([highlightId])
+  @@index([storyId])
+  @@index([archivedStoryId])
+}
+
+model HighlightView {
+  id          Int        @id @default(autoincrement())
+  highlightId Int
+  userId      String
+  createdAt   DateTime   @default(now())
+
+  highlight   Highlight  @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([highlightId, userId])
+}
+
+
+model HighlightLike {
+  id          Int        @id @default(autoincrement())
+  highlightId Int
+  userId      String
+  createdAt   DateTime   @default(now())
+
+  highlight   Highlight  @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([highlightId, userId])
+}
+
+
+model HighlightComment {
+  id          Int        @id @default(autoincrement())
+  highlightId Int
+  userId      String
+  desc        String
+  createdAt   DateTime   @default(now())
+
+  highlight   Highlight  @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

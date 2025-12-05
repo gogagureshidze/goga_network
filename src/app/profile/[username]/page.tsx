@@ -11,6 +11,7 @@ import { notFound, redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
 import { Suspense } from "react";
 import ActivityStatus from "@/components/ActivityStatus";
+import ProfileHighlights from "@/components/ProfileHighlights";
 
 const getCachedUser = unstable_cache(
   async (username: string) => {
@@ -242,7 +243,7 @@ async function ProfilePage({ params }: { params: any }) {
               ? `${user.name} ${user.surname}`
               : user.username}
           </h1>
-          { user.showActivityStatus && user.lastActiveAt && (
+          {user.showActivityStatus && user.lastActiveAt && (
             <div className="flex justify-center">
               <ActivityStatus
                 lastActiveAt={user.lastActiveAt}
@@ -273,6 +274,7 @@ async function ProfilePage({ params }: { params: any }) {
             </div>
           </div>
 
+          <ProfileHighlights userId={user.id} isOwner={isOwner} />
           {/* Mobile sections */}
           {!isOwner && (
             <div className="px-4 lg:hidden">

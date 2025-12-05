@@ -11,6 +11,8 @@ import {
   RotateCcw,
   Loader2,
   X,
+  Plus,
+  Check,
 } from "lucide-react";
 import {
   getArchivedStories,
@@ -18,6 +20,8 @@ import {
   deleteArchivedStory,
 } from "../../actions/storySettingsActions";
 import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
+import AddToHighlightModal from "../../components//AddtoHighlightModal";
 
 type ArchivedStoryType = {
   id: number;
@@ -66,14 +70,22 @@ export default function StoryArchivePage() {
   const [selectedStory, setSelectedStory] = useState<ArchivedStoryType | null>(
     null
   );
-  const [showActivity, setShowActivity] = useState(false);
+  // Removed showActivity state
   const [isPending, startTransition] = useTransition();
   const [activeTab, setActiveTab] = useState<"views" | "likes" | "comments">(
     "views"
   );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showRepostConfirm, setShowRepostConfirm] = useState(false);
+
+  // Highlight selection states
+  const [selectedStoriesForHighlight, setSelectedStoriesForHighlight] =
+    useState<number[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [showAddToHighlight, setShowAddToHighlight] = useState(false);
+
   const router = useRouter();
+  const { user } = useUser();
 
   useEffect(() => {
     loadArchivedStories();
@@ -127,6 +139,27 @@ export default function StoryArchivePage() {
     });
   };
 
+  const handleSelectModeToggle = () => {
+    if (isSelectMode && selectedStoriesForHighlight.length > 0) {
+      setShowAddToHighlight(true);
+    } else {
+      setIsSelectMode(!isSelectMode);
+      setSelectedStoriesForHighlight([]);
+    }
+  };
+
+  const handleStoryClick = (story: ArchivedStoryType) => {
+    if (isSelectMode) {
+      setSelectedStoriesForHighlight((prev) =>
+        prev.includes(story.id)
+          ? prev.filter((id) => id !== story.id)
+          : [...prev, story.id]
+      );
+    } else {
+      setSelectedStory(story);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-rose-50 dark:bg-gray-900 flex items-center justify-center">
@@ -144,26 +177,61 @@ export default function StoryArchivePage() {
     <div className="min-h-screen bg-rose-50 dark:bg-gray-900 transition-colors">
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <button
-            onClick={() => router.back()}
-            className="mb-4 text-gray-600 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 flex items-center gap-2"
-          >
-            ← Back
-          </button>
-          <div className="flex items-center gap-3 mb-2">
-            <Archive
-              className="text-orange-500 dark:text-orange-400"
-              size={32}
-            />
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-rose-800 to-orange-400 dark:from-white dark:to-white bg-clip-text text-transparent">
-              Story Archive
-            </h1>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <button
+              onClick={() => router.back()}
+              className="mb-4 text-gray-600 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 flex items-center gap-2"
+            >
+              ← Back
+            </button>
+            <div className="flex items-center gap-3 mb-2">
+              <Archive
+                className="text-orange-500 dark:text-orange-400"
+                size={32}
+              />
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-rose-800 to-orange-400 dark:from-white dark:to-white bg-clip-text text-transparent">
+                Story Archive
+              </h1>
+            </div>
+            <p className="text-gray-600 dark:text-gray-400">
+              View your archived stories. Stories are automatically archived
+              after 24 hours.
+            </p>
           </div>
-          <p className="text-gray-600 dark:text-gray-400">
-            View your archived stories. Stories are automatically archived after
-            24 hours.
-          </p>
+
+          {/* Add to Highlight / Select Mode Button */}
+          {archivedStories.length > 0 && (
+            <button
+              onClick={handleSelectModeToggle}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                isSelectMode && selectedStoriesForHighlight.length > 0
+                  ? "bg-orange-500 text-white hover:bg-orange-600"
+                  : isSelectMode
+                  ? "bg-red-500 text-white hover:bg-red-600"
+                  : "bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
+              }`}
+            >
+              {isSelectMode ? (
+                selectedStoriesForHighlight.length > 0 ? (
+                  <>
+                    <Check size={18} />
+                    Add {selectedStoriesForHighlight.length} to Highlight
+                  </>
+                ) : (
+                  <>
+                    <X size={18} />
+                    Cancel
+                  </>
+                )
+              ) : (
+                <>
+                  <Plus size={18} />
+                  Create Highlight
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Empty State */}
@@ -189,17 +257,42 @@ export default function StoryArchivePage() {
             {archivedStories.map((story) => (
               <div
                 key={story.id}
-                className="group relative aspect-[9/16] rounded-lg overflow-hidden cursor-pointer bg-gray-100 dark:bg-gray-800 border-2 border-transparent hover:border-orange-500 dark:hover:border-orange-400 transition-all"
-                onClick={() => {
-                  setSelectedStory(story);
-                  setShowActivity(false);
-                }}
+                className={`group relative aspect-[9/16] rounded-lg overflow-hidden cursor-pointer bg-gray-100 dark:bg-gray-800 border-2 transition-all ${
+                  isSelectMode && selectedStoriesForHighlight.includes(story.id)
+                    ? "border-orange-500 dark:border-orange-400 scale-95"
+                    : "border-transparent hover:border-orange-500 dark:hover:border-orange-400"
+                }`}
+                onClick={() => handleStoryClick(story)}
               >
+                {/* Selection Checkbox */}
+                {isSelectMode && (
+                  <div className="absolute top-2 left-2 z-10">
+                    <div
+                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                        selectedStoriesForHighlight.includes(story.id)
+                          ? "bg-orange-500 border-orange-500"
+                          : "bg-white/80 border-white backdrop-blur-sm"
+                      }`}
+                    >
+                      {selectedStoriesForHighlight.includes(story.id) && (
+                        <Check size={14} className="text-white" />
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {isVideo(story.img) ? (
                   <video
                     src={story.img}
                     className="w-full h-full object-cover"
                     muted
+                    playsInline
+                    preload="metadata"
+                    onMouseEnter={(e) => e.currentTarget.play()}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.pause();
+                      e.currentTarget.currentTime = 0;
+                    }}
                   />
                 ) : (
                   <Image
@@ -207,11 +300,12 @@ export default function StoryArchivePage() {
                     alt="Archived story"
                     fill
                     className="object-cover"
+                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
                   />
                 )}
 
                 {/* Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                   <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
                     <p className="text-xs font-medium mb-2">
                       Archived {formatDate(story.archivedAt)}
@@ -225,15 +319,11 @@ export default function StoryArchivePage() {
                         <Heart size={14} />
                         {story.likesCount}
                       </span>
-                      <span className="flex items-center gap-1">
-                        <MessageSquare size={14} />
-                        {story.commentsCount}
-                      </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Video indicator */}
+                {/* Video indicator icon */}
                 {isVideo(story.img) && (
                   <div className="absolute top-2 right-2 bg-black bg-opacity-70 rounded-full p-1.5">
                     <svg
@@ -251,234 +341,222 @@ export default function StoryArchivePage() {
         )}
 
         {/* Story Detail Modal */}
-        {selectedStory && (
+        {selectedStory && !isSelectMode && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-4"
-            onClick={() => {
-              setSelectedStory(null);
-              setShowActivity(false);
-            }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-0 md:p-10"
+            style={{ height: "100dvh" }}
+            onClick={() => setSelectedStory(null)}
           >
             <div
-              className="relative max-w-4xl w-full max-h-[90vh] bg-white dark:bg-gray-800 rounded-2xl overflow-hidden flex flex-col md:flex-row"
+              className="relative w-full h-full md:max-w-6xl md:h-[85vh] bg-white dark:bg-gray-800 md:rounded-2xl overflow-hidden flex flex-col md:flex-row"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Story Preview */}
-              <div className="relative flex-1 bg-black flex items-center justify-center">
+              {/* Close button - Mobile */}
+              <button
+                onClick={() => setSelectedStory(null)}
+                className="absolute top-3 right-3 p-2 bg-black bg-opacity-50 rounded-full text-white hover:bg-opacity-70 transition-colors z-50 md:hidden"
+              >
+                <X size={20} />
+              </button>
+
+              {/* Story Media Container - Desktop Left Side */}
+              <div className="relative bg-black flex items-center justify-center h-[45vh] md:h-full md:w-[60%] flex-shrink-0">
                 {isVideo(selectedStory.img) ? (
                   <video
                     src={selectedStory.img}
                     controls
-                    className="max-w-full max-h-full"
+                    autoPlay
+                    className="w-full h-full object-contain"
                   />
                 ) : (
                   <Image
                     src={selectedStory.img}
                     alt="Archived story"
-                    width={400}
-                    height={711}
-                    className="max-w-full max-h-full object-contain"
+                    width={800}
+                    height={1000}
+                    className="w-full h-full object-contain"
                   />
                 )}
 
-                {/* Close button */}
+                {/* Close button - Desktop */}
                 <button
-                  onClick={() => {
-                    setSelectedStory(null);
-                    setShowActivity(false);
-                  }}
-                  className="absolute top-4 right-4 p-2 bg-black bg-opacity-50 rounded-full text-white hover:bg-opacity-70 transition-colors"
+                  onClick={() => setSelectedStory(null)}
+                  className="hidden md:block absolute top-4 left-4 p-2 bg-black bg-opacity-50 rounded-full text-white hover:bg-opacity-70 transition-colors z-10"
                 >
                   <X size={20} />
                 </button>
               </div>
 
-              {/* Actions & Info Panel */}
-              <div className="w-full md:w-80 flex flex-col bg-white dark:bg-gray-800">
-                {/* Header */}
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Posted {formatDate(selectedStory.createdAt)}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-500">
-                    Archived {formatDate(selectedStory.archivedAt)}
-                  </p>
-                </div>
+              {/* Info/Actions Panel - Desktop Right Side */}
+              <div className="w-full md:w-[40%] flex flex-col bg-white dark:bg-gray-800 flex-1 overflow-hidden border-l border-gray-200 dark:border-gray-700">
+                {/* Fixed Top Section: Header & Stats */}
+                <div className="flex-shrink-0">
+                  {/* Header Info */}
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Posted {formatDate(selectedStory.createdAt)}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500">
+                      Archived {formatDate(selectedStory.archivedAt)}
+                    </p>
+                  </div>
 
-                {/* Stats */}
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {selectedStory.viewsCount}
-                      </p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        Views
-                      </p>
+                  {/* Stats Summary */}
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-700/30">
+                        <p className="text-xl font-bold text-gray-900 dark:text-white">
+                          {selectedStory.viewsCount}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          Views
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-700/30">
+                        <p className="text-xl font-bold text-gray-900 dark:text-white">
+                          {selectedStory.likesCount}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          Likes
+                        </p>
+                      </div>
+                      <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-700/30">
+                        <p className="text-xl font-bold text-gray-900 dark:text-white">
+                          {selectedStory.commentsCount}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          Comments
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {selectedStory.likesCount}
-                      </p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        Likes
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {selectedStory.commentsCount}
-                      </p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        Comments
-                      </p>
-                    </div>
+                  </div>
+
+                  {/* Tabs Navigation */}
+                  <div className="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                    <button
+                      onClick={() => setActiveTab("views")}
+                      className={`flex-1 p-3 text-sm font-medium transition-colors ${
+                        activeTab === "views"
+                          ? "text-orange-500 border-b-2 border-orange-500"
+                          : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                      }`}
+                    >
+                      Views
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("likes")}
+                      className={`flex-1 p-3 text-sm font-medium transition-colors ${
+                        activeTab === "likes"
+                          ? "text-orange-500 border-b-2 border-orange-500"
+                          : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                      }`}
+                    >
+                      Likes
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("comments")}
+                      className={`flex-1 p-3 text-sm font-medium transition-colors ${
+                        activeTab === "comments"
+                          ? "text-orange-500 border-b-2 border-orange-500"
+                          : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                      }`}
+                    >
+                      Comments
+                    </button>
                   </div>
                 </div>
 
-                {/* Toggle Activity */}
-                <button
-                  onClick={() => setShowActivity(!showActivity)}
-                  className="p-4 text-left flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border-b border-gray-200 dark:border-gray-700"
-                >
-                  <span className="font-medium text-gray-900 dark:text-white">
-                    {showActivity ? "Hide Activity" : "View Activity"}
-                  </span>
-                  <Eye className="text-gray-400 dark:text-gray-500" size={20} />
-                </button>
-
-                {/* Activity Details */}
-                {showActivity && (
-                  <div className="flex-1 overflow-y-auto">
-                    {/* Tabs */}
-                    <div className="flex border-b border-gray-200 dark:border-gray-700">
-                      <button
-                        onClick={() => setActiveTab("views")}
-                        className={`flex-1 p-3 text-sm font-medium transition-colors ${
-                          activeTab === "views"
-                            ? "text-orange-500 border-b-2 border-orange-500"
-                            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-                        }`}
-                      >
-                        Views ({selectedStory.views.length})
-                      </button>
-                      <button
-                        onClick={() => setActiveTab("likes")}
-                        className={`flex-1 p-3 text-sm font-medium transition-colors ${
-                          activeTab === "likes"
-                            ? "text-orange-500 border-b-2 border-orange-500"
-                            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-                        }`}
-                      >
-                        Likes ({selectedStory.likes.length})
-                      </button>
-                      <button
-                        onClick={() => setActiveTab("comments")}
-                        className={`flex-1 p-3 text-sm font-medium transition-colors ${
-                          activeTab === "comments"
-                            ? "text-orange-500 border-b-2 border-orange-500"
-                            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-                        }`}
-                      >
-                        Comments ({selectedStory.comments.length})
-                      </button>
-                    </div>
-
-                    {/* Tab Content */}
-                    <div className="p-4 space-y-3">
-                      {activeTab === "views" &&
-                        selectedStory.views.map((view) => (
-                          <div
-                            key={view.id}
-                            className="flex items-center gap-3"
-                          >
-                            <Image
-                              src={view.userAvatar || "/noAvatar.png"}
-                              alt={view.username || "User"}
-                              width={40}
-                              height={40}
-                              className="rounded-full"
-                            />
-                            <div className="flex-1">
-                              <p className="font-medium text-sm text-gray-900 dark:text-white">
-                                {view.username || "Anonymous"}
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {formatDate(view.createdAt)}
-                              </p>
-                            </div>
+                {/* Scrollable Activity List - Now takes remaining space */}
+                <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+                  <div className="p-4 space-y-3">
+                    {activeTab === "views" &&
+                      selectedStory.views.map((view) => (
+                        <div key={view.id} className="flex items-center gap-3">
+                          <Image
+                            src={view.userAvatar || "/noAvatar.png"}
+                            alt={view.username || "User"}
+                            width={32}
+                            height={32}
+                            className="rounded-full"
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium text-sm text-gray-900 dark:text-white">
+                              {view.username || "Anonymous"}
+                            </p>
                           </div>
-                        ))}
+                        </div>
+                      ))}
 
-                      {activeTab === "likes" &&
-                        selectedStory.likes.map((like) => (
-                          <div
-                            key={like.id}
-                            className="flex items-center gap-3"
-                          >
-                            <Image
-                              src={like.userAvatar || "/noAvatar.png"}
-                              alt={like.username || "User"}
-                              width={40}
-                              height={40}
-                              className="rounded-full"
-                            />
-                            <div className="flex-1">
-                              <p className="font-medium text-sm text-gray-900 dark:text-white">
-                                {like.username || "Anonymous"}
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {formatDate(like.createdAt)}
-                              </p>
-                            </div>
-                            <Heart
-                              size={16}
-                              className="text-red-500 fill-red-500"
-                            />
+                    {activeTab === "likes" &&
+                      selectedStory.likes.map((like) => (
+                        <div key={like.id} className="flex items-center gap-3">
+                          <Image
+                            src={like.userAvatar || "/noAvatar.png"}
+                            alt={like.username || "User"}
+                            width={32}
+                            height={32}
+                            className="rounded-full"
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium text-sm text-gray-900 dark:text-white">
+                              {like.username || "Anonymous"}
+                            </p>
                           </div>
-                        ))}
+                          <Heart
+                            size={14}
+                            className="text-red-500 fill-red-500"
+                          />
+                        </div>
+                      ))}
 
-                      {activeTab === "comments" &&
-                        selectedStory.comments.map((comment) => (
-                          <div
-                            key={comment.id}
-                            className="flex items-start gap-3"
-                          >
-                            <Image
-                              src={comment.userAvatar || "/noAvatar.png"}
-                              alt={comment.username || "User"}
-                              width={40}
-                              height={40}
-                              className="rounded-full"
-                            />
-                            <div className="flex-1">
-                              <p className="font-medium text-sm text-gray-900 dark:text-white">
-                                {comment.username || "Anonymous"}
-                              </p>
-                              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
-                                {comment.desc}
-                              </p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  {formatDate(comment.createdAt)}
-                                </p>
-                                {comment.likesCount > 0 && (
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                                    · {comment.likesCount}{" "}
-                                    {comment.likesCount === 1
-                                      ? "like"
-                                      : "likes"}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                    {activeTab === "comments" &&
+                      selectedStory.comments.map((comment) => (
+                        <div
+                          key={comment.id}
+                          className="flex items-start gap-3"
+                        >
+                          <Image
+                            src={comment.userAvatar || "/noAvatar.png"}
+                            alt={comment.username || "User"}
+                            width={32}
+                            height={32}
+                            className="rounded-full"
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium text-sm text-gray-900 dark:text-white">
+                              {comment.username || "Anonymous"}
+                            </p>
+                            <p className="text-sm text-gray-700 dark:text-gray-300">
+                              {comment.desc}
+                            </p>
                           </div>
-                        ))}
-                    </div>
+                        </div>
+                      ))}
+
+                    {/* Empty States for Lists */}
+                    {activeTab === "views" &&
+                      selectedStory.views.length === 0 && (
+                        <p className="text-center text-gray-500 dark:text-gray-400 text-sm py-4">
+                          No views yet.
+                        </p>
+                      )}
+                    {activeTab === "likes" &&
+                      selectedStory.likes.length === 0 && (
+                        <p className="text-center text-gray-500 dark:text-gray-400 text-sm py-4">
+                          No likes yet.
+                        </p>
+                      )}
+                    {activeTab === "comments" &&
+                      selectedStory.comments.length === 0 && (
+                        <p className="text-center text-gray-500 dark:text-gray-400 text-sm py-4">
+                          No comments yet.
+                        </p>
+                      )}
                   </div>
-                )}
+                </div>
 
-                {/* Actions */}
-                <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+                {/* Footer Actions */}
+                <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2 bg-white dark:bg-gray-800 flex-shrink-0">
                   <button
                     onClick={() => setShowRepostConfirm(true)}
                     className="w-full p-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
@@ -582,6 +660,22 @@ export default function StoryArchivePage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Add to Highlight Modal */}
+        {showAddToHighlight && (
+          <AddToHighlightModal
+            selectedStories={selectedStoriesForHighlight}
+            selectedStoriesData={archivedStories
+              .filter((story) => selectedStoriesForHighlight.includes(story.id))
+              .map((story) => ({ id: story.id, img: story.img }))}
+            onClose={() => {
+              setShowAddToHighlight(false);
+              setIsSelectMode(false);
+              setSelectedStoriesForHighlight([]);
+            }}
+            userId={user?.id || ""}
+          />
         )}
       </div>
     </div>
