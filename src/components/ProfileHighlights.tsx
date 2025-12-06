@@ -94,7 +94,7 @@ const ProfileHighlights = ({ userId, isOwner }: ProfileHighlightsProps) => {
               Create your first highlight to showcase your best stories
             </p>
             <Link
-              href="/highlights/create"
+              href="/story"
               className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-medium transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -129,7 +129,7 @@ const ProfileHighlights = ({ userId, isOwner }: ProfileHighlightsProps) => {
             {/* Add New Highlight Button */}
             {isOwner && (
               <Link
-                href="/highlights/create"
+                href="/story"
                 className="flex flex-col items-center gap-3 min-w-[90px] flex-shrink-0 group cursor-pointer"
                 aria-label="Create new highlight"
               >

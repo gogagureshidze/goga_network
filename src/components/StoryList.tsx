@@ -68,24 +68,6 @@ type OptimisticAction =
   | { type: "DELETE_COMMENT"; storyId: number; commentId: number }
   | { type: "DELETE_STORY"; storyId: number };
 
-// Debounce utility
-// function useDebounce<T extends (...args: any[]) => any>(
-//   callback: T,
-//   delay: number
-// ): (...args: Parameters<T>) => void {
-//   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-//   return useCallback(
-//     (...args: Parameters<T>) => {
-//       if (timeoutRef.current) {
-//         clearTimeout(timeoutRef.current);
-//       }
-//       timeoutRef.current = setTimeout(() => callback(...args), delay);
-//     },
-//     [callback, delay]
-//   );
-// }
-
 // Rate limiting utility
 function useRateLimit(maxCalls: number, timeWindow: number) {
   const callsRef = useRef<number[]>([]);
@@ -717,43 +699,65 @@ export default function StoryList({
   const getStoryDuration = (story: { img: string }) => {
     return isStoryVideo(story) ? 60000 : 10000;
   };
+const pausedTimeRef = useRef<number | null>(null);
+ useEffect(() => {
+   if (!activeUserStoryId) return;
 
-  useEffect(() => {
-    if (!activeUserStoryId) return;
+   // 1. Add showArchiveConfirm (and showStoryMenu if you want that to pause too)
+   const shouldPause =
+     isInputActive ||
+     showActivityModal ||
+     showDeleteConfirm ||
+     showArchiveConfirm ||
+     showStoryMenu; // Recommended: Pause when menu is open too
 
-    const shouldPause = isInputActive || showActivityModal || showDeleteConfirm;
-    if (shouldPause) return;
+   if (shouldPause) {
+     // If we are just now pausing, record the time so we don't skip when resuming
+     if (pausedTimeRef.current === null) {
+       pausedTimeRef.current = Date.now();
+     }
+     return;
+   }
 
-    const activeGroup = optimisticStories.find(
-      (group) => group.user.id === activeUserStoryId
-    );
-    const currentStory = activeGroup?.stories[activeIndex];
-    if (!currentStory) return;
+   // If we are resuming from a pause, adjust the startTime
+   if (pausedTimeRef.current !== null) {
+     const timeSpentPaused = Date.now() - pausedTimeRef.current;
+     startTimeRef.current += timeSpentPaused;
+     pausedTimeRef.current = null;
+   }
 
-    const storyDuration = getStoryDuration(currentStory);
+   const activeGroup = optimisticStories.find(
+     (group) => group.user.id === activeUserStoryId
+   );
+   const currentStory = activeGroup?.stories[activeIndex];
+   if (!currentStory) return;
 
-    timerRef.current = window.setInterval(() => {
-      const elapsed = Date.now() - startTimeRef.current;
-      setProgress(Math.min((elapsed / storyDuration) * 100, 100));
+   const storyDuration = getStoryDuration(currentStory);
 
-      if (elapsed >= storyDuration) {
-        startTimeRef.current = Date.now();
-        goNextStory();
-      }
-    }, 100);
+   timerRef.current = window.setInterval(() => {
+     const elapsed = Date.now() - startTimeRef.current;
+     setProgress(Math.min((elapsed / storyDuration) * 100, 100));
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [
-    activeUserStoryId,
-    activeIndex,
-    isInputActive,
-    showActivityModal,
-    showDeleteConfirm,
-    goNextStory,
-    optimisticStories,
-  ]);
+     if (elapsed >= storyDuration) {
+       startTimeRef.current = Date.now();
+       goNextStory();
+     }
+   }, 100);
+
+   return () => {
+     if (timerRef.current) clearInterval(timerRef.current);
+   };
+ }, [
+   activeUserStoryId,
+   activeIndex,
+   isInputActive,
+   showActivityModal,
+   showDeleteConfirm,
+   showArchiveConfirm, // ✅ FIXED: Added missing dependency
+   showStoryMenu, // ✅ Recommended: Add this if you want menu to pause too
+   goNextStory,
+   optimisticStories,
+ ]);
 
   useEffect(() => {
     setProgress(0);
