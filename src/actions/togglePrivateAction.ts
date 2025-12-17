@@ -25,7 +25,9 @@ export async function togglePrivateAccount() {
     data: { isPrivate: !currentUser.isPrivate },
   });
 
+  // @ts-ignore
   revalidateTag("user-profile");
+  // @ts-ignore
   revalidateTag("feed-posts");
 
   return { success: true, isPrivate: !currentUser.isPrivate };

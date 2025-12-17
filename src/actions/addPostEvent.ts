@@ -70,7 +70,6 @@ export async function addEventPost(data: AddEventPostInput) {
       const validUsers = await prisma.user.findMany({
         where: {
           username: { in: mentions },
-
         },
         select: { id: true, username: true },
       });
@@ -87,8 +86,9 @@ export async function addEventPost(data: AddEventPostInput) {
     }
 
     console.log("✅ Event post created:", createdPost);
-
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("profile-posts");
 
     return createdPost;

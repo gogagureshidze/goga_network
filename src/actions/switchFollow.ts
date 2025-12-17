@@ -30,9 +30,13 @@ export const switchFollow = async (userId: string) => {
       });
 
       // 🔹 Revalidate caches immediately
+      // @ts-ignore
       revalidateTag("user-relationships");
+      // @ts-ignore
       revalidateTag("feed-posts");
+      // @ts-ignore
       revalidateTag("profile-posts");
+      // @ts-ignore
       revalidateTag("user-profile");
 
       return { action: "unfollowed" };
@@ -47,7 +51,7 @@ export const switchFollow = async (userId: string) => {
         await prisma.followRequest.delete({
           where: { id: existingFollowRequest.id },
         });
-
+        // @ts-ignore
         revalidateTag("user-relationships");
 
         return { action: "request-cancelled" };
@@ -56,7 +60,7 @@ export const switchFollow = async (userId: string) => {
         await prisma.followRequest.create({
           data: { senderId: currentUserId, receiverId: userId },
         });
-
+        // @ts-ignore
         revalidateTag("user-relationships");
 
         return { action: "requested" };

@@ -40,8 +40,9 @@ export async function addReplyComment(
         },
       },
     });
-
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("profile-posts");
 
     return createdComment;

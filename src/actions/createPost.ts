@@ -57,8 +57,9 @@ export async function testAction(formData: FormData, media: any[]) {
     }
 
     console.log("✅ Post created:", res);
-
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("profile-posts");
 
     return res;

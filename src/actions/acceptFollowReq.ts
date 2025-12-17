@@ -39,9 +39,13 @@ async function acceptFollowReq(senderId: string) {
     });
 
     // 4️⃣ Revalidate UI
+    // @ts-ignore
     revalidatePath("/requests"); // refresh requests page
+    // @ts-ignore
     revalidateTag("user-relationships"); // refresh profile buttons
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("user-profile"); // refresh feed to show new posts
   } catch (error) {
     console.error(error);

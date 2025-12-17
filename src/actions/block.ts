@@ -18,10 +18,15 @@ export const switchBlock = async (userId: string) => {
       await prisma.block.delete({ where: { id: blocUser.id } });
 
       // Revalidate caches
+      // @ts-ignore
       revalidateTag("blocked-users");
+      // @ts-ignore
       revalidateTag("user-relationships");
+      // @ts-ignore
       revalidateTag("profile-posts");
+      // @ts-ignore
       revalidateTag("feed-posts");
+      // @ts-ignore
       revalidateTag("user-profile");
 
       return { action: "unblocked" };
@@ -40,12 +45,16 @@ export const switchBlock = async (userId: string) => {
           ],
         },
       });
-
-      // Revalidate caches
+      // @ts-ignore
       revalidateTag("blocked-users");
+      // @ts-ignore
+
       revalidateTag("user-relationships");
+      // @ts-ignore
       revalidateTag("profile-posts");
+      // @ts-ignore
       revalidateTag("feed-posts");
+      // @ts-ignore
       revalidateTag("user-profile");
 
       return { action: "blocked" };

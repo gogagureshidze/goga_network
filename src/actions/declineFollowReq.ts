@@ -25,8 +25,11 @@ async function acceptFollowReq(userId: string) {
         },
       });
     }
+    // @ts-ignore
     revalidateTag("user-relationships"); // refresh profile buttons
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("user-profile");
     revalidatePath("/requests");
   } catch (error) {

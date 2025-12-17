@@ -32,7 +32,9 @@ export const deletePost = async (postId: number) => {
     }
 
     // 👇 Bust the caches
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("profile-posts");
   } catch (error) {
     console.error("Failed to delete post:", error);

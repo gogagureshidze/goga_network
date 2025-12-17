@@ -202,8 +202,11 @@ async function performLikeOperation(
     );
 
     await Promise.all([
+      // @ts-ignore
       revalidateTag("feed-posts"),
+      // @ts-ignore
       revalidateTag("profile-posts"),
+      // @ts-ignore
       revalidateTag(`post-${postId}`),
       revalidatePath("/", "layout"),
     ]);

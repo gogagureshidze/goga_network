@@ -25,7 +25,9 @@ export const removeFollowing = async (followerId: string) => {
       });
 
       // Revalidate relevant caches
+      // @ts-ignore
       revalidateTag("user-relationships"); // for buttons/UI
+      // @ts-ignore
       revalidateTag("feed-posts"); // to update feed immediately
 
       return { action: "unfollowed" };

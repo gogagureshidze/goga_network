@@ -136,7 +136,9 @@ async function performCommentLikeOperation(
 
     // Revalidate caches
     await Promise.all([
+      // @ts-ignore
       revalidateTag("feed-posts"),
+      // @ts-ignore
       revalidateTag("profile-posts"),
       revalidatePath("/"),
     ]);

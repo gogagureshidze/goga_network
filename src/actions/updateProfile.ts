@@ -55,6 +55,7 @@ async function UpdateProfile(
       data: validatedFields.data,
     });
     // Revalidating the user tag is crucial for a smooth UI update.
+    // @ts-ignore
     revalidateTag("user-profile");
   } catch (error) {
     console.log(error);

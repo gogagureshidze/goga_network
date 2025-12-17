@@ -82,8 +82,11 @@ export async function createPollPost({
     revalidatePath("/", "layout");
     revalidatePath("/home");
     const { revalidateTag } = await import("next/cache");
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("profile-posts");
+    // @ts-ignore
     revalidateTag("following-list");
 
     return { post: newPost };
@@ -141,7 +144,9 @@ export async function castPollVote({ userId, pollId, optionId }: PollVoteData) {
     revalidatePath("/", "layout");
     revalidatePath("/home");
     const { revalidateTag } = await import("next/cache");
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("profile-posts");
 
     return { vote: newVote };

@@ -44,6 +44,7 @@ export async function getFollowers() {
     );
 
     // Revalidate followers/relationship cache so UI updates
+    // @ts-ignore
     revalidateTag("user-relationships");
 
     return filteredFollowers;

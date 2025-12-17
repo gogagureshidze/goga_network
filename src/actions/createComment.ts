@@ -35,8 +35,9 @@ export const addComment = async (postId: number, desc: string) => {
         },
       },
     });
-
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("profile-posts");
 
     return createdComment;

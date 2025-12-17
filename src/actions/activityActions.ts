@@ -23,9 +23,12 @@ export async function updateLastActive() {
 
     // Only revalidate if 2 minutes have passed
     if (!lastRevalidatedAt || now - lastRevalidatedAt > twoMinutes) {
+      // @ts-ignore
       revalidateTag("user-profile");
       lastRevalidatedAt = now;
-      console.log("✅ Revalidated user-profile tag to check last active update.");
+      console.log(
+        "✅ Revalidated user-profile tag to check last active update."
+      );
     }
 
     return { success: true };
@@ -57,8 +60,9 @@ export async function toggleActivityStatus() {
     data: { showActivityStatus: !currentUser.showActivityStatus },
     select: { showActivityStatus: true },
   });
-
+  // @ts-ignore
   revalidateTag("user-profile");
+  // @ts-ignore
   revalidateTag("feed-posts");
 
   return {

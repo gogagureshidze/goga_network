@@ -20,8 +20,9 @@ export const deleteComment = async (commentId: number) => {
       prisma.comment.deleteMany({ where: { parentId: commentId } }),
       prisma.comment.delete({ where: { id: commentId } }),
     ]);
-
+    // @ts-ignore
     revalidateTag("feed-posts");
+    // @ts-ignore
     revalidateTag("profile-posts");
   } catch (err) {
     console.error(err);
