@@ -53,6 +53,7 @@ model User {
   highlightViews    HighlightView[]
   highlightLikes    HighlightLike[]
   highlightComments HighlightComment[]
+  subscriptions PushSubscription[]
 }
 
 model Post {
@@ -443,4 +444,14 @@ model HighlightComment {
 
   highlight   Highlight  @relation(fields: [highlightId], references: [id], onDelete: Cascade)
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 }

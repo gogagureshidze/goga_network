@@ -2,7 +2,7 @@ import { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Goga_Network - Social Media App",
+    name: "Goga_Network",
     short_name: "Goga_Net",
     description:
       "Connect, share, and create with Goga_Network — your place for social expression.",

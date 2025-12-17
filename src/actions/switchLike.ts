@@ -1,9 +1,20 @@
 "use server";
+
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath, revalidateTag } from "next/cache";
+import webpush from "web-push";
 
-// Add a simple in-memory lock to prevent race conditions
+// 1. Configure Web Push (Moved outside to run once)
+if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || "mailto:noreply@goganetwork.com",
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+}
+
+// In-memory lock
 const likeLocks = new Map<string, Promise<any>>();
 
 export const switchLike = async (postId: number, shouldLike?: boolean) => {
@@ -21,7 +32,7 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
 
   const lockKey = `${currentUserId}-${postId}`;
 
-  // Wait for any existing operation to complete
+  // Wait for existing lock
   if (likeLocks.has(lockKey)) {
     try {
       await likeLocks.get(lockKey);
@@ -30,7 +41,6 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
     }
   }
 
-  // Create a new promise for this operation
   const operationPromise = performLikeOperation(
     currentUserId,
     postId,
@@ -40,12 +50,91 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
 
   try {
     const result = await operationPromise;
+
+    // ---------------------------------------------------------
+    // 2. TRIGGER PUSH NOTIFICATION
+    // ---------------------------------------------------------
+    if (result.success && result.isLiked) {
+      // Determine the best name to show
+      // Tries: "goga_dev" -> "Goga" -> "Someone"
+      const likerName = user.username || user.firstName || "Someone";
+
+      // Fire and forget (don't await) so the UI stays fast
+      sendLikeNotification(currentUserId, likerName, postId).catch((err) =>
+        console.error("Background notification failed:", err)
+      );
+    }
+    // ---------------------------------------------------------
+
     return result;
   } finally {
-    // Clean up the lock
     likeLocks.delete(lockKey);
   }
 };
+
+/**
+ * Helper to send the notification
+ */
+async function sendLikeNotification(
+  likerId: string,
+  likerName: string,
+  postId: number
+) {
+  try {
+    // A. Find the post to get the author's ID
+    const post = await prisma.post.findUnique({
+      where: { id: postId },
+      select: { userId: true }, // Ensure this matches your schema (authorId vs userId)
+    });
+
+    // B. Stop if post missing or user liked their own post
+    if (!post || post.userId === likerId) return;
+
+    // C. Get author's subscriptions
+    const subscriptions = await prisma.pushSubscription.findMany({
+      where: { userId: post.userId },
+    });
+
+    if (subscriptions.length === 0) return;
+
+    // D. Prepare payload with the dynamic name
+    const payload = JSON.stringify({
+      title: "New Like", // Title of the popup
+      body: `${likerName} liked your post!`, // The message body
+      url: `/post/${postId}`, // Clicking opens the post
+      icon: "/icons/icon-192x192.png",
+      badge: "/icons/icon-96x96.png", // Small icon for Android status bar
+    });
+
+    // E. Send to all user's devices
+    const notifications = subscriptions.map((sub) =>
+      webpush
+        .sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: {
+              p256dh: sub.p256dh,
+              auth: sub.auth,
+            },
+          },
+          payload
+        )
+        .catch(async (err) => {
+          // Cleanup invalid subscriptions
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            console.log(`Cleaning up stale subscription: ${sub.id}`);
+            await prisma.pushSubscription.delete({ where: { id: sub.id } });
+          } else {
+            console.error("Error sending push notification:", err);
+          }
+        })
+    );
+
+    await Promise.all(notifications);
+  } catch (error) {
+    console.error("Fatal error in notification flow:", error);
+  }
+}
 
 async function performLikeOperation(
   currentUserId: string,
@@ -53,68 +142,47 @@ async function performLikeOperation(
   shouldLike?: boolean
 ) {
   try {
-    // Use a transaction with serializable isolation to prevent race conditions
     const result = await prisma.$transaction(
       async (tx) => {
-        // Get current like state with lock
         const existingLike = await tx.like.findFirst({
-          where: {
-            userId: currentUserId,
-            postId: postId,
-          },
+          where: { userId: currentUserId, postId: postId },
         });
 
         const currentlyLiked = !!existingLike;
-
-        // Determine target state
         let targetLikeState: boolean;
+
         if (shouldLike !== undefined) {
           targetLikeState = shouldLike;
         } else {
           targetLikeState = !currentlyLiked;
         }
 
-        // Skip if already in target state
         if (currentlyLiked === targetLikeState) {
           const allLikes = await tx.like.findMany({
             where: { postId },
             select: { userId: true },
           });
-
           return {
             isLiked: currentlyLiked,
-            likeUserIds: allLikes.map((like) => like.userId),
+            likeUserIds: allLikes.map((l) => l.userId),
             likeCount: allLikes.length,
           };
         }
 
-        // Perform the operation
         if (targetLikeState) {
-          // Like - use upsert to handle potential race conditions
           await tx.like.upsert({
             where: {
-              userId_postId: {
-                userId: currentUserId,
-                postId: postId,
-              },
+              userId_postId: { userId: currentUserId, postId: postId },
             },
-            create: {
-              userId: currentUserId,
-              postId: postId,
-            },
+            create: { userId: currentUserId, postId: postId },
             update: {},
           });
         } else {
           if (existingLike) {
-            await tx.like.delete({
-              where: {
-                id: existingLike.id,
-              },
-            });
+            await tx.like.delete({ where: { id: existingLike.id } });
           }
         }
 
-        // Get final state
         const finalLikes = await tx.like.findMany({
           where: { postId },
           select: { userId: true },
@@ -122,19 +190,17 @@ async function performLikeOperation(
 
         return {
           isLiked: targetLikeState,
-          likeUserIds: finalLikes.map((like) => like.userId),
+          likeUserIds: finalLikes.map((l) => l.userId),
           likeCount: finalLikes.length,
         };
       },
       {
         isolationLevel: "Serializable",
-        maxWait: 5000, // 5 seconds
-        timeout: 10000, // 10 seconds
+        maxWait: 5000,
+        timeout: 10000,
       }
     );
 
-    // Revalidate caches after successful transaction
-    // Use Promise.all to revalidate in parallel
     await Promise.all([
       revalidateTag("feed-posts"),
       revalidateTag("profile-posts"),
@@ -142,51 +208,27 @@ async function performLikeOperation(
       revalidatePath("/", "layout"),
     ]);
 
-    return {
-      success: true,
-      ...result,
-    };
+    return { success: true, ...result };
   } catch (err: any) {
     console.error("Like operation error:", err);
-
-    // Handle specific Prisma errors
     if (err.code === "P2034") {
-      // Transaction conflict - retry might help
       return {
         success: false,
-        error: "Operation conflict, please try again",
+        error: "Conflict, try again",
         likeUserIds: [],
         likeCount: 0,
       };
     }
-
-    // Try to get current state for recovery
-    try {
-      const currentLikes = await prisma.like.findMany({
-        where: { postId },
-        select: { userId: true },
-      });
-
-      return {
-        success: false,
-        error: err.message || "Like operation failed",
-        likeUserIds: currentLikes.map((like) => like.userId),
-        likeCount: currentLikes.length,
-        isLiked: currentLikes.some((like) => like.userId === currentUserId),
-      };
-    } catch (fallbackErr) {
-      return {
-        success: false,
-        error: "Database error",
-        likeUserIds: [],
-        likeCount: 0,
-        isLiked: false,
-      };
-    }
+    return {
+      success: false,
+      error: "Database error",
+      likeUserIds: [],
+      likeCount: 0,
+      isLiked: false,
+    };
   }
 }
 
-// Optional: Add a function to get like status for multiple posts efficiently
 export const getLikeStatuses = async (postIds: number[]) => {
   const user = await currentUser();
   if (!user?.id) return {};
@@ -207,7 +249,6 @@ export const getLikeStatuses = async (postIds: number[]) => {
       return acc;
     }, {} as Record<number, boolean>);
   } catch (error) {
-    console.error("Error fetching like statuses:", error);
     return {};
   }
 };
