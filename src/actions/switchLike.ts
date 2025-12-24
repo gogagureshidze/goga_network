@@ -7,13 +7,8 @@ import webpush from "web-push";
 
 // 1. Configure Web Push with logging
 console.log("🔑 Initializing VAPID configuration...");
-console.log(
-  "🔑 Public Key exists:",
-  !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-);
-console.log("🔑 Private Key exists:", !!process.env.VAPID_PRIVATE_KEY);
-console.log("🔑 Subject:", process.env.VAPID_SUBJECT);
 
+// Verify keys exist (without logging values)
 if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT || "mailto:noreply@goganetwork.com",
@@ -25,7 +20,7 @@ if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   console.error("❌ VAPID keys are missing! Notifications will not work.");
 }
 
-// In-memory lock
+// In-memory lock to prevent spam-clicking
 const likeLocks = new Map<string, Promise<any>>();
 
 export const switchLike = async (postId: number, shouldLike?: boolean) => {
@@ -43,7 +38,7 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
 
   const lockKey = `${currentUserId}-${postId}`;
 
-  // Wait for existing lock
+  // Wait for existing lock if user is spamming the button
   if (likeLocks.has(lockKey)) {
     try {
       await likeLocks.get(lockKey);
@@ -69,10 +64,14 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
       console.log("❤️ Like successful, triggering notification...");
       console.log("❤️ Liker:", likerName, "Post:", postId);
 
-      // Fire and forget (don't await) so the UI stays fast
-      sendLikeNotification(currentUserId, likerName, postId).catch((err) =>
-        console.error("❌ Background notification failed:", err)
-      );
+      // 🚨 CRITICAL FIX: You MUST 'await' this.
+      // In Next.js Server Actions, if you don't await, the server process
+      // dies before the notification is sent to Apple/Google.
+      try {
+        await sendLikeNotification(currentUserId, likerName, postId);
+      } catch (err) {
+        console.error("❌ Notification failed (non-blocking error):", err);
+      }
     }
 
     return result;
@@ -91,26 +90,17 @@ async function sendLikeNotification(
 ) {
   console.log("\n🔔 ========== NOTIFICATION FLOW START ==========");
   console.log("🔔 Liker ID:", likerId);
-  console.log("🔔 Liker Name:", likerName);
   console.log("🔔 Post ID:", postId);
 
   try {
     // A. Find the post to get the author's ID
-    console.log("🔔 Step 1: Finding post in database...");
     const post = await prisma.post.findUnique({
       where: { id: postId },
       select: {
-        userId: true, // IMPORTANT: Change to 'authorId' if your schema uses that
-        // If you get an error here, check your schema.prisma Post model
+        userId: true,
       },
     });
 
-    console.log("🔔 Post found:", post ? "YES" : "NO");
-    if (post) {
-      console.log("🔔 Post author ID:", post.userId);
-    }
-
-    // B. Stop if post missing or user liked their own post
     if (!post) {
       console.log("❌ Post not found! Notification cancelled.");
       return;
@@ -121,29 +111,19 @@ async function sendLikeNotification(
       return;
     }
 
-    // C. Get author's subscriptions
-    console.log("🔔 Step 2: Getting subscriptions for user:", post.userId);
+    // B. Get author's subscriptions
     const subscriptions = await prisma.pushSubscription.findMany({
       where: { userId: post.userId },
     });
 
-    console.log("🔔 Subscriptions found:", subscriptions.length);
+    console.log(`🔔 Found ${subscriptions.length} subscription(s) for author.`);
 
     if (subscriptions.length === 0) {
       console.log("ℹ️ User has not enabled notifications. Skipping.");
       return;
     }
 
-    // Log subscription details (first 50 chars of endpoint for privacy)
-    subscriptions.forEach((sub, idx) => {
-      console.log(`🔔 Subscription ${idx + 1}:`, {
-        id: sub.id,
-        endpoint: sub.endpoint.substring(0, 50) + "...",
-        createdAt: sub.createdAt,
-      });
-    });
-
-    // D. Prepare payload
+    // C. Prepare payload
     const payload = JSON.stringify({
       title: "New Like",
       body: `${likerName} liked your post!`,
@@ -152,18 +132,8 @@ async function sendLikeNotification(
       badge: "/icons/icon-96x96.png",
     });
 
-    console.log("🔔 Step 3: Prepared payload:", payload);
-
-    // E. Send to all user's devices
-    console.log(
-      "🔔 Step 4: Sending notifications to",
-      subscriptions.length,
-      "device(s)..."
-    );
-
+    // D. Send to all user's devices
     const notifications = subscriptions.map((sub, index) => {
-      console.log(`📤 Sending to device ${index + 1}...`);
-
       return webpush
         .sendNotification(
           {
@@ -174,27 +144,21 @@ async function sendLikeNotification(
             },
           },
           payload,
-            {
-      TTL: 60, // Keep message alive for 60 seconds if device is offline
-      headers: {
-        "Urgency": "high", // 🔴 REQUIRED for iOS to wake up in background
-      },
+          // 🚨 CRITICAL FIX: Headers for iOS
+          {
+            TTL: 60,
+            headers: {
+              Urgency: "high", // Required for iPhone to wake up
+            },
           }
         )
         .then(() => {
-          console.log(
-            `✅ Device ${index + 1}: Notification sent successfully!`
-          );
+          console.log(`✅ Device ${index + 1}: Notification sent!`);
         })
         .catch(async (err) => {
-          console.error(`❌ Device ${index + 1}: Failed to send`);
-          console.error("Error details:", {
-            statusCode: err.statusCode,
-            body: err.body,
-            message: err.message,
-          });
+          console.error(`❌ Device ${index + 1}: Failed`, err.statusCode);
 
-          // Cleanup invalid subscriptions
+          // Cleanup invalid subscriptions (410 = Gone, 404 = Not Found)
           if (err.statusCode === 410 || err.statusCode === 404) {
             console.log(`🗑️ Removing stale subscription ${sub.id}`);
             await prisma.pushSubscription.delete({ where: { id: sub.id } });
@@ -202,16 +166,12 @@ async function sendLikeNotification(
         });
     });
 
+    // Wait for all notifications to attempt sending
     await Promise.all(notifications);
     console.log("🔔 ========== NOTIFICATION FLOW END ==========\n");
   } catch (error) {
     console.error("❌ ========== NOTIFICATION FLOW ERROR ==========");
-    console.error("Fatal error in notification flow:", error);
-    console.error(
-      "Stack trace:",
-      error instanceof Error ? error.stack : "No stack trace"
-    );
-    console.error("=================================================\n");
+    console.error(error);
   }
 }
 
@@ -221,20 +181,14 @@ export const testNotification = async () => {
 
   const user = await currentUser();
   if (!user?.id) {
-    console.log("❌ User not authenticated");
     return { error: "Not authenticated" };
   }
-
-  console.log("🧪 Testing for user:", user.id);
 
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { userId: user.id },
   });
 
-  console.log("🧪 Found subscriptions:", subscriptions.length);
-
   if (subscriptions.length === 0) {
-    console.log("❌ No subscriptions found for this user");
     return { error: "No subscriptions found. Enable notifications first!" };
   }
 
@@ -246,7 +200,6 @@ export const testNotification = async () => {
   });
 
   try {
-    console.log("🧪 Sending test notification...");
     await webpush.sendNotification(
       {
         endpoint: subscriptions[0].endpoint,
@@ -255,15 +208,20 @@ export const testNotification = async () => {
           auth: subscriptions[0].auth,
         },
       },
-      payload
+      payload,
+      // 🚨 ALSO ADD HEADERS HERE FOR TESTING
+      {
+        TTL: 60,
+        headers: {
+          Urgency: "high",
+        },
+      }
     );
 
     console.log("✅ Test notification sent successfully!");
-    console.log("🧪 ========== MANUAL TEST END ==========\n");
     return { success: true, message: "Test notification sent!" };
   } catch (error: any) {
     console.error("❌ Test failed:", error);
-    console.log("🧪 ========== MANUAL TEST END ==========\n");
     return { error: error.message, details: error.body };
   }
 };
