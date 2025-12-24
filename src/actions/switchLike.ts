@@ -173,7 +173,13 @@ async function sendLikeNotification(
               auth: sub.auth,
             },
           },
-          payload
+          payload,
+            {
+      TTL: 60, // Keep message alive for 60 seconds if device is offline
+      headers: {
+        "Urgency": "high", // 🔴 REQUIRED for iOS to wake up in background
+      },
+          }
         )
         .then(() => {
           console.log(
