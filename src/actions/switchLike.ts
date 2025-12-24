@@ -5,13 +5,24 @@ import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import webpush from "web-push";
 
-// 1. Configure Web Push (Moved outside to run once)
+// 1. Configure Web Push with logging
+console.log("🔑 Initializing VAPID configuration...");
+console.log(
+  "🔑 Public Key exists:",
+  !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+);
+console.log("🔑 Private Key exists:", !!process.env.VAPID_PRIVATE_KEY);
+console.log("🔑 Subject:", process.env.VAPID_SUBJECT);
+
 if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT || "mailto:noreply@goganetwork.com",
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
     process.env.VAPID_PRIVATE_KEY
   );
+  console.log("✅ VAPID configured successfully");
+} else {
+  console.error("❌ VAPID keys are missing! Notifications will not work.");
 }
 
 // In-memory lock
@@ -51,20 +62,18 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
   try {
     const result = await operationPromise;
 
-    // ---------------------------------------------------------
-    // 2. TRIGGER PUSH NOTIFICATION
-    // ---------------------------------------------------------
+    // Trigger push notification
     if (result.success && result.isLiked) {
-      // Determine the best name to show
-      // Tries: "goga_dev" -> "Goga" -> "Someone"
       const likerName = user.username || user.firstName || "Someone";
+
+      console.log("❤️ Like successful, triggering notification...");
+      console.log("❤️ Liker:", likerName, "Post:", postId);
 
       // Fire and forget (don't await) so the UI stays fast
       sendLikeNotification(currentUserId, likerName, postId).catch((err) =>
-        console.error("Background notification failed:", err)
+        console.error("❌ Background notification failed:", err)
       );
     }
-    // ---------------------------------------------------------
 
     return result;
   } finally {
@@ -73,42 +82,89 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
 };
 
 /**
- * Helper to send the notification
+ * Helper to send the notification with detailed logging
  */
 async function sendLikeNotification(
   likerId: string,
   likerName: string,
   postId: number
 ) {
+  console.log("\n🔔 ========== NOTIFICATION FLOW START ==========");
+  console.log("🔔 Liker ID:", likerId);
+  console.log("🔔 Liker Name:", likerName);
+  console.log("🔔 Post ID:", postId);
+
   try {
     // A. Find the post to get the author's ID
+    console.log("🔔 Step 1: Finding post in database...");
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      select: { userId: true }, // Ensure this matches your schema (authorId vs userId)
+      select: {
+        userId: true, // IMPORTANT: Change to 'authorId' if your schema uses that
+        // If you get an error here, check your schema.prisma Post model
+      },
     });
 
+    console.log("🔔 Post found:", post ? "YES" : "NO");
+    if (post) {
+      console.log("🔔 Post author ID:", post.userId);
+    }
+
     // B. Stop if post missing or user liked their own post
-    if (!post || post.userId === likerId) return;
+    if (!post) {
+      console.log("❌ Post not found! Notification cancelled.");
+      return;
+    }
+
+    if (post.userId === likerId) {
+      console.log("ℹ️ User liked their own post. No notification needed.");
+      return;
+    }
 
     // C. Get author's subscriptions
+    console.log("🔔 Step 2: Getting subscriptions for user:", post.userId);
     const subscriptions = await prisma.pushSubscription.findMany({
       where: { userId: post.userId },
     });
 
-    if (subscriptions.length === 0) return;
+    console.log("🔔 Subscriptions found:", subscriptions.length);
 
-    // D. Prepare payload with the dynamic name
-    const payload = JSON.stringify({
-      title: "New Like", // Title of the popup
-      body: `${likerName} liked your post!`, // The message body
-      url: `/post/${postId}`, // Clicking opens the post
-      icon: "/icons/icon-192x192.png",
-      badge: "/icons/icon-96x96.png", // Small icon for Android status bar
+    if (subscriptions.length === 0) {
+      console.log("ℹ️ User has not enabled notifications. Skipping.");
+      return;
+    }
+
+    // Log subscription details (first 50 chars of endpoint for privacy)
+    subscriptions.forEach((sub, idx) => {
+      console.log(`🔔 Subscription ${idx + 1}:`, {
+        id: sub.id,
+        endpoint: sub.endpoint.substring(0, 50) + "...",
+        createdAt: sub.createdAt,
+      });
     });
 
+    // D. Prepare payload
+    const payload = JSON.stringify({
+      title: "New Like",
+      body: `${likerName} liked your post!`,
+      url: `/post/${postId}`,
+      icon: "/icons/icon-192x192.png",
+      badge: "/icons/icon-96x96.png",
+    });
+
+    console.log("🔔 Step 3: Prepared payload:", payload);
+
     // E. Send to all user's devices
-    const notifications = subscriptions.map((sub) =>
-      webpush
+    console.log(
+      "🔔 Step 4: Sending notifications to",
+      subscriptions.length,
+      "device(s)..."
+    );
+
+    const notifications = subscriptions.map((sub, index) => {
+      console.log(`📤 Sending to device ${index + 1}...`);
+
+      return webpush
         .sendNotification(
           {
             endpoint: sub.endpoint,
@@ -119,22 +175,92 @@ async function sendLikeNotification(
           },
           payload
         )
+        .then(() => {
+          console.log(
+            `✅ Device ${index + 1}: Notification sent successfully!`
+          );
+        })
         .catch(async (err) => {
+          console.error(`❌ Device ${index + 1}: Failed to send`);
+          console.error("Error details:", {
+            statusCode: err.statusCode,
+            body: err.body,
+            message: err.message,
+          });
+
           // Cleanup invalid subscriptions
           if (err.statusCode === 410 || err.statusCode === 404) {
-            console.log(`Cleaning up stale subscription: ${sub.id}`);
+            console.log(`🗑️ Removing stale subscription ${sub.id}`);
             await prisma.pushSubscription.delete({ where: { id: sub.id } });
-          } else {
-            console.error("Error sending push notification:", err);
           }
-        })
-    );
+        });
+    });
 
     await Promise.all(notifications);
+    console.log("🔔 ========== NOTIFICATION FLOW END ==========\n");
   } catch (error) {
+    console.error("❌ ========== NOTIFICATION FLOW ERROR ==========");
     console.error("Fatal error in notification flow:", error);
+    console.error(
+      "Stack trace:",
+      error instanceof Error ? error.stack : "No stack trace"
+    );
+    console.error("=================================================\n");
   }
 }
+
+// TEST FUNCTION - Remove after debugging
+export const testNotification = async () => {
+  console.log("\n🧪 ========== MANUAL TEST START ==========");
+
+  const user = await currentUser();
+  if (!user?.id) {
+    console.log("❌ User not authenticated");
+    return { error: "Not authenticated" };
+  }
+
+  console.log("🧪 Testing for user:", user.id);
+
+  const subscriptions = await prisma.pushSubscription.findMany({
+    where: { userId: user.id },
+  });
+
+  console.log("🧪 Found subscriptions:", subscriptions.length);
+
+  if (subscriptions.length === 0) {
+    console.log("❌ No subscriptions found for this user");
+    return { error: "No subscriptions found. Enable notifications first!" };
+  }
+
+  const payload = JSON.stringify({
+    title: "🧪 Test Notification",
+    body: "If you see this, notifications are working!",
+    url: "/",
+    icon: "/icons/icon-192x192.png",
+  });
+
+  try {
+    console.log("🧪 Sending test notification...");
+    await webpush.sendNotification(
+      {
+        endpoint: subscriptions[0].endpoint,
+        keys: {
+          p256dh: subscriptions[0].p256dh,
+          auth: subscriptions[0].auth,
+        },
+      },
+      payload
+    );
+
+    console.log("✅ Test notification sent successfully!");
+    console.log("🧪 ========== MANUAL TEST END ==========\n");
+    return { success: true, message: "Test notification sent!" };
+  } catch (error: any) {
+    console.error("❌ Test failed:", error);
+    console.log("🧪 ========== MANUAL TEST END ==========\n");
+    return { error: error.message, details: error.body };
+  }
+};
 
 async function performLikeOperation(
   currentUserId: string,
