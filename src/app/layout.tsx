@@ -13,6 +13,7 @@ import { UserProvider } from "@/contexts/UserContext";
 import ActivityTracker from "@/components/ActivityTracker";
 import { updateLastActive } from "@/actions/activityActions";
 import { Providers } from "./themeProvider";
+import PWA from "@/components/pwa";
 
 const funnel_display = Funnel_Display({
   subsets: ["latin"],
@@ -288,31 +289,32 @@ export default async function RootLayout({
       <body className="font-sans bg-rose-50 dark:bg-gray-900 transition-colors">
         <Providers>
           <Provider>
+            <PWA /> {/* Add this line - Register service worker first */}
             <NotificationManager />
-              <UserProvider>
-                <ClickSpark
-                  sparkColor="#e65800ff"
-                  sparkSize={10}
-                  sparkRadius={15}
-                  sparkCount={8}
-                  duration={500}
-                >
-                  {/* Navbar */}
-                  <div className="w-full px-4 text-orange-50 bg-rose-800 dark:bg-gray-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64 transition-colors">
-                    <Navbar users={users} />
-                  </div>
+            <UserProvider>
+              <ClickSpark
+                sparkColor="#e65800ff"
+                sparkSize={10}
+                sparkRadius={15}
+                sparkCount={8}
+                duration={500}
+              >
+                {/* Navbar */}
+                <div className="w-full px-4 text-orange-50 bg-rose-800 dark:bg-gray-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64 transition-colors">
+                  <Navbar users={users} />
+                </div>
 
-                  {/* Page content area - for other pages */}
-                  <div className="px-4 md:px-8 lg:px-16 xl:px-32 2xl:px-64 pb-4 text-gray-800 dark:text-gray-200 bg-rose-50 dark:bg-gray-900 transition-colors">
-                    <GlobalLoader />
-                    {users && (
-                      <ActivityTracker updateLastActive={updateLastActive} />
-                    )}
+                {/* Page content area - for other pages */}
+                <div className="px-4 md:px-8 lg:px-16 xl:px-32 2xl:px-64 pb-4 text-gray-800 dark:text-gray-200 bg-rose-50 dark:bg-gray-900 transition-colors">
+                  <GlobalLoader />
+                  {users && (
+                    <ActivityTracker updateLastActive={updateLastActive} />
+                  )}
 
-                    <PageTransition>{children}</PageTransition>
-                  </div>
-                </ClickSpark>
-              </UserProvider>
+                  <PageTransition>{children}</PageTransition>
+                </div>
+              </ClickSpark>
+            </UserProvider>
           </Provider>
         </Providers>
       </body>

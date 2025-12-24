@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { subscribeUser } from "@/actions/subscribeAction";
-import { BellRing, X } from "lucide-react"; // Make sure you have lucide-react installed
+import { BellRing, X } from "lucide-react";
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -23,29 +23,37 @@ export default function NotificationManager() {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
   useEffect(() => {
     async function checkStatus() {
+      // Check if dismissed in this session
+      const dismissed = sessionStorage.getItem("notif-dismissed");
+      if (dismissed) {
+        setIsDismissed(true);
+        return;
+      }
+
       if ("serviceWorker" in navigator && "PushManager" in window) {
         setIsSupported(true);
 
-        // 1. Register the worker immediately (this is silent and safe)
-        const register = await navigator.serviceWorker.register(
-          "/custom-sw.js",
-          {
-            scope: "/",
+        try {
+          // Wait for service worker to be ready (it should be registered by PWA component)
+          const registration = await navigator.serviceWorker.ready;
+
+          // Check if already subscribed
+          const subscription = await registration.pushManager.getSubscription();
+
+          if (subscription) {
+            setIsSubscribed(true);
+            // Verify subscription is saved in DB
+            await subscribeUser(JSON.parse(JSON.stringify(subscription)));
+          } else {
+            // Show prompt after a short delay for better UX
+            setTimeout(() => setShowPrompt(true), 2000);
           }
-        );
-        await navigator.serviceWorker.ready;
-
-        // 2. Check if already subscribed
-        const subscription = await register.pushManager.getSubscription();
-
-        if (subscription) {
-          setIsSubscribed(true);
-        } else {
-          // If not subscribed, show the button
-          setShowPrompt(true);
+        } catch (error) {
+          console.error("Error checking notification status:", error);
         }
       }
     }
@@ -54,37 +62,67 @@ export default function NotificationManager() {
 
   async function handleSubscribe() {
     try {
-      const register = await navigator.serviceWorker.ready;
+      const registration = await navigator.serviceWorker.ready;
 
-      // 3. This specific line triggers the iOS popup
-      const sub = await register.pushManager.subscribe({
+      // Request permission explicitly (important for iOS)
+      const permission = await Notification.requestPermission();
+
+      if (permission !== "granted") {
+        alert("Please allow notifications in your browser settings.");
+        return;
+      }
+
+      // Subscribe to push notifications
+      const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(
           process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
         ),
       });
 
-      // 4. Save to your DB
-      await subscribeUser(JSON.parse(JSON.stringify(sub)));
+      // Save to database
+      await subscribeUser(JSON.parse(JSON.stringify(subscription)));
 
       setIsSubscribed(true);
       setShowPrompt(false);
-      alert("Success! You will now receive notifications.");
+
+      // Show a test notification
+      registration.showNotification("Notifications Enabled! 🎉", {
+        body: "You'll now receive updates when someone likes your posts.",
+        icon: "/icons/icon-192x192.png",
+        badge: "/icons/icon-96x96.png",
+      });
     } catch (error) {
       console.error("Subscription failed:", error);
-      alert(
-        "Could not enable notifications. Make sure you added the app to Home Screen!"
-      );
+
+      // Specific error messages
+      if (error instanceof DOMException) {
+        if (error.name === "NotAllowedError") {
+          alert(
+            "Notifications were blocked. Please enable them in your browser settings."
+          );
+        } else if (error.name === "NotSupportedError") {
+          alert("Push notifications are not supported on this device/browser.");
+        }
+      } else {
+        alert("Could not enable notifications. Please try again.");
+      }
     }
   }
 
-  // Don't render anything if not supported or already subscribed
-  if (!isSupported || isSubscribed || !showPrompt) {
+  function handleDismiss() {
+    setShowPrompt(false);
+    setIsDismissed(true);
+    sessionStorage.setItem("notif-dismissed", "true");
+  }
+
+  // Don't render if not supported, already subscribed, dismissed, or shouldn't show
+  if (!isSupported || isSubscribed || !showPrompt || isDismissed) {
     return null;
   }
 
   return (
-    <div className="fixed bottom-6 left-4 right-4 z-[9999] flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-2xl border border-rose-100 dark:border-gray-700 animate-in slide-in-from-bottom-5">
+    <div className="fixed bottom-6 left-4 right-4 z-[9999] flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-2xl border border-rose-100 dark:border-gray-700 animate-in slide-in-from-bottom-5 max-w-md mx-auto">
       <div className="flex items-center gap-3">
         <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-full">
           <BellRing className="text-rose-600 dark:text-rose-400" size={24} />
@@ -94,15 +132,16 @@ export default function NotificationManager() {
             Enable Notifications
           </h4>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Stay updated with likes & comments
+            Get notified when someone likes your posts
           </p>
         </div>
       </div>
 
       <div className="flex gap-2">
         <button
-          onClick={() => setShowPrompt(false)}
+          onClick={handleDismiss}
           className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          aria-label="Dismiss"
         >
           <X size={20} />
         </button>
