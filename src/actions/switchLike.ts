@@ -5,21 +5,6 @@ import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import webpush from "web-push";
 
-// 1. Configure Web Push with logging
-console.log("🔑 Initializing VAPID configuration...");
-
-// Verify keys exist (without logging values)
-if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || "mailto:noreply@goganetwork.com",
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
-  console.log("✅ VAPID configured successfully");
-} else {
-  console.error("❌ VAPID keys are missing! Notifications will not work.");
-}
-
 // In-memory lock to prevent spam-clicking
 const likeLocks = new Map<string, Promise<any>>();
 
@@ -61,12 +46,10 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
     if (result.success && result.isLiked) {
       const likerName = user.username || user.firstName || "Someone";
 
-      console.log("❤️ Like successful, triggering notification...");
-      console.log("❤️ Liker:", likerName, "Post:", postId);
+      console.log("❤️ Like successful. Starting notification process...");
 
-      // 🚨 CRITICAL FIX: You MUST 'await' this.
-      // In Next.js Server Actions, if you don't await, the server process
-      // dies before the notification is sent to Apple/Google.
+      // 🚨 CRITICAL FIX: We use 'await' here.
+      // If we don't await, Next.js kills the server process immediately.
       try {
         await sendLikeNotification(currentUserId, likerName, postId);
       } catch (err) {
@@ -81,7 +64,7 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
 };
 
 /**
- * Helper to send the notification with detailed logging
+ * Helper to send the notification
  */
 async function sendLikeNotification(
   likerId: string,
@@ -89,16 +72,27 @@ async function sendLikeNotification(
   postId: number
 ) {
   console.log("\n🔔 ========== NOTIFICATION FLOW START ==========");
-  console.log("🔔 Liker ID:", likerId);
-  console.log("🔔 Post ID:", postId);
+
+  // 1. Configure VAPID inside the function to ensure env vars are loaded
+  if (
+    !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
+    !process.env.VAPID_PRIVATE_KEY
+  ) {
+    console.error("❌ VAPID Keys are missing in .env file");
+    return;
+  }
+
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || "mailto:noreply@goganetwork.com",
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
 
   try {
-    // A. Find the post to get the author's ID
+    // 2. Find the post to get the author's ID
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      select: {
-        userId: true,
-      },
+      select: { userId: true },
     });
 
     if (!post) {
@@ -106,12 +100,13 @@ async function sendLikeNotification(
       return;
     }
 
+    // 3. Stop if user liked their own post
     if (post.userId === likerId) {
       console.log("ℹ️ User liked their own post. No notification needed.");
       return;
     }
 
-    // B. Get author's subscriptions
+    // 4. Get author's subscriptions
     const subscriptions = await prisma.pushSubscription.findMany({
       where: { userId: post.userId },
     });
@@ -123,7 +118,7 @@ async function sendLikeNotification(
       return;
     }
 
-    // C. Prepare payload
+    // 5. Prepare payload
     const payload = JSON.stringify({
       title: "New Like",
       body: `${likerName} liked your post!`,
@@ -132,7 +127,7 @@ async function sendLikeNotification(
       badge: "/icons/icon-96x96.png",
     });
 
-    // D. Send to all user's devices
+    // 6. Send to all user's devices with iOS HEADERS
     const notifications = subscriptions.map((sub, index) => {
       return webpush
         .sendNotification(
@@ -146,9 +141,9 @@ async function sendLikeNotification(
           payload,
           // 🚨 CRITICAL FIX: Headers for iOS
           {
-            TTL: 60,
+            TTL: 60, // Message lives for 60 seconds
             headers: {
-              Urgency: "high", // Required for iPhone to wake up
+              Urgency: "high", // 🔴 REQUIRED for iPhone to wake up
             },
           }
         )
@@ -156,7 +151,7 @@ async function sendLikeNotification(
           console.log(`✅ Device ${index + 1}: Notification sent!`);
         })
         .catch(async (err) => {
-          console.error(`❌ Device ${index + 1}: Failed`, err.statusCode);
+          console.error(`❌ Device ${index + 1} Failed: ${err.statusCode}`);
 
           // Cleanup invalid subscriptions (410 = Gone, 404 = Not Found)
           if (err.statusCode === 410 || err.statusCode === 404) {
@@ -182,6 +177,18 @@ export const testNotification = async () => {
   const user = await currentUser();
   if (!user?.id) {
     return { error: "Not authenticated" };
+  }
+
+  // Configure VAPID for test function too
+  if (
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
+    process.env.VAPID_PRIVATE_KEY
+  ) {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || "mailto:noreply@goganetwork.com",
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
   }
 
   const subscriptions = await prisma.pushSubscription.findMany({
