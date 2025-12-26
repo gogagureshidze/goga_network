@@ -1,6 +1,3 @@
-
-import withPWAInit from "@ducanh2912/next-pwa";
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
@@ -21,14 +18,4 @@ const nextConfig = {
   },
 };
 
-// 👇 Initialize the wrapper
-const withPWA = withPWAInit({
-  dest: "public",
-  register: true,
-  skipWaiting: true,
-  disable: false, // Enable in dev to generate sw.js
-  importScripts: ["/custom-sw.js"], // Your custom logic
-});
-
-// export default withPWA(nextConfig);
 export default nextConfig;

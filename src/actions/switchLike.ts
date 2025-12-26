@@ -5,6 +5,22 @@ import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import webpush from "web-push";
 
+// Configure VAPID once at module level
+if (
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
+  process.env.VAPID_PRIVATE_KEY &&
+  process.env.VAPID_SUBJECT
+) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT,
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+  console.log("✅ VAPID configured successfully");
+} else {
+  console.error("❌ Missing VAPID configuration in environment variables");
+}
+
 // In-memory lock to prevent spam-clicking
 const likeLocks = new Map<string, Promise<any>>();
 
@@ -42,19 +58,16 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
   try {
     const result = await operationPromise;
 
-    // Trigger push notification
+    // 🔥 CRITICAL: Send notification if like was added
     if (result.success && result.isLiked) {
       const likerName = user.username || user.firstName || "Someone";
 
-      console.log("❤️ Like successful. Starting notification process...");
+      console.log("❤️ Like successful, sending notification...");
 
-      // 🚨 CRITICAL FIX: We use 'await' here.
-      // If we don't await, Next.js kills the server process immediately.
-      try {
-        await sendLikeNotification(currentUserId, likerName, postId);
-      } catch (err) {
-        console.error("❌ Notification failed (non-blocking error):", err);
-      }
+      // Send notification without blocking the response
+      sendLikeNotification(currentUserId, likerName, postId).catch((err) => {
+        console.error("❌ Notification error (non-blocking):", err);
+      });
     }
 
     return result;
@@ -64,7 +77,7 @@ export const switchLike = async (postId: number, shouldLike?: boolean) => {
 };
 
 /**
- * Helper to send the notification
+ * Send push notification to post author
  */
 async function sendLikeNotification(
   likerId: string,
@@ -72,65 +85,59 @@ async function sendLikeNotification(
   postId: number
 ) {
   console.log("\n🔔 ========== NOTIFICATION FLOW START ==========");
-
-  // 1. Configure VAPID inside the function to ensure env vars are loaded
-  if (
-    !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
-    !process.env.VAPID_PRIVATE_KEY
-  ) {
-    console.error("❌ VAPID Keys are missing in .env file");
-    return;
-  }
-
-  webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || "mailto:noreply@goganetwork.com",
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
+  console.log(`Liker: ${likerName} (${likerId})`);
+  console.log(`Post ID: ${postId}`);
 
   try {
-    // 2. Find the post to get the author's ID
+    // 1. Find the post and its author
     const post = await prisma.post.findUnique({
       where: { id: postId },
       select: { userId: true },
     });
 
     if (!post) {
-      console.log("❌ Post not found! Notification cancelled.");
+      console.log("❌ Post not found");
       return;
     }
 
-    // 3. Stop if user liked their own post
+    console.log(`📝 Post author: ${post.userId}`);
+
+    // 2. Don't notify if user liked their own post
     if (post.userId === likerId) {
-      console.log("ℹ️ User liked their own post. No notification needed.");
+      console.log("ℹ️ User liked their own post, skipping notification");
       return;
     }
 
-    // 4. Get author's subscriptions
+    // 3. Get all push subscriptions for the post author
     const subscriptions = await prisma.pushSubscription.findMany({
       where: { userId: post.userId },
     });
 
-    console.log(`🔔 Found ${subscriptions.length} subscription(s) for author.`);
+    console.log(`📱 Found ${subscriptions.length} subscription(s)`);
 
     if (subscriptions.length === 0) {
-      console.log("ℹ️ User has not enabled notifications. Skipping.");
+      console.log("ℹ️ No subscriptions found for this user");
       return;
     }
 
-    // 5. Prepare payload
+    // 4. Prepare notification payload
     const payload = JSON.stringify({
-      title: "New Like",
+      title: "New Like ❤️",
       body: `${likerName} liked your post!`,
       url: `/post/${postId}`,
       icon: "/icons/icon-192x192.png",
       badge: "/icons/icon-96x96.png",
+      tag: `post-like-${postId}`,
     });
 
-    // 6. Send to all user's devices with iOS HEADERS
-    const notifications = subscriptions.map((sub, index) => {
-      return webpush
-        .sendNotification(
+    console.log("📦 Payload:", payload);
+
+    // 5. Send to all devices
+    const sendPromises = subscriptions.map(async (sub, index) => {
+      console.log(`📤 Sending to device ${index + 1}/${subscriptions.length}`);
+
+      try {
+        const result = await webpush.sendNotification(
           {
             endpoint: sub.endpoint,
             keys: {
@@ -139,38 +146,57 @@ async function sendLikeNotification(
             },
           },
           payload,
-          // 🚨 CRITICAL FIX: Headers for iOS
           {
-            TTL: 60, // Message lives for 60 seconds
-            headers: {
-              Urgency: "high", // 🔴 REQUIRED for iPhone to wake up
-            },
+            TTL: 60,
+            urgency: "high", // iOS needs this
+            topic: "post-likes",
           }
-        )
-        .then(() => {
-          console.log(`✅ Device ${index + 1}: Notification sent!`);
-        })
-        .catch(async (err) => {
-          console.error(`❌ Device ${index + 1} Failed: ${err.statusCode}`);
+        );
 
-          // Cleanup invalid subscriptions (410 = Gone, 404 = Not Found)
-          if (err.statusCode === 410 || err.statusCode === 404) {
-            console.log(`🗑️ Removing stale subscription ${sub.id}`);
-            await prisma.pushSubscription.delete({ where: { id: sub.id } });
-          }
-        });
+        console.log(
+          `✅ Device ${index + 1}: Sent (Status: ${result.statusCode})`
+        );
+        return { success: true, index };
+      } catch (err: any) {
+        console.error(`❌ Device ${index + 1}: Failed`);
+        console.error(`   Error: ${err.message}`);
+        console.error(`   Status: ${err.statusCode}`);
+        console.error(`   Body: ${err.body}`);
+
+        // Remove invalid subscriptions (410 = Gone, 404 = Not Found)
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          console.log(`🗑️ Removing stale subscription ${sub.id}`);
+          await prisma.pushSubscription
+            .delete({
+              where: { id: sub.id },
+            })
+            .catch((e) => console.error("Failed to delete subscription:", e));
+        }
+
+        return { success: false, index, error: err.message };
+      }
     });
 
-    // Wait for all notifications to attempt sending
-    await Promise.all(notifications);
+    // Wait for all to complete
+    const results = await Promise.allSettled(sendPromises);
+
+    const successful = results.filter((r) => r.status === "fulfilled").length;
+    console.log(
+      `✅ ${successful}/${subscriptions.length} notifications sent successfully`
+    );
+
     console.log("🔔 ========== NOTIFICATION FLOW END ==========\n");
   } catch (error) {
     console.error("❌ ========== NOTIFICATION FLOW ERROR ==========");
     console.error(error);
+    console.error(
+      "Stack:",
+      error instanceof Error ? error.stack : "No stack trace"
+    );
   }
 }
 
-// TEST FUNCTION - Remove after debugging
+// 🧪 TEST FUNCTION
 export const testNotification = async () => {
   console.log("\n🧪 ========== MANUAL TEST START ==========");
 
@@ -179,21 +205,13 @@ export const testNotification = async () => {
     return { error: "Not authenticated" };
   }
 
-  // Configure VAPID for test function too
-  if (
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
-    process.env.VAPID_PRIVATE_KEY
-  ) {
-    webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT || "mailto:noreply@goganetwork.com",
-      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-      process.env.VAPID_PRIVATE_KEY
-    );
-  }
+  console.log(`Testing for user: ${user.id}`);
 
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { userId: user.id },
   });
+
+  console.log(`Found ${subscriptions.length} subscription(s)`);
 
   if (subscriptions.length === 0) {
     return { error: "No subscriptions found. Enable notifications first!" };
@@ -201,13 +219,17 @@ export const testNotification = async () => {
 
   const payload = JSON.stringify({
     title: "🧪 Test Notification",
-    body: "If you see this, notifications are working!",
+    body: "If you see this, push notifications are working!",
     url: "/",
     icon: "/icons/icon-192x192.png",
+    badge: "/icons/icon-96x96.png",
+    tag: "test-notification",
   });
 
   try {
-    await webpush.sendNotification(
+    console.log("📤 Sending test notification...");
+
+    const result = await webpush.sendNotification(
       {
         endpoint: subscriptions[0].endpoint,
         keys: {
@@ -216,20 +238,23 @@ export const testNotification = async () => {
         },
       },
       payload,
-      // 🚨 ALSO ADD HEADERS HERE FOR TESTING
       {
         TTL: 60,
-        headers: {
-          Urgency: "high",
-        },
+        urgency: "high",
+        topic: "test",
       }
     );
 
-    console.log("✅ Test notification sent successfully!");
+    console.log("✅ Test notification sent!");
+    console.log("Status:", result.statusCode);
     return { success: true, message: "Test notification sent!" };
   } catch (error: any) {
     console.error("❌ Test failed:", error);
-    return { error: error.message, details: error.body };
+    return {
+      error: error.message,
+      details: error.body,
+      statusCode: error.statusCode,
+    };
   }
 };
 
@@ -300,10 +325,13 @@ async function performLikeOperation(
 
     await Promise.all([
       // @ts-ignore
+
       revalidateTag("feed-posts"),
       // @ts-ignore
+
       revalidateTag("profile-posts"),
       // @ts-ignore
+
       revalidateTag(`post-${postId}`),
       revalidatePath("/", "layout"),
     ]);
