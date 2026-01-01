@@ -14,6 +14,7 @@ import ActivityTracker from "@/components/ActivityTracker";
 import { updateLastActive } from "@/actions/activityActions";
 import { Providers } from "./themeProvider";
 import PWA from "@/components/pwa";
+import ChristmasSnow from "@/components/Christmas";
 
 const funnel_display = Funnel_Display({
   subsets: ["latin"],
@@ -289,8 +290,12 @@ export default async function RootLayout({
       <body className="font-sans bg-rose-50 dark:bg-gray-900 transition-colors">
         <Providers>
           <Provider>
-            <PWA /> {/* Add this line - Register service worker first */}
+            <PWA />
             <NotificationManager />
+
+            {/* Add Christmas Snow here - it will appear on all pages */}
+            <ChristmasSnow />
+
             <UserProvider>
               <ClickSpark
                 sparkColor="#e65800ff"
@@ -299,12 +304,11 @@ export default async function RootLayout({
                 sparkCount={8}
                 duration={500}
               >
-                {/* Navbar */}
+                {/* Rest of your layout */}
                 <div className="w-full px-4 text-orange-50 bg-rose-800 dark:bg-gray-800 md:px-8 lg:px-16 xl:px-32 2xl:px-64 transition-colors">
                   <Navbar users={users} />
                 </div>
 
-                {/* Page content area - for other pages */}
                 <div className="px-4 md:px-8 lg:px-16 xl:px-32 2xl:px-64 pb-4 text-gray-800 dark:text-gray-200 bg-rose-50 dark:bg-gray-900 transition-colors">
                   <GlobalLoader />
                   {users && (
