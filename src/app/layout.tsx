@@ -88,7 +88,10 @@ export default async function RootLayout({
         {/* PWA primary color */}
         <meta name="theme-color" content="#9f1239" />
         <meta name="background-color" content="#9f1239" />
-
+        <meta
+          name="google-site-verification"
+          content="2qg5y1hj2zhwnF3mRDJ3ZlI6xnB4eDEl7_a4zKWaStE"
+        />
         {/* Apple iOS Meta Tags */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta

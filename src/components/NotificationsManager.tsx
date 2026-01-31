@@ -88,7 +88,7 @@ export default function NotificationManager() {
 
       // Show a test notification
       registration.showNotification("Notifications Enabled! 🎉", {
-        body: "You'll now receive updates when someone likes your posts.",
+        body: "You'll now receive updates via notifications.",
         icon: "/icons/icon-192x192.png",
         badge: "/icons/icon-96x96.png",
       });

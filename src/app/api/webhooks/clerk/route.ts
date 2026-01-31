@@ -52,14 +52,17 @@ export async function POST(req: Request) {
   const { id } = data;
 
   try {
+
     // This is the key: always fetch the latest user from Clerk
     // to ensure the database is in sync regardless of the webhook payload.
     // This pattern works reliably in your environment.
+
     if (type === "user.created" || type === "user.updated") {
       const clerk = await clerkClient();
       const clerkUser = await clerk.users.getUser(id);
 
       // Handle user creation
+
       if (type === "user.created") {
         await prisma.user.create({
           data: {
@@ -104,4 +107,5 @@ export async function POST(req: Request) {
     console.error("❌ Prisma error:", err);
     return new Response("Server error", { status: 500 });
   }
+
 }
