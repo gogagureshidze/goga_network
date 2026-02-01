@@ -297,7 +297,7 @@ export default async function RootLayout({
             <NotificationManager />
 
             {/* Add Christmas Snow here - it will appear on all pages */}
-            <ChristmasSnow />
+            {/* <ChristmasSnow /> */}
 
             <UserProvider>
               <ClickSpark
