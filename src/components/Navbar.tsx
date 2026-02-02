@@ -35,175 +35,6 @@ type User = {
 };
 
 // Santa Hat SVG Component - CLEAN FLAT VERSION
-const SantaHat = ({ className = "w-10 h-10" }: { className?: string }) => (
-  <div className={`pointer-events-none select-none z-20 ${className}`}>
-    <svg
-      viewBox="0 0 100 100"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="origin-[50%_80%] animate-[gentle-sway_3s_ease-in-out_infinite] drop-shadow-lg"
-    >
-      <defs>
-        {/* Gradient for the hat body - deep red with dimension */}
-        <linearGradient id="hatGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#EF4444" />
-          <stop offset="50%" stopColor="#DC2626" />
-          <stop offset="100%" stopColor="#991B1B" />
-        </linearGradient>
-
-        {/* Gradient for pom-pom - soft white glow */}
-        <radialGradient id="pompomGradient" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#FFFFFF" />
-          <stop offset="70%" stopColor="#F9FAFB" />
-          <stop offset="100%" stopColor="#E5E7EB" />
-        </radialGradient>
-
-        {/* Gradient for fur trim - fluffy white effect */}
-        <linearGradient id="furGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#FFFFFF" />
-          <stop offset="50%" stopColor="#F9FAFB" />
-          <stop offset="100%" stopColor="#F3F4F6" />
-        </linearGradient>
-
-        {/* Shadow for depth */}
-        <filter id="shadow">
-          <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.3" />
-        </filter>
-
-        {/* Soft glow for pom-pom */}
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
-          <feMerge>
-            <feMergeNode in="coloredBlur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      {/* Main Hat Body - More detailed shape */}
-      <path
-        d="M20 75 Q 20 50, 30 35 Q 40 20, 55 15 L 80 28 Q 85 32, 88 38 Q 92 50, 90 75 Z"
-        fill="url(#hatGradient)"
-        stroke="#7F1D1D"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        filter="url(#shadow)"
-      />
-
-      {/* Inner shadow detail on hat */}
-      <path
-        d="M25 72 Q 28 55, 35 42 Q 42 30, 52 22"
-        stroke="#B91C1C"
-        strokeWidth="1.5"
-        strokeOpacity="0.4"
-        fill="none"
-        strokeLinecap="round"
-      />
-
-      {/* Highlight on hat */}
-      <path
-        d="M35 40 Q 38 35, 45 32 Q 50 30, 55 28"
-        stroke="#FCA5A5"
-        strokeWidth="2"
-        strokeOpacity="0.5"
-        fill="none"
-        strokeLinecap="round"
-      />
-
-      {/* Fur Trim - Fluffy bottom edge with multiple layers */}
-      <ellipse
-        cx="55"
-        cy="75"
-        rx="38"
-        ry="8"
-        fill="url(#furGradient)"
-        stroke="#D1D5DB"
-        strokeWidth="0.5"
-      />
-
-      {/* Fur trim texture - upper layer */}
-      <ellipse cx="55" cy="73" rx="36" ry="6" fill="#FFFFFF" opacity="0.7" />
-
-      {/* Fur trim bumps for texture */}
-      <circle cx="25" cy="75" r="3.5" fill="#FFFFFF" opacity="0.9" />
-      <circle cx="35" cy="77" r="3" fill="#F9FAFB" opacity="0.8" />
-      <circle cx="45" cy="76" r="3.5" fill="#FFFFFF" opacity="0.9" />
-      <circle cx="55" cy="78" r="3" fill="#F9FAFB" opacity="0.8" />
-      <circle cx="65" cy="76" r="3.5" fill="#FFFFFF" opacity="0.9" />
-      <circle cx="75" cy="77" r="3" fill="#F9FAFB" opacity="0.8" />
-      <circle cx="85" cy="75" r="3.5" fill="#FFFFFF" opacity="0.9" />
-
-      {/* Pom-pom base (smaller circle behind) */}
-      <circle
-        cx="82"
-        cy="30"
-        r="10"
-        fill="url(#pompomGradient)"
-        opacity="0.6"
-        filter="url(#glow)"
-      />
-
-      {/* Main Pom-pom */}
-      <circle
-        cx="80"
-        cy="28"
-        r="9"
-        fill="url(#pompomGradient)"
-        stroke="#E5E7EB"
-        strokeWidth="0.5"
-        filter="url(#glow)"
-      />
-
-      {/* Pom-pom highlight */}
-      <circle cx="77" cy="25" r="3.5" fill="#FFFFFF" opacity="0.8" />
-
-      {/* Pom-pom texture dots */}
-      <circle cx="82" cy="27" r="1" fill="#F3F4F6" opacity="0.6" />
-      <circle cx="78" cy="30" r="0.8" fill="#F3F4F6" opacity="0.6" />
-      <circle cx="81" cy="31" r="1" fill="#E5E7EB" opacity="0.5" />
-
-      {/* Sparkle on pom-pom */}
-      <g className="animate-[sparkle_2s_ease-in-out_infinite]">
-        <circle cx="75" cy="23" r="1.5" fill="#FFFFFF" opacity="0.9" />
-        <circle cx="75" cy="23" r="0.8" fill="#FEF3C7" />
-      </g>
-
-      {/* Small sparkle 2 */}
-      <g
-        className="animate-[sparkle_2s_ease-in-out_infinite]"
-        style={{ animationDelay: "0.7s" }}
-      >
-        <circle cx="84" cy="33" r="1" fill="#FFFFFF" opacity="0.8" />
-      </g>
-    </svg>
-
-    <style jsx>{`
-      @keyframes gentle-sway {
-        0%,
-        100% {
-          transform: rotate(-15deg);
-        }
-        50% {
-          transform: rotate(-10deg) translateY(-3px);
-        }
-      }
-
-      @keyframes sparkle {
-        0%,
-        100% {
-          opacity: 1;
-          transform: scale(1);
-        }
-        50% {
-          opacity: 0.4;
-          transform: scale(0.8);
-        }
-      }
-    `}</style>
-  </div>
-);
-
 
 // Define the props for the Navbar component
 function Navbar({ users }: { users: User[] }) {
@@ -321,8 +152,6 @@ function Navbar({ users }: { users: User[] }) {
         >
           <div className="relative inline-block">
             {/* Same positioning as requested */}
-            <SantaHat className="absolute -top-4 -left-3 w-8 h-8" />
-
             <Shuffle
               text="Goga_Network"
               className="text-lg md:text-lg lg:text-xl font-bold"
@@ -340,17 +169,6 @@ function Navbar({ users }: { users: User[] }) {
             />
           </div>
 
-          <div className="mt-1 flex items-center justify-start gap-2 pl-0.5">
-            <span className="text-xs animate-pulse filter drop-shadow-md">
-              🎄
-            </span>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.15em] bg-gradient-to-r from-rose-200 via-orange-200 to-rose-200 bg-clip-text text-transparent drop-shadow-sm dark:from-gray-300 dark:to-gray-500">
-              Happy Holidays
-            </span>
-            <span className="text-xs animate-pulse delay-75 filter drop-shadow-md">
-              ❄️
-            </span>
-          </div>
         </Link>
       </div>
 
