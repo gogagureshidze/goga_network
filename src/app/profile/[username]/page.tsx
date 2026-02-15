@@ -12,6 +12,7 @@ import { unstable_cache } from "next/cache";
 import { Suspense } from "react";
 import ActivityStatus from "@/components/ActivityStatus";
 import ProfileHighlights from "@/components/ProfileHighlights";
+import ProfileStats from "@/components/ProfileStats";
 
 const getCachedUser = unstable_cache(
   async (username: string) => {
@@ -33,7 +34,7 @@ const getCachedUser = unstable_cache(
         showActivityStatus: true,
         createdAt: true,
         bioPattern: true,
-        isPrivate: true, // 🆕 Include privacy status
+        isPrivate: true,
         showStoryLikes: true,
         allowStoryComments: true,
         _count: {
@@ -47,7 +48,7 @@ const getCachedUser = unstable_cache(
     });
   },
   ["user-profile"],
-  { revalidate: 1800, tags: ["user-profile"] }
+  { revalidate: 1800, tags: ["user-profile"] },
 );
 
 const getCachedRelationships = unstable_cache(
@@ -72,7 +73,7 @@ const getCachedRelationships = unstable_cache(
     ]);
 
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Relationship query timeout")), 1000)
+      setTimeout(() => reject(new Error("Relationship query timeout")), 1000),
     );
 
     try {
@@ -95,7 +96,7 @@ const getCachedRelationships = unstable_cache(
     }
   },
   ["user-relationships"],
-  { revalidate: 300, tags: ["user-relationships"] }
+  { revalidate: 300, tags: ["user-relationships"] },
 );
 
 async function ProfilePage({ params }: { params: any }) {
@@ -139,7 +140,7 @@ async function ProfilePage({ params }: { params: any }) {
         website: true,
         createdAt: true,
         bioPattern: true,
-        isPrivate: true, // 🆕
+        isPrivate: true,
         showStoryLikes: true,
         allowStoryComments: true,
         _count: {
@@ -186,7 +187,6 @@ async function ProfilePage({ params }: { params: any }) {
     }
   }
 
-  // 🆕 Check if viewer can see content
   const canViewContent =
     isOwner || !user.isPrivate || relationships.isFollowing;
 
@@ -243,6 +243,7 @@ async function ProfilePage({ params }: { params: any }) {
               ? `${user.name} ${user.surname}`
               : user.username}
           </h1>
+
           {user.showActivityStatus && user.lastActiveAt && (
             <div className="flex justify-center">
               <ActivityStatus
@@ -252,29 +253,21 @@ async function ProfilePage({ params }: { params: any }) {
               />
             </div>
           )}
-          {/* Stats */}
-          <div className="flex items-center justify-center gap-12 mb-4">
-            <div className="flex flex-col items-center">
-              <span className="font-medium text-orange-400">
-                {user._count.posts}
-              </span>
-              <span className="text-sm">Posts</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="font-medium text-orange-400">
-                {user._count.followers}
-              </span>
-              <span className="text-sm">Followers</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="font-medium text-orange-400">
-                {user._count.followings}
-              </span>
-              <span className="text-sm">Following</span>
-            </div>
-          </div>
+
+          {/* Stats — client component handles modal state */}
+          <ProfileStats
+            postsCount={user._count.posts}
+            followersCount={user._count.followers}
+            followingsCount={user._count.followings}
+            userId={user.id}
+            username={user.username!}
+            isPrivate={user.isPrivate}
+            isOwner={isOwner}
+            isFollowing={relationships.isFollowing}
+          />
 
           <ProfileHighlights userId={user.id} isOwner={isOwner} />
+
           {/* Mobile sections */}
           {!isOwner && (
             <div className="px-4 lg:hidden">
@@ -336,11 +329,8 @@ async function ProfilePage({ params }: { params: any }) {
       </div>
 
       {/* Right sidebar */}
-      {/* Right sidebar */}
       <div className="hidden lg:block w-[30%]">
         <RightMenu>
-          {/* 🆕 Add this block for desktop */}
-
           <Suspense fallback="Loading...">
             <UserInfoCard
               user={user}
@@ -366,7 +356,6 @@ async function ProfilePage({ params }: { params: any }) {
             </Suspense>
           )}
 
-          {/* 🆕 Only show media card if viewer can see content */}
           {canViewContent && (
             <Suspense fallback="Loading...">
               <UserMediaCard user={user} username={user.username!} />
