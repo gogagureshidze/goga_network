@@ -132,10 +132,10 @@ model Follower {
   follower    User     @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
   following   User     @relation("UserFollowings", fields: [followingId], references: [id], onDelete: Cascade)
 
+  @@unique([followerId, followingId])  // 👈 ADD THIS
   @@index([followerId], map: "Follower_followerId_fkey")
   @@index([followingId], map: "Follower_followingId_fkey")
 }
-
 model FollowRequest {
   id         Int      @id @default(autoincrement())
   createdAt  DateTime @default(now())

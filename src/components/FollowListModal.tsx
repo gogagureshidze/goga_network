@@ -82,20 +82,20 @@ export default function FollowListModal({
 
   // Search input change → debounce then fetch
   // NOTE: we track search in a ref so fetchPage never has a stale value
-  useEffect(() => {
-    currentSearch.current = search;
-    // Skip if modal isn't open yet
-    if (!isOpen) return;
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      setUsers([]);
-      setPage(1);
-      fetchPage(1, search, true);
-    }, 300);
-    return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current);
-    };
-  }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+//   useEffect(() => {
+//     currentSearch.current = search;
+//     // Skip if modal isn't open yet
+//     if (!isOpen) return;
+//     if (searchTimer.current) clearTimeout(searchTimer.current);
+//     searchTimer.current = setTimeout(() => {
+//       setUsers([]);
+//       setPage(1);
+//       fetchPage(1, search, true);
+//     }, 300);
+//     return () => {
+//       if (searchTimer.current) clearTimeout(searchTimer.current);
+//     };
+//   }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Infinite scroll — detects when user scrolls near bottom of list
   useEffect(() => {

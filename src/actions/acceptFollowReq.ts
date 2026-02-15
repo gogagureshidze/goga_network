@@ -12,7 +12,6 @@ async function acceptFollowReq(senderId: string) {
   }
 
   try {
-    // 1️⃣ Check for existing follow request
     const existingFollowReq = await prisma.followRequest.findFirst({
       where: {
         senderId: senderId,
@@ -24,29 +23,38 @@ async function acceptFollowReq(senderId: string) {
       throw new Error("Follow request not found.");
     }
 
-    // 2️⃣ Delete the follow request
-    await prisma.followRequest.delete({
-      where: { id: existingFollowReq.id },
-    });
+    await prisma.$transaction([
+      // Delete the request being accepted
+      prisma.followRequest.delete({
+        where: { id: existingFollowReq.id },
+      }),
 
-    // 3️⃣ Create mutual following entries
-    await prisma.follower.createMany({
-      data: [
-        { followerId: senderId, followingId: currentUserId },
-        { followerId: currentUserId, followingId: senderId },
-      ],
-      skipDuplicates: true,
-    });
+      // 👇 Delete reverse request if they also sent you one (mutual request scenario)
+      prisma.followRequest.deleteMany({
+        where: { senderId: currentUserId, receiverId: senderId },
+      }),
 
-    // 4️⃣ Revalidate UI
+      // Create both follow directions
+      prisma.follower.createMany({
+        data: [
+          { followerId: senderId, followingId: currentUserId },
+          { followerId: currentUserId, followingId: senderId },
+        ],
+        skipDuplicates: true,
+      }),
+    ]);
     // @ts-ignore
-    revalidatePath("/requests"); // refresh requests page
+
+    revalidatePath("/requests");
     // @ts-ignore
-    revalidateTag("user-relationships"); // refresh profile buttons
+
+    revalidateTag("user-relationships");
     // @ts-ignore
+
     revalidateTag("feed-posts");
     // @ts-ignore
-    revalidateTag("user-profile"); // refresh feed to show new posts
+
+    revalidateTag("user-profile");
   } catch (error) {
     console.error(error);
     throw new Error("Error accepting follow request.");
