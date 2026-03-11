@@ -86,11 +86,15 @@ const postSelectFields = {
     select: {
       likes: true,
       comments: true,
+      shares: true
     },
   },
   likes: {
     select: { userId: true },
   },
+  shares: {
+    select: { userId: true },
+  }
 };
 
 const getCachedBlockedUsers = unstable_cache(

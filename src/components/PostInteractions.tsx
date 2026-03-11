@@ -1,9 +1,10 @@
 "use client";
 
-import { Heart, MessageSquareText, ExternalLink } from "lucide-react";
+import { Heart, MessageSquareText, Share2 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { switchLike } from "@/actions/switchLike";
+import ShareModal from "./ShareModal";
 
 interface PostInteractionsProps {
   postId: number;
@@ -11,6 +12,7 @@ interface PostInteractionsProps {
   commentNumber?: number;
   onToggleComments: () => void;
   isCommentsOpen: boolean;
+  shareCount?: number;
 }
 
 const PostInteractions = ({
@@ -19,6 +21,7 @@ const PostInteractions = ({
   commentNumber = 0,
   onToggleComments,
   isCommentsOpen,
+  shareCount = 0,
 }: PostInteractionsProps) => {
   const { user } = useUser();
   const userId = user?.id;
@@ -30,6 +33,8 @@ const PostInteractions = ({
 
   // State management
   const [currentLikes, setCurrentLikes] = useState<string[]>(normalizedLikes);
+  const [currentShareCount, setCurrentShareCount] = useState(shareCount);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [pendingLike, setPendingLike] = useState<boolean | null>(null);
   const [showSparkles, setShowSparkles] = useState(false);
@@ -180,6 +185,10 @@ const PostInteractions = ({
       document.body.appendChild(heart);
       setTimeout(() => heart.remove(), 1000);
     }
+  };
+
+  const handleShareSuccess = (count: number) => {
+    setCurrentShareCount((prev) => prev + count);
   };
 
   return (
@@ -350,20 +359,30 @@ const PostInteractions = ({
           </button>
         </div>
 
-        {/* Share */}
-        <div className="flex items-center gap-2 bg-slate-100 dark:bg-gray-700 px-3 py-1.5 rounded-xl hover:bg-slate-200 dark:hover:bg-gray-600 transition-colors cursor-pointer">
-          <ExternalLink
-            className="text-green-500 dark:text-green-400"
-            size={18}
-          />
+        {/* Share Button */}
+        <button
+          onClick={() => setShowShareModal(true)}
+          disabled={!userId}
+          className="flex items-center gap-2 bg-slate-100 dark:bg-gray-700 px-3 py-1.5 rounded-xl hover:bg-slate-200 dark:hover:bg-gray-600 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Share2 className="text-green-500 dark:text-green-400" size={18} />
           <span className="text-gray-700 dark:text-gray-300 font-medium">
-            0
+            {currentShareCount}
             <span className="hidden sm:inline ml-1 font-normal text-xs">
-              Shares
+              {currentShareCount === 1 ? "Share" : "Shares"}
             </span>
           </span>
-        </div>
+        </button>
       </div>
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <ShareModal
+          postId={postId}
+          onClose={() => setShowShareModal(false)}
+          onShareSuccess={handleShareSuccess}
+        />
+      )}
     </>
   );
 };

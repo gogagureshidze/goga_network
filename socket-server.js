@@ -41,8 +41,8 @@ const broadcastOnlineCount = () => {
   for (const [userId, sockets] of onlineUsers.entries()) {
     console.log(
       `   - User ${userId}: ${sockets.size} connections [${Array.from(
-        sockets
-      ).join(", ")}]`
+        sockets,
+      ).join(", ")}]`,
     );
   }
 };
@@ -57,7 +57,7 @@ setInterval(() => {
       if (now - data.timestamp > timeout) {
         users.delete(userId);
         console.log(
-          `🧹 Cleaned up stale typing indicator for user ${userId} on post ${postId}`
+          `🧹 Cleaned up stale typing indicator for user ${userId} on post ${postId}`,
         );
 
         // Broadcast updated typing users to all clients viewing this post
@@ -78,7 +78,7 @@ setInterval(() => {
 io.on("connection", (socket) => {
   const userId = socket.handshake.query.userId?.toString();
   console.log(
-    `✅ User ${userId || "unknown"} connected (socket: ${socket.id})`
+    `✅ User ${userId || "unknown"} connected (socket: ${socket.id})`,
   );
 
   if (userId) {
@@ -94,7 +94,7 @@ io.on("connection", (socket) => {
     console.log(
       `👤 User ${userId} now has ${
         onlineUsers.get(userId).size
-      } active connections`
+      } active connections`,
     );
     broadcastOnlineCount();
   } else {
@@ -152,7 +152,7 @@ io.on("connection", (socket) => {
     console.log(
       `⌨️ User ${username} (${userId}) is ${
         isTyping ? "typing" : "stopped typing"
-      } on post ${postId}`
+      } on post ${postId}`,
     );
 
     if (!typingUsers.has(postId)) {
@@ -203,6 +203,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  // 📨 SEND MESSAGE (including shared posts)
   socket.on("sendMessage", async (data) => {
     try {
       console.log("💬 Sending message:", data);
@@ -226,6 +227,8 @@ io.on("connection", (socket) => {
           senderId: data.senderId,
           receiverId: data.receiverId,
           text: data.text,
+          mediaUrl: data.mediaUrl || null,
+          mediaType: data.mediaType || null,
         },
       });
 
@@ -233,7 +236,9 @@ io.on("connection", (socket) => {
       io.to(data.receiverId).emit("receiveMessage", newMessage);
 
       console.log(
-        `✉️ Message sent from ${data.senderId} to ${data.receiverId}`
+        `✉️ Message sent from ${data.senderId} to ${data.receiverId}${
+          data.mediaType === "shared_post" ? " (shared post)" : ""
+        }`,
       );
     } catch (err) {
       console.error("❌ Error saving message:", err);
@@ -272,7 +277,7 @@ io.on("connection", (socket) => {
           });
         } else {
           console.log(
-            `🔌 User ${userId} still has ${userSockets.size} active connections`
+            `🔌 User ${userId} still has ${userSockets.size} active connections`,
           );
         }
 
@@ -308,7 +313,5 @@ const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 WebSocket server running on port ${PORT}`);
   console.log(`🌐 CORS origins configured for multiple domains`);
+  console.log(`📨 Shared post messaging enabled`);
 });
-
-
-//stunserver iceprotocol

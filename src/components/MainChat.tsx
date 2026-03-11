@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Message } from "../app/chat/page";
 import { io, Socket } from "socket.io-client";
+import SharedPost from "./SharedPost";
 
 type Friend = {
   id: string;
@@ -125,7 +126,7 @@ const MainChat = ({
               existingMsg.senderId === message.senderId &&
               Math.abs(
                 new Date(existingMsg.createdAt).getTime() -
-                  new Date(message.createdAt).getTime()
+                  new Date(message.createdAt).getTime(),
               ) < 1000
             );
           });
@@ -202,6 +203,68 @@ const MainChat = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+  
+const renderMessage = (msg: Message) => {
+  // 1. Safely parse shared post data
+  const isSharedPost = msg.mediaType === "shared_post" && msg.mediaUrl;
+  let sharedData = null;
+if (isSharedPost) {
+  try {
+    sharedData = JSON.parse(msg.mediaUrl as string); // 👈 The fix
+  } catch (error) {
+    console.error("Error parsing shared post:", error);
+  }
+}
+
+  return (
+    <div
+      className={`flex w-full mb-4 ${msg.isOwn ? "justify-end" : "justify-start"}`}
+    >
+      {/* Friend's Avatar (Only shows on the left side for received messages) */}
+      {!msg.isOwn && selectedFriend?.avatar && (
+        <img
+          src={selectedFriend.avatar}
+          alt="avatar"
+          className="w-7 h-7 rounded-full object-cover mr-2 self-end mb-5 shadow-sm"
+        />
+      )}
+
+      {/* Message Wrapper: Limits max width and aligns items strictly to the left or right */}
+      <div
+        className={`flex flex-col gap-1 w-full max-w-[75%] sm:max-w-[60%] md:max-w-[320px] ${msg.isOwn ? "items-end" : "items-start"}`}
+      >
+        {/* Text Bubble */}
+        {msg.text && (
+          <div
+            className={`px-4 py-2.5 text-[15px] leading-relaxed shadow-sm z-10
+                ${
+                  msg.isOwn
+                    ? "bg-orange-500 text-white rounded-[20px] rounded-br-[4px]" // Own: sharp bottom-right
+                    : "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100 rounded-[20px] rounded-bl-[4px]" // Received: sharp bottom-left
+                }
+              `}
+          >
+            {msg.text}
+          </div>
+        )}
+
+        {/* Shared Post Card */}
+        {isSharedPost && sharedData?.post && (
+          <div className={`w-full ${msg.text ? "-mt-2" : ""}`}>
+            <SharedPost postData={sharedData.post} isOwn={msg.isOwn} />
+          </div>
+        )}
+
+        {/* Tiny Timestamp */}
+        <span
+          className={`text-[10px] font-medium text-gray-400 dark:text-gray-500 mt-0.5 ${msg.isOwn ? "mr-1" : "ml-1"}`}
+        >
+          {msg.createdAt}
+        </span>
+      </div>
+    </div>
+  );
+};
 
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-gray-800 rounded-r-3xl overflow-hidden shadow-2xl transition-colors duration-300">
@@ -258,31 +321,7 @@ const MainChat = ({
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-rose-50 dark:bg-gray-900 transition-colors duration-300">
             {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${
-                  msg.isOwn ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div
-                  className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm shadow-md transition-all duration-300 ${
-                    msg.isOwn
-                      ? "bg-rose-800 text-white rounded-br-md dark:bg-gray-200 dark:text-gray-900"
-                      : "bg-orange-300 text-gray-900 rounded-bl-md dark:bg-gray-700 dark:text-white"
-                  }`}
-                >
-                  <p className="font-light">{msg.text}</p>
-                  <span
-                    className={`block text-[10px] mt-1 text-right ${
-                      msg.isOwn
-                        ? "text-rose-200 dark:text-gray-500"
-                        : "text-gray-700 dark:text-gray-400"
-                    }`}
-                  >
-                    {msg.createdAt}
-                  </span>
-                </div>
-              </div>
+              <div key={msg.id}>{renderMessage(msg)}</div>
             ))}
             <div ref={messagesEndRef} />
           </div>

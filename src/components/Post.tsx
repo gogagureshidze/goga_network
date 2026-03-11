@@ -164,6 +164,7 @@ const PostComponent = ({
         commentNumber={commentCount}
         onToggleComments={() => toggleComments(post.id)}
         isCommentsOpen={isCommentsOpen}
+        shareCount={post._count?.shares || 0} 
       />
 
       {/* Comments */}
