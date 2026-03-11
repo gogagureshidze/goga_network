@@ -23,32 +23,32 @@ type Props = {
   userId: string;
 };
 
+const DOM_CAP = 50;
+
 const Spinner = () => (
-  <div className="flex justify-center py-3">
-    <svg
-      className="w-6 h-6 text-gray-400 animate-spin"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-      />
-    </svg>
-  </div>
+  <svg
+    className="w-8 h-8 text-orange-400 animate-spin"
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    />
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    />
+  </svg>
 );
 
-const MainChat = ({
+export default function MainChat({
   selectedFriend,
   messages,
   setMessages,
@@ -56,29 +56,28 @@ const MainChat = ({
   SendIcon,
   onBack,
   userId,
-}: Props) => {
+}: Props) {
   const [input, setInput] = useState("");
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("Disconnected");
-  const [hasMore, setHasMore] = useState(false);
-  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
-  const [isInitialLoading, setIsInitialLoading] = useState(false);
 
-  // The scroll container
+  // Loading states
+  const [loading, setLoading] = useState(false); // covers both initial + paginate
+  const [hasMore, setHasMore] = useState(false);
+
+  // Refs
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Sentinel div at the very top — IO watches this
-  const topSentinelRef = useRef<HTMLDivElement>(null);
-  // Cursor for pagination
-  const cursorRef = useRef<number | undefined>(undefined);
-  // Prevent double-firing
-  const loadingRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const oldestIdRef = useRef<number | undefined>(undefined);
+  const isFetchingRef = useRef(false); // hard lock against double fetches
 
   const SOCKET_SERVER_URL =
     process.env.NODE_ENV === "production"
       ? "wss://socket.goga.network"
       : "http://localhost:3001";
 
+  // ─── Format message ────────────────────────────────────────────────────────
   const fmt = useCallback(
     (msg: any): Message => ({
       ...msg,
@@ -91,122 +90,126 @@ const MainChat = ({
     [userId],
   );
 
-  // ─── Scroll to bottom ─────────────────────────────────────────────────────
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "instant") => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
-  }, []);
-
-  // ─── Initial load ─────────────────────────────────────────────────────────
+  // ─── Initial load when friend changes ─────────────────────────────────────
   useEffect(() => {
     if (!selectedFriend) return;
 
-    setIsInitialLoading(true);
+    // Reset everything
+    isFetchingRef.current = true;
+    setLoading(true);
     setHasMore(false);
-    cursorRef.current = undefined;
     setMessages([]);
+    oldestIdRef.current = undefined;
 
     getMessages(selectedFriend.id)
-      .then((result) => {
-        if (!result) return;
-        const formatted = result.messages.map(fmt);
+      .then((res) => {
+        if (!res) return;
+        const formatted = res.messages.map(fmt);
         setMessages(formatted);
-        setHasMore(result.hasMore);
-        if (formatted.length > 0) cursorRef.current = formatted[0].id;
-        // Wait for DOM then scroll to bottom
-        requestAnimationFrame(() => scrollToBottom("instant"));
+        setHasMore(res.hasMore);
+        oldestIdRef.current = formatted[0]?.id;
+
+        // Scroll to bottom after paint
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const el = scrollRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+        });
       })
       .catch(console.error)
-      .finally(() => setIsInitialLoading(false));
-  }, [selectedFriend, fmt, setMessages, scrollToBottom]);
+      .finally(() => {
+        setLoading(false);
+        isFetchingRef.current = false;
+      });
+  }, [selectedFriend?.id]); // only re-run when the actual friend ID changes
 
-  // ─── Load older messages ──────────────────────────────────────────────────
-  const loadOlderMessages = useCallback(async () => {
-    if (loadingRef.current || !hasMore || !selectedFriend) return;
-    loadingRef.current = true;
-    setIsLoadingOlder(true);
+  // ─── Load older messages ───────────────────────────────────────────────────
+  const loadOlder = useCallback(async () => {
+    if (isFetchingRef.current || !hasMore || !selectedFriend) return;
+
+    isFetchingRef.current = true;
+    setLoading(true);
 
     const el = scrollRef.current;
-    // Snapshot scroll height BEFORE new items are added
-    const prevScrollHeight = el?.scrollHeight ?? 0;
+    const heightBefore = el?.scrollHeight ?? 0;
 
     try {
-      const result = await getMessages(selectedFriend.id, cursorRef.current);
-      if (!result || result.messages.length === 0) {
+      const res = await getMessages(selectedFriend.id, oldestIdRef.current);
+      if (!res || res.messages.length === 0) {
         setHasMore(false);
         return;
       }
 
-      const formatted = result.messages.map(fmt);
-      cursorRef.current = formatted[0].id;
-      setHasMore(result.hasMore);
+      const incoming = res.messages.map(fmt);
+      oldestIdRef.current = incoming[0].id;
+      setHasMore(res.hasMore);
 
-      // Prepend messages — React batches this setState
-      setMessages((prev) => [...formatted, ...prev]);
+      setMessages((prev) => {
+        // Prepend new, trim bottom to stay under DOM_CAP
+        const combined = [...incoming, ...prev];
+        return combined.length > DOM_CAP
+          ? combined.slice(0, DOM_CAP)
+          : combined;
+      });
 
-      // After DOM updates, restore scroll so viewport doesn't jump
+      // Restore scroll so user stays where they were
       requestAnimationFrame(() => {
-        if (el) {
-          // New scrollHeight minus old = how much was added on top
-          el.scrollTop = el.scrollHeight - prevScrollHeight;
-        }
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop = el.scrollHeight - heightBefore;
+        });
       });
     } catch (e) {
-      console.error("Failed to load older messages:", e);
+      console.error(e);
     } finally {
-      setIsLoadingOlder(false);
-      loadingRef.current = false;
+      setLoading(false);
+      isFetchingRef.current = false;
     }
   }, [hasMore, selectedFriend, fmt, setMessages]);
 
-  // ─── Intersection Observer on top sentinel ────────────────────────────────
+  // ─── Intersection observer on top sentinel ────────────────────────────────
   useEffect(() => {
-    const sentinel = topSentinelRef.current;
+    const sentinel = sentinelRef.current;
     const container = scrollRef.current;
     if (!sentinel || !container) return;
 
     const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) loadOlderMessages();
+      ([entry]) => {
+        if (entry.isIntersecting) loadOlder();
       },
-      {
-        root: container,
-        // Fire when sentinel is 10px from coming into view
-        rootMargin: "10px",
-        threshold: 0,
-      },
+      { root: container, threshold: 0 },
     );
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [loadOlderMessages]);
+  }, [loadOlder]);
 
-  // ─── Auto-scroll to bottom when new messages arrive ──────────────────────
-  const prevLengthRef = useRef(0);
+  // ─── Auto-scroll to bottom on own message or if near bottom ───────────────
+  const prevLenRef = useRef(0);
   useEffect(() => {
+    if (messages.length === 0) return;
     const el = scrollRef.current;
-    if (!el || messages.length === 0) return;
+    if (!el) return;
 
-    const addedAtBottom = messages.length > prevLengthRef.current;
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    const isOwn = messages[messages.length - 1]?.isOwn;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
 
-    if (
-      addedAtBottom &&
-      (isNearBottom || messages[messages.length - 1]?.isOwn)
-    ) {
-      scrollToBottom("smooth");
+    if (isOwn || nearBottom) {
+      requestAnimationFrame(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      });
     }
 
-    prevLengthRef.current = messages.length;
-  }, [messages, scrollToBottom]);
+    prevLenRef.current = messages.length;
+  }, [messages]);
 
-  // ─── Socket setup ─────────────────────────────────────────────────────────
+  // ─── Socket ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedFriend || !userId) return;
 
     setConnectionStatus("Connecting...");
-    const newSocket = io(SOCKET_SERVER_URL, {
+
+    const sock = io(SOCKET_SERVER_URL, {
       query: { userId },
       transports: ["websocket"],
       reconnection: true,
@@ -217,86 +220,85 @@ const MainChat = ({
       forceNew: true,
     });
 
-    newSocket.on("connect", () => {
+    sock.on("connect", () => {
       setIsConnected(true);
       setConnectionStatus("Connected");
     });
-    newSocket.on("connect_error", (e: any) => {
+    sock.on("connect_error", (e: any) => {
       setIsConnected(false);
       setConnectionStatus(`Error: ${e.message}`);
     });
-    newSocket.on("disconnect", (reason: string) => {
+    sock.on("disconnect", (reason: string) => {
       setIsConnected(false);
       setConnectionStatus(`Disconnected: ${reason}`);
       if (reason === "io server disconnect" || reason === "transport close") {
         setTimeout(() => {
-          if (!newSocket.connected) newSocket.connect();
+          if (!sock.connected) sock.connect();
         }, 1000);
       }
     });
-    newSocket.on("reconnect", () => {
+    sock.on("reconnect", () => {
       setIsConnected(true);
       setConnectionStatus("Reconnected");
     });
-    newSocket.on("reconnect_attempt", (n: number) =>
+    sock.on("reconnect_attempt", (n: number) =>
       setConnectionStatus(`Reconnecting... (${n})`),
     );
-    newSocket.on("reconnect_failed", () =>
-      setConnectionStatus("Connection failed"),
-    );
+    sock.on("reconnect_failed", () => setConnectionStatus("Connection failed"));
 
-    setSocket(newSocket);
-
-    newSocket.on("receiveMessage", (message: Message) => {
+    sock.on("receiveMessage", (msg: Message) => {
       const belongs =
-        (message.senderId === selectedFriend.id &&
-          message.receiverId === userId) ||
-        (message.senderId === userId &&
-          message.receiverId === selectedFriend.id);
+        (msg.senderId === selectedFriend.id && msg.receiverId === userId) ||
+        (msg.senderId === userId && msg.receiverId === selectedFriend.id);
       if (!belongs) return;
 
       setMessages((prev) => {
+        // Deduplicate
         const exists = prev.some((m) => {
-          if (message.id && m.id) return m.id === message.id;
+          if (msg.id && m.id) return m.id === msg.id;
           return (
-            m.text === message.text &&
-            m.senderId === message.senderId &&
+            m.text === msg.text &&
+            m.senderId === msg.senderId &&
             Math.abs(
               new Date(m.createdAt).getTime() -
-                new Date(message.createdAt).getTime(),
+                new Date(msg.createdAt).getTime(),
             ) < 1000
           );
         });
         if (exists) return prev;
-        return [...prev, fmt(message)];
+
+        const updated = [...prev, fmt(msg)];
+        // Trim top if over cap
+        return updated.length > DOM_CAP ? updated.slice(-DOM_CAP) : updated;
       });
     });
 
-    newSocket.on("messageError", (e: any) =>
+    sock.on("messageError", (e: any) =>
       setConnectionStatus(`Message error: ${e.error}`),
     );
 
+    setSocket(sock);
     return () => {
-      newSocket.removeAllListeners();
-      newSocket.disconnect();
+      sock.removeAllListeners();
+      sock.disconnect();
     };
-  }, [selectedFriend, userId, fmt, setMessages, SOCKET_SERVER_URL]);
+  }, [selectedFriend?.id, userId]);
 
-  // ─── Send message ─────────────────────────────────────────────────────────
-  const handleSendMessage = () => {
+  // ─── Send ──────────────────────────────────────────────────────────────────
+  const handleSend = () => {
     if (!input.trim() || !selectedFriend || !socket || !isConnected) return;
 
-    const messageToSend = {
+    const payload = {
       senderId: userId,
       receiverId: selectedFriend.id,
       text: input.trim(),
       createdAt: new Date().toISOString(),
     };
 
-    socket.emit("sendMessage", messageToSend);
+    socket.emit("sendMessage", payload);
 
     const optimistic: Message = {
-      ...messageToSend,
+      ...payload,
       id: Date.now(),
       isOwn: true,
       createdAt: new Date().toLocaleTimeString([], {
@@ -305,20 +307,22 @@ const MainChat = ({
       }),
     };
 
-    setMessages((prev) => [...prev, optimistic]);
+    setMessages((prev) => {
+      const updated = [...prev, optimistic];
+      return updated.length > DOM_CAP ? updated.slice(-DOM_CAP) : updated;
+    });
+
     setInput("");
   };
 
-  // ─── Render message ───────────────────────────────────────────────────────
+  // ─── Render message ────────────────────────────────────────────────────────
   const renderMessage = (msg: Message) => {
-    const isSharedPost = msg.mediaType === "shared_post" && msg.mediaUrl;
-    let sharedData = null;
-    if (isSharedPost) {
+    const isShared = msg.mediaType === "shared_post" && msg.mediaUrl;
+    let sharedData: any = null;
+    if (isShared) {
       try {
         sharedData = JSON.parse(msg.mediaUrl as string);
-      } catch (e) {
-        console.error(e);
-      }
+      } catch {}
     }
 
     return (
@@ -335,9 +339,22 @@ const MainChat = ({
         <div
           className={`flex flex-col gap-1 w-full max-w-[75%] sm:max-w-[60%] md:max-w-[320px] ${msg.isOwn ? "items-end" : "items-start"}`}
         >
-          {msg.text && (
+          {isShared ? (
+            <div className="w-full">
+              {msg.text && (
+                <p
+                  className={`text-[11px] font-medium mb-1.5 ${msg.isOwn ? "text-right text-orange-300" : "text-left text-gray-400"}`}
+                >
+                  {msg.text}
+                </p>
+              )}
+              {sharedData?.post && (
+                <SharedPost postData={sharedData.post} isOwn={msg.isOwn} />
+              )}
+            </div>
+          ) : msg.text ? (
             <div
-              className={`px-4 py-2.5 text-[15px] leading-relaxed shadow-sm z-10 ${
+              className={`px-4 py-2.5 text-[15px] leading-relaxed shadow-sm ${
                 msg.isOwn
                   ? "bg-orange-500 text-white rounded-[20px] rounded-br-[4px]"
                   : "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100 rounded-[20px] rounded-bl-[4px]"
@@ -345,12 +362,7 @@ const MainChat = ({
             >
               {msg.text}
             </div>
-          )}
-          {isSharedPost && sharedData?.post && (
-            <div className={`w-full ${msg.text ? "-mt-2" : ""}`}>
-              <SharedPost postData={sharedData.post} isOwn={msg.isOwn} />
-            </div>
-          )}
+          ) : null}
           <span
             className={`text-[10px] font-medium text-gray-400 dark:text-gray-500 mt-0.5 ${msg.isOwn ? "mr-1" : "ml-1"}`}
           >
@@ -361,12 +373,13 @@ const MainChat = ({
     );
   };
 
+  // ─── UI ────────────────────────────────────────────────────────────────────
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-gray-800 rounded-r-3xl overflow-hidden shadow-2xl transition-colors duration-300">
       {selectedFriend ? (
         <>
           {/* Header */}
-          <div className="flex items-center gap-4 p-6 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm transition-colors duration-300">
+          <div className="flex items-center gap-4 p-6 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
             {onBack && (
               <button
                 onClick={onBack}
@@ -401,31 +414,27 @@ const MainChat = ({
             </div>
           )}
 
-          {/* Scroll area */}
+          {/* Messages area */}
           <div className="flex-1 relative overflow-hidden">
-            {/* Full-area initial loader */}
-            {isInitialLoading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-rose-50 dark:bg-gray-900">
+            {/* Loader — covers everything, no scrolling through blank space */}
+            {loading && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-rose-50/80 dark:bg-gray-900/80 backdrop-blur-[2px]">
                 <Spinner />
               </div>
             )}
 
             <div
               ref={scrollRef}
-              className="h-full overflow-y-auto px-6 pt-4 pb-2 bg-rose-50 dark:bg-gray-900 transition-colors duration-300"
+              className="h-full overflow-y-auto px-6 pt-4 pb-2 bg-rose-50 dark:bg-gray-900"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
-              {/* webkit scrollbar hide */}
-              <style>{`div::-webkit-scrollbar { display: none; }`}</style>
+              <style>{`div::-webkit-scrollbar{display:none}`}</style>
 
-              {/* TOP sentinel — IO fires loadOlderMessages when this is visible */}
-              <div ref={topSentinelRef} className="h-px w-full" />
+              {/* Sentinel at top — triggers loadOlder when visible */}
+              <div ref={sentinelRef} className="h-px w-full" />
 
-              {/* Older messages spinner — shown inline at top while fetching */}
-              {isLoadingOlder && <Spinner />}
-
-              {/* "Beginning of conversation" once nothing more to load */}
-              {!hasMore && !isLoadingOlder && messages.length > 0 && (
+              {/* Beginning of conversation label */}
+              {!hasMore && messages.length > 0 && (
                 <p className="text-center text-[11px] text-gray-400 dark:text-gray-600 py-2 mb-1">
                   Beginning of conversation
                 </p>
@@ -435,25 +444,22 @@ const MainChat = ({
               {messages.map((msg) => (
                 <div key={msg.id}>{renderMessage(msg)}</div>
               ))}
-
-              {/* Scroll anchor — browser keeps this in view when content added above */}
-              <div style={{ overflowAnchor: "auto" as any }} />
             </div>
           </div>
 
           {/* Input */}
-          <div className="p-6 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center gap-4 transition-colors duration-300">
+          <div className="p-6 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center gap-4">
             <input
               type="text"
               placeholder={isConnected ? "Type a message..." : "Connecting..."}
               className="flex-1 px-5 py-3 text-sm bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-400 text-gray-900 dark:text-white transition-all duration-200 disabled:opacity-50"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
               disabled={!isConnected}
             />
             <button
-              onClick={handleSendMessage}
+              onClick={handleSend}
               disabled={!isConnected || !input.trim()}
               className="p-3 rounded-full bg-rose-800 text-white hover:bg-rose-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300 transition-colors duration-200 shadow-lg disabled:opacity-50"
             >
@@ -468,6 +474,4 @@ const MainChat = ({
       )}
     </div>
   );
-};
-
-export default MainChat;
+}

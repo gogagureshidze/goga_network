@@ -3,17 +3,12 @@
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
-export async function getMessages(
-  friendId: string,
-  cursor?: number, // message ID to paginate from (exclusive)
-  limit: number = PAGE_SIZE
-) {
+export async function getMessages(friendId: string, olderThan?: number) {
   const { userId } = await auth();
   if (!userId) return null;
 
-  // Find the conversation between these two users
   const conversation = await prisma.conversation.findFirst({
     where: {
       OR: [
@@ -25,23 +20,18 @@ export async function getMessages(
 
   if (!conversation) return { messages: [], hasMore: false };
 
-  // Fetch one extra to know if there are more
-  const messages = await prisma.message.findMany({
+  const raw = await prisma.message.findMany({
     where: {
       conversationId: conversation.id,
-      // If cursor provided, get messages OLDER than that ID
-      ...(cursor ? { id: { lt: cursor } } : {}),
+      ...(olderThan ? { id: { lt: olderThan } } : {}),
     },
-    orderBy: { id: "desc" }, // newest first so we can slice efficiently
-    take: limit + 1,
+    orderBy: { id: "desc" },
+    take: PAGE_SIZE + 1,
   });
 
-  const hasMore = messages.length > limit;
-  if (hasMore) messages.pop(); // remove the extra item
+  const hasMore = raw.length > PAGE_SIZE;
+  if (hasMore) raw.pop();
 
-  // Return in chronological order (oldest first) for rendering
-  return {
-    messages: messages.reverse(),
-    hasMore,
-  };
+  // Return chronological order (oldest → newest)
+  return { messages: raw.reverse(), hasMore };
 }
