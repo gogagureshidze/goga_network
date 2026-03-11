@@ -5,7 +5,6 @@ import ChatListDesktop from "@/components/ChatListDesktop";
 import MainChat from "@/components/MainChat";
 import { useUser } from "@clerk/nextjs";
 import { getFollowers } from "@/actions/getFollowers";
-import { getMessages } from "@/actions/getMessages";
 
 // Types
 export type Message = {
@@ -28,14 +27,14 @@ export type Friend = {
   lastMessage: string;
 };
 
-// 💡 Avatar component (themed)
+// Avatar component (themed)
 const Avatar = () => (
   <div className="w-10 h-10 rounded-full bg-orange-300 dark:bg-gray-600 flex items-center justify-center font-bold text-gray-700 dark:text-gray-100 text-lg transition-colors duration-300">
     A
   </div>
 );
 
-// 💡 SendIcon (uses currentColor, so it will adapt)
+// SendIcon
 const SendIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -51,6 +50,7 @@ export default function Messenger() {
   const { user, isSignedIn } = useUser();
   const [followers, setFollowers] = useState<Friend[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
+  // messages state is lifted here so MainChat can append incoming socket messages
   const [messages, setMessages] = useState<Message[]>([]);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -96,32 +96,10 @@ export default function Messenger() {
     fetchFollowers();
   }, [isSignedIn, user, isMobile]);
 
-  // Fetch messages
+  // Clear messages when switching friends
   useEffect(() => {
-    if (!selectedFriend) return;
-
-    const fetchMessages = async () => {
-      try {
-        const fetchedMessages = await getMessages(selectedFriend.id);
-        const formattedMessages: Message[] = (fetchedMessages || []).map(
-          (msg) => ({
-            ...msg,
-            isOwn: msg.senderId === user?.id,
-            createdAt: new Date(msg.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          })
-        );
-        setMessages(formattedMessages);
-      } catch (e) {
-        console.error("Failed to fetch messages:", e);
-        setMessages([]);
-      }
-    };
-
-    fetchMessages();
-  }, [selectedFriend, user]);
+    setMessages([]);
+  }, [selectedFriend]);
 
   const handleBack = () => setSelectedFriend(null);
 

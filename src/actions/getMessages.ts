@@ -1,49 +1,47 @@
-// src/actions/getMessages.ts
 "use server";
 
-import { PrismaClient } from "@/generated/prisma";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
+import prisma from "@/lib/client";
 
-const prisma = new PrismaClient();
+const PAGE_SIZE = 10;
 
-export async function getMessages(friendId: string) {
-  try {
-     const user = await currentUser()
-     if(!user) return null
-     const userId = user.id
+export async function getMessages(
+  friendId: string,
+  cursor?: number, // message ID to paginate from (exclusive)
+  limit: number = PAGE_SIZE
+) {
+  const { userId } = await auth();
+  if (!userId) return null;
 
-    if (!userId) {
-      throw new Error("Unauthorized");
-    }
+  // Find the conversation between these two users
+  const conversation = await prisma.conversation.findFirst({
+    where: {
+      OR: [
+        { user1Id: userId, user2Id: friendId },
+        { user1Id: friendId, user2Id: userId },
+      ],
+    },
+  });
 
-    // Find the conversation between the two users, regardless of who initiated it.
-    const conversation = await prisma.conversation.findFirst({
-      where: {
-        OR: [
-          { user1Id: userId, user2Id: friendId },
-          { user1Id: friendId, user2Id: userId },
-        ],
-      },
-      include: {
-        messages: {
-          orderBy: {
-            createdAt: "asc",
-          },
-        },
-      },
-    });
+  if (!conversation) return { messages: [], hasMore: false };
 
-    if (!conversation) {
-      return []; // Return an empty array if no conversation exists
-    }
+  // Fetch one extra to know if there are more
+  const messages = await prisma.message.findMany({
+    where: {
+      conversationId: conversation.id,
+      // If cursor provided, get messages OLDER than that ID
+      ...(cursor ? { id: { lt: cursor } } : {}),
+    },
+    orderBy: { id: "desc" }, // newest first so we can slice efficiently
+    take: limit + 1,
+  });
 
-    // Return the messages directly from the conversation object
-    return conversation.messages.map((msg) => ({
-      ...msg,
-      isOwn: msg.senderId === userId,
-    }));
-  } catch (error) {
-    console.error("Failed to fetch messages:", error);
-    return [];
-  }
+  const hasMore = messages.length > limit;
+  if (hasMore) messages.pop(); // remove the extra item
+
+  // Return in chronological order (oldest first) for rendering
+  return {
+    messages: messages.reverse(),
+    hasMore,
+  };
 }
