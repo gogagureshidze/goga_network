@@ -3,7 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 10;
 
 export async function getMessages(friendId: string, olderThan?: number) {
   const { userId } = await auth();

@@ -23,6 +23,7 @@ type Props = {
   userId: string;
 };
 
+// Max messages in DOM at once — older ones get trimmed off the bottom
 const DOM_CAP = 50;
 
 const Spinner = () => (
@@ -62,22 +63,24 @@ export default function MainChat({
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("Disconnected");
 
-  // Loading states
-  const [loading, setLoading] = useState(false); // covers both initial + paginate
+  // TWO separate loading states:
+  // isInitLoading = first load when entering chat (full overlay, scroll to bottom after)
+  // isLoadingOlder = paginating up (overlay, restore scroll position after)
+  const [isInitLoading, setIsInitLoading] = useState(false);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(false);
 
-  // Refs
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const oldestIdRef = useRef<number | undefined>(undefined);
-  const isFetchingRef = useRef(false); // hard lock against double fetches
+  // Sync lock so IntersectionObserver can't double-fire before state updates
+  const isFetchingRef = useRef(false);
 
   const SOCKET_SERVER_URL =
     process.env.NODE_ENV === "production"
       ? "wss://socket.goga.network"
       : "http://localhost:3001";
 
-  // ─── Format message ────────────────────────────────────────────────────────
   const fmt = useCallback(
     (msg: any): Message => ({
       ...msg,
@@ -90,13 +93,13 @@ export default function MainChat({
     [userId],
   );
 
-  // ─── Initial load when friend changes ─────────────────────────────────────
+  // ─── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedFriend) return;
 
-    // Reset everything
     isFetchingRef.current = true;
-    setLoading(true);
+    setIsInitLoading(true);
+    setIsLoadingOlder(false);
     setHasMore(false);
     setMessages([]);
     oldestIdRef.current = undefined;
@@ -109,7 +112,7 @@ export default function MainChat({
         setHasMore(res.hasMore);
         oldestIdRef.current = formatted[0]?.id;
 
-        // Scroll to bottom after paint
+        // Scroll to bottom after paint — only time we ever force scroll down
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             const el = scrollRef.current;
@@ -119,17 +122,17 @@ export default function MainChat({
       })
       .catch(console.error)
       .finally(() => {
-        setLoading(false);
+        setIsInitLoading(false);
         isFetchingRef.current = false;
       });
-  }, [selectedFriend?.id]); // only re-run when the actual friend ID changes
+  }, [selectedFriend?.id]);
 
   // ─── Load older messages ───────────────────────────────────────────────────
   const loadOlder = useCallback(async () => {
     if (isFetchingRef.current || !hasMore || !selectedFriend) return;
 
     isFetchingRef.current = true;
-    setLoading(true);
+    setIsLoadingOlder(true);
 
     const el = scrollRef.current;
     const heightBefore = el?.scrollHeight ?? 0;
@@ -146,25 +149,28 @@ export default function MainChat({
       setHasMore(res.hasMore);
 
       setMessages((prev) => {
-        // Prepend new, trim bottom to stay under DOM_CAP
         const combined = [...incoming, ...prev];
+        // Trim from bottom to stay under cap
         return combined.length > DOM_CAP
           ? combined.slice(0, DOM_CAP)
           : combined;
       });
 
-      // Restore scroll so user stays where they were
+      // Restore scroll — double rAF ensures DOM has fully painted
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (el) el.scrollTop = el.scrollHeight - heightBefore;
+          // Only AFTER scroll is restored do we release the lock
+          setIsLoadingOlder(false);
+          isFetchingRef.current = false;
         });
       });
     } catch (e) {
       console.error(e);
-    } finally {
-      setLoading(false);
+      setIsLoadingOlder(false);
       isFetchingRef.current = false;
     }
+    // NOTE: no finally here — we release the lock manually after scroll restore above
   }, [hasMore, selectedFriend, fmt, setMessages]);
 
   // ─── Intersection observer on top sentinel ────────────────────────────────
@@ -184,31 +190,40 @@ export default function MainChat({
     return () => observer.disconnect();
   }, [loadOlder]);
 
-  // ─── Auto-scroll to bottom on own message or if near bottom ───────────────
+  // ─── Auto-scroll ONLY for genuinely new messages at the bottom ────────────
+  // Key fix: we check isLoadingOlder as a React state (not a ref) so it's
+  // always in sync with the render that added the messages
   const prevLenRef = useRef(0);
   useEffect(() => {
+    // Never auto-scroll during any loading phase
+    if (isInitLoading || isLoadingOlder) {
+      prevLenRef.current = messages.length;
+      return;
+    }
+
     if (messages.length === 0) return;
     const el = scrollRef.current;
     if (!el) return;
 
-    const isOwn = messages[messages.length - 1]?.isOwn;
+    const addedCount = messages.length - prevLenRef.current;
+    const addedAtBottom = addedCount > 0;
+    const lastMsg = messages[messages.length - 1];
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
 
-    if (isOwn || nearBottom) {
+    if (addedAtBottom && (lastMsg?.isOwn || nearBottom)) {
       requestAnimationFrame(() => {
         el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       });
     }
 
     prevLenRef.current = messages.length;
-  }, [messages]);
+  }, [messages, isInitLoading, isLoadingOlder]);
 
   // ─── Socket ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedFriend || !userId) return;
 
     setConnectionStatus("Connecting...");
-
     const sock = io(SOCKET_SERVER_URL, {
       query: { userId },
       transports: ["websocket"],
@@ -253,7 +268,6 @@ export default function MainChat({
       if (!belongs) return;
 
       setMessages((prev) => {
-        // Deduplicate
         const exists = prev.some((m) => {
           if (msg.id && m.id) return m.id === msg.id;
           return (
@@ -266,9 +280,8 @@ export default function MainChat({
           );
         });
         if (exists) return prev;
-
         const updated = [...prev, fmt(msg)];
-        // Trim top if over cap
+        // Trim from top if over cap
         return updated.length > DOM_CAP ? updated.slice(-DOM_CAP) : updated;
       });
     });
@@ -276,7 +289,6 @@ export default function MainChat({
     sock.on("messageError", (e: any) =>
       setConnectionStatus(`Message error: ${e.error}`),
     );
-
     setSocket(sock);
     return () => {
       sock.removeAllListeners();
@@ -373,7 +385,8 @@ export default function MainChat({
     );
   };
 
-  // ─── UI ────────────────────────────────────────────────────────────────────
+  const anyLoading = isInitLoading || isLoadingOlder;
+
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-gray-800 rounded-r-3xl overflow-hidden shadow-2xl transition-colors duration-300">
       {selectedFriend ? (
@@ -416,8 +429,8 @@ export default function MainChat({
 
           {/* Messages area */}
           <div className="flex-1 relative overflow-hidden">
-            {/* Loader — covers everything, no scrolling through blank space */}
-            {loading && (
+            {/* Loader overlay — covers everything and prevents all scroll */}
+            {anyLoading && (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-rose-50/80 dark:bg-gray-900/80 backdrop-blur-[2px]">
                 <Spinner />
               </div>
@@ -425,15 +438,20 @@ export default function MainChat({
 
             <div
               ref={scrollRef}
-              className="h-full overflow-y-auto px-6 pt-4 pb-2 bg-rose-50 dark:bg-gray-900"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              className="h-full px-6 pt-4 pb-2 bg-rose-50 dark:bg-gray-900"
+              style={{
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+                // Physically disable scroll during loading so nothing can drift
+                overflowY: anyLoading ? "hidden" : "auto",
+              }}
             >
               <style>{`div::-webkit-scrollbar{display:none}`}</style>
 
-              {/* Sentinel at top — triggers loadOlder when visible */}
+              {/* Top sentinel — IO watches this to trigger loadOlder */}
               <div ref={sentinelRef} className="h-px w-full" />
 
-              {/* Beginning of conversation label */}
+              {/* Beginning of conversation */}
               {!hasMore && messages.length > 0 && (
                 <p className="text-center text-[11px] text-gray-400 dark:text-gray-600 py-2 mb-1">
                   Beginning of conversation
