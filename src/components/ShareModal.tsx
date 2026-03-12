@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X, Search, Users, Share2, Check, AlertCircle } from "lucide-react";
 import Image from "next/image";
 import { sharePost, getFollowersForSharing } from "@/actions/sharePost";
@@ -41,6 +42,23 @@ export default function ShareModal({
     process.env.NODE_ENV === "production"
       ? "wss://socket.goga.network"
       : "http://localhost:3001";
+
+  const [mounted, setMounted] = useState(false);
+
+  // Mount guard (needed for SSR / Next.js)
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  // Lock background scroll while modal is open
+  useEffect(() => {
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, []);
 
   useEffect(() => {
     const fetchFollowers = async () => {
@@ -184,9 +202,9 @@ export default function ShareModal({
     }
   };
 
-  return (
+  const modalContent = (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
       onClick={onClose}
     >
       <div
@@ -369,4 +387,7 @@ export default function ShareModal({
       </div>
     </div>
   );
+
+  if (!mounted) return null;
+  return createPortal(modalContent, document.body);
 }
