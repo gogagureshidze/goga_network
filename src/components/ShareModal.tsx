@@ -316,16 +316,16 @@ export default function ShareModal({
                       }
                     `}
                   >
-                    <div className="relative">
+                    <div className="relative w-10 h-10 shrink-0">
                       <Image
                         src={follower.avatar}
                         alt={follower.username}
                         width={40}
                         height={40}
-                        className="rounded-full object-cover"
+                        className="rounded-full object-cover w-10 h-10"
                       />
                       {isSelected && (
-                        <div className="absolute -bottom-1 -right-1 bg-orange-500 rounded-full p-1">
+                        <div className="absolute -bottom-1 -right-1 bg-orange-500 rounded-full p-1 z-10">
                           <Check size={12} className="text-white" />
                         </div>
                       )}
