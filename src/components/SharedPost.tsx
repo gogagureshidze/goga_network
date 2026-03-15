@@ -38,6 +38,7 @@ interface SharedPostProps {
     _count: {
       likes: number;
       comments: number;
+      shares: number;
     };
   };
   isOwn: boolean;

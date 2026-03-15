@@ -16,13 +16,15 @@ export default function PostModal({ postId, onClose }: PostModalProps) {
   const [post, setPost] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCommentPostId, setOpenCommentPostId] = useState<number | null>(
+    null,
+  ); // ✅ added
 
   useEffect(() => {
     setMounted(true);
     return () => setMounted(false);
   }, []);
 
-  // Lock body scroll
   useEffect(() => {
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -31,7 +33,6 @@ export default function PostModal({ postId, onClose }: PostModalProps) {
     };
   }, []);
 
-  // Escape to close
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -40,7 +41,6 @@ export default function PostModal({ postId, onClose }: PostModalProps) {
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  // Fetch fresh post data every time modal opens
   const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -60,6 +60,11 @@ export default function PostModal({ postId, onClose }: PostModalProps) {
   }, [load]);
 
   const noopId = useCallback((_id: number) => {}, []);
+
+  // ✅ Real toggle — opens/closes comments for the post
+  const toggleComments = useCallback((id: number) => {
+    setOpenCommentPostId((prev) => (prev === id ? null : id));
+  }, []);
 
   const modalContent = (
     <div
@@ -115,8 +120,8 @@ export default function PostModal({ postId, onClose }: PostModalProps) {
             <div className="[&>div]:shadow-none [&>div]:border-0 [&>div]:rounded-none [&>div]:mb-0">
               <Post
                 post={post}
-                isCommentsOpen={false}
-                toggleComments={noopId}
+                isCommentsOpen={openCommentPostId === post.id} // ✅ reactive
+                toggleComments={toggleComments} // ✅ real toggle
                 removePost={noopId}
                 onPollVoteSuccess={noopId}
               />
