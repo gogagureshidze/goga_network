@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 interface ActivityTrackerProps {
-  updateLastActive: () => Promise<{ success: boolean }>;
+  updateLastActive: () => Promise<{ success: boolean } | void | any>;
 }
 
 export default function ActivityTracker({
@@ -11,10 +11,20 @@ export default function ActivityTracker({
 }: ActivityTrackerProps) {
   const lastUpdateRef = useRef<number>(Date.now());
 
+  // 1. Keep a stable reference to the function to avoid re-renders
+  const updateFnRef = useRef(updateLastActive);
+
+  // 2. Always keep the ref updated with the latest function
   useEffect(() => {
-    // A simple function to wrap the call
+    updateFnRef.current = updateLastActive;
+  }, [updateLastActive]);
+
+  useEffect(() => {
     const doUpdate = () => {
-      updateLastActive().catch((err) => {
+      // 3. Reset the throttle timer on EVERY update, even the interval
+      lastUpdateRef.current = Date.now();
+
+      updateFnRef.current().catch((err: any) => {
         console.error("Failed to update last active status", err);
       });
     };
@@ -22,15 +32,14 @@ export default function ActivityTracker({
     // Update on mount
     doUpdate();
 
-    // Update every 2 minutes
+    // Update every 2 minutes (120000ms)
     const interval = setInterval(doUpdate, 120000);
 
-    // Throttled activity handler - max once per 30 seconds
+    // Throttled activity handler - max once per 30 seconds (30000ms)
     const handleActivity = () => {
       const now = Date.now();
       if (now - lastUpdateRef.current > 30000) {
         doUpdate();
-        lastUpdateRef.current = now;
       }
     };
 
@@ -47,7 +56,7 @@ export default function ActivityTracker({
       window.removeEventListener("click", handleActivity);
       window.removeEventListener("scroll", handleActivity);
     };
-  }, [updateLastActive]);
+  }, []); // <--- 4. THE MAGIC FIX: EMPTY DEPENDENCY ARRAY
 
   return null;
 }
