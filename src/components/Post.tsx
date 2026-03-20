@@ -56,7 +56,7 @@ const PostComponent = ({
   isCommentsOpen,
   toggleComments,
   removePost,
-  onPollVoteSuccess, // ⭐ ADD THIS
+  onPollVoteSuccess,
 }: PostComponentProps) => {
   const [commentCount, setCommentCount] = useState(post._count?.comments || 0);
 

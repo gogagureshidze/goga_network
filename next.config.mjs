@@ -8,6 +8,8 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+    loader: "custom",
+    loaderFile: "./src/lib/cloudinaryLoader.ts",
     remotePatterns: [
       { protocol: "https", hostname: "static.wikia.nocookie.net" },
       { protocol: "https", hostname: "instagram.ftbs10-1.fna.fbcdn.net" },
