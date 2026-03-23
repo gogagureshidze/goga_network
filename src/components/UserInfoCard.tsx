@@ -150,16 +150,24 @@ async function UserInfoCard({
               </span>
             </div>
           )}
-
           {user.website && (
-            <div className="flex gap-1 items-center">
-              <Cable className="text-rose-500" />
-              <LinkifyText
-                text={user.website}
-                validUsernames={allValidUsernames}
-                linkClassName="text-rose-500 font-bold underline hover:text-rose-600"
-                mentionClassName="text-orange-600 font-bold hover:text-orange-700"
-              />
+            <div className="flex items-start gap-2 w-full">
+              {/* This literally removes the icon from the code if the text is over 30 characters */}
+              {user.website.length <= 30 && (
+                <Cable className="text-red-500 mt-1 shrink-0" />
+              )}
+
+              {/* whitespace-pre-wrap keeps enters, break-words forces long URLs to wrap, font-bold makes regular text bold */}
+              <div className="whitespace-pre-wrap break-words w-full font-bold">
+                <LinkifyText
+                  text={user.website}
+                  validUsernames={allValidUsernames}
+                  className={textColorClass}
+                  // Targets the actual links to make them bold and red
+                  linkClassName="text-red-500 font-bold hover:text-red-600 transition-colors"
+                  mentionClassName="text-orange-600 font-bold hover:text-orange-700"
+                />
+              </div>
             </div>
           )}
         </div>

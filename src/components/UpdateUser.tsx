@@ -264,15 +264,16 @@ function UpdateUser({ user }: { user: User }) {
               </div>
 
               {/* Website */}
+              {/* Description */}
               <div className="flex flex-col flex-1 min-w-[45%]">
                 <label className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Website
+                  Website and More
                 </label>
-                <input
-                  type="text"
+                {/* CHANGED FROM INPUT TO TEXTAREA */}
+                <textarea
                   name="website"
-                  placeholder={user.website || "goga_net.com"}
-                  className="ring-1 ring-gray-300 dark:ring-gray-600 p-[13px] rounded-md text-sm text-black dark:text-white bg-white dark:bg-gray-700 focus:ring-orange-400 dark:focus:ring-orange-500 focus:outline-none transition-all duration-200"
+                  placeholder={user.website || "Here is more stuff about me."}
+                  className="ring-1 ring-gray-300 dark:ring-gray-600 p-[13px] rounded-md text-sm text-black dark:text-white bg-white dark:bg-gray-700 focus:ring-orange-400 dark:focus:ring-orange-500 focus:outline-none transition-all duration-200 min-h-[100px] resize-y"
                   defaultValue={user.website || ""}
                 />
               </div>

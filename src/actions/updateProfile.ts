@@ -29,18 +29,18 @@ async function UpdateProfile(
     filteredFields.bioPattern = bioPattern;
   }
 
-  const Profile = z.object({
-    name: z.string().optional(),
-    surname: z.string().optional(),
-    description: z.string().optional(),
-    city: z.string().optional(),
-    school: z.string().optional(),
-    work: z.string().optional(),
-    website: z.string().optional(),
-    cover: z.string().optional(),
-    // << NEW CODE >>
-    bioPattern: z.string().optional(),
-  });
+const Profile = z.object({
+  // Add .trim() to all your string inputs!
+  name: z.string().trim().optional(),
+  surname: z.string().trim().optional(),
+  description: z.string().trim().optional(),
+  city: z.string().trim().optional(),
+  school: z.string().trim().optional(),
+  work: z.string().trim().optional(),
+  website: z.string().trim().optional(), // This stops the infinite space issue!
+  cover: z.string().optional(),
+  bioPattern: z.string().optional(),
+});
 
   const validatedFields = Profile.safeParse(filteredFields);
   console.log(validatedFields);
@@ -49,17 +49,20 @@ async function UpdateProfile(
     return;
   }
 
-  try {
-    await prisma.user.update({
-      where: { id: currentUserId },
-      data: validatedFields.data,
-    });
-    // Revalidating the user tag is crucial for a smooth UI update.
-    // @ts-ignore
-    revalidateTag("user-profile");
-  } catch (error) {
-    console.log(error);
-  }
+try {
+  await prisma.user.update({
+    where: { id: currentUserId },
+    data: validatedFields.data,
+  });
+  // @ts-ignore
+  revalidateTag("user-profile");
+} catch (error) {
+  console.log("Database update error:", error);
+  // YOU MUST THROW THE ERROR HERE so the frontend catches it
+  throw new Error(
+    "Failed to update profile. You might have exceeded the character limit.",
+  );
+}
 }
 
 export default UpdateProfile;

@@ -41,7 +41,6 @@ export async function updateLastActive() {
 
 
 // Toggle activity status visibility
-// ✅ THIS is the correct place for revalidations.
 // This action is only called when the user *explicitly* clicks the toggle.
 
 export async function toggleActivityStatus() {
