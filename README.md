@@ -11,7 +11,7 @@
 [![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io/)
 [![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](https://www.mysql.com/)
 
-*Developed solo in 2 months by an 18-year-old CS student* 🎓
+*Developed solo by an 18-year-old CS student* 🎓
 
 [Live Demo](https://goga.network/) 
 
