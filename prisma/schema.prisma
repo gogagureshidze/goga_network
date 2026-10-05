@@ -461,7 +461,7 @@ model HighlightComment {
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model PushSubscription {
+model PushSubscription {  
   id        String   @id @default(cuid())
   endpoint  String   @unique
   p256dh    String
