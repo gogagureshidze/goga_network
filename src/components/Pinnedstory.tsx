@@ -59,7 +59,7 @@ export default function PinnedStory() {
         Nobody fails because they <em>can&apos;t</em> code.
       </p>
       <p>
-        They fail because the room was <em>new</em>.
+        They fail because the room is <em>new</em>.
       </p>
       <p>Make the room familiar.</p>
     </section>

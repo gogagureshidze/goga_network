@@ -97,10 +97,10 @@ export default function InterviewModule() {
 
   return (
     <section id="demo">
-      <h2>One hour. Four rooms. Real clocks.</h2>
+      <h2>One hour. Four rooms. Real clock.</h2>
       <p>
-        Phases switch on a wall clock, not on the model&apos;s mood. Pick a
-        phase to see how Etude runs it.
+        Phases switch on a real clock, not on the model&apos;s mood. Pick
+        phases to see how Etude runs it.
       </p>
       <div className="stage" ref={stage}>
         <GlassCard

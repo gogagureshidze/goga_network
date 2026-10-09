@@ -177,7 +177,7 @@ export default function FeedbackReport({
       <h2>Feedback that reads like a senior engineer wrote it.</h2>
       <p>
         Every interview ends with this: scores by language and skill, percentile
-        against other candidates, and a plan.
+        against other candidates, and a specific plan to improve your skills.
       </p>
       <div className="rg">
         <GlassCard className="c5">
