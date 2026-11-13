@@ -8,96 +8,11 @@ import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
-import { unstable_cache } from "next/cache";
+import { loadProfileAccess } from "@/lib/profile-access";
 import { Suspense } from "react";
 import ActivityStatus from "@/components/ActivityStatus";
 import ProfileHighlights from "@/components/ProfileHighlights";
 import ProfileStats from "@/components/ProfileStats";
-
-const getCachedUser = unstable_cache(
-  async (username: string) => {
-    return await prisma.user.findFirst({
-      where: { username },
-      select: {
-        id: true,
-        username: true,
-        avatar: true,
-        cover: true,
-        name: true,
-        surname: true,
-        description: true,
-        city: true,
-        school: true,
-        work: true,
-        website: true,
-        lastActiveAt: true,
-        showActivityStatus: true,
-        createdAt: true,
-        bioPattern: true,
-        isPrivate: true,
-        showStoryLikes: true,
-        allowStoryComments: true,
-        _count: {
-          select: {
-            posts: true,
-            followers: true,
-            followings: true,
-          },
-        },
-      },
-    });
-  },
-  ["user-profile"],
-  { revalidate: 1800, tags: ["user-profile"] },
-);
-
-const getCachedRelationships = unstable_cache(
-  async (loggedInUserId: string, targetUserId: string) => {
-    const queryPromise = Promise.all([
-      prisma.follower.findFirst({
-        where: { followerId: loggedInUserId, followingId: targetUserId },
-        select: { id: true },
-      }),
-      prisma.followRequest.findFirst({
-        where: { senderId: loggedInUserId, receiverId: targetUserId },
-        select: { id: true },
-      }),
-      prisma.block.findFirst({
-        where: { blockerId: loggedInUserId, blockedId: targetUserId },
-        select: { id: true },
-      }),
-      prisma.block.findFirst({
-        where: { blockerId: targetUserId, blockedId: loggedInUserId },
-        select: { id: true },
-      }),
-    ]);
-
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Relationship query timeout")), 1000),
-    );
-
-    try {
-      const [isFollowing, isFollowingSent, isBlockedByViewer, isBlockedByUser] =
-        (await Promise.race([queryPromise, timeoutPromise])) as any;
-
-      return {
-        isFollowing: !!isFollowing,
-        isFollowingSent: !!isFollowingSent,
-        isBlockedByViewer: !!isBlockedByViewer,
-        isBlockedByUser: !!isBlockedByUser,
-      };
-    } catch (error) {
-      return {
-        isFollowing: false,
-        isFollowingSent: false,
-        isBlockedByViewer: false,
-        isBlockedByUser: false,
-      };
-    }
-  },
-  ["user-relationships"],
-  { revalidate: 300, tags: ["user-relationships"] },
-);
 
 async function ProfilePage({ params }: { params: any }) {
   const startTime = Date.now();
@@ -119,44 +34,9 @@ async function ProfilePage({ params }: { params: any }) {
 
   const { username } = resolvedParams;
 
-  let user = await getCachedUser(username);
-
-  if (!user && clerkUsername === username) {
-    user = await prisma.user.findFirst({
-      where: { id: loggedInUserId },
-      select: {
-        id: true,
-        username: true,
-        avatar: true,
-        cover: true,
-        name: true,
-        surname: true,
-        description: true,
-        city: true,
-        school: true,
-        work: true,
-        lastActiveAt: true,
-        showActivityStatus: true,
-        website: true,
-        createdAt: true,
-        bioPattern: true,
-        isPrivate: true,
-        showStoryLikes: true,
-        allowStoryComments: true,
-        _count: {
-          select: {
-            posts: true,
-            followers: true,
-            followings: true,
-          },
-        },
-      },
-    });
-  }
-
-  if (!user) return notFound();
-
-  const isOwner = user.id === loggedInUserId;
+  const profile = await loadProfileAccess(loggedInUserId, username, clerkUsername);
+  if (!profile) return notFound();
+  const { user, isOwner, relationships, canViewContent, visibleLastActiveAt } = profile;
   const loadTime = Date.now() - startTime;
 
   if (isOwner && clerkUsername && user.username !== clerkUsername) {
@@ -171,24 +51,6 @@ async function ProfilePage({ params }: { params: any }) {
       redirect(`/profile/${clerkUsername}`);
     }
   }
-
-  let relationships = {
-    isFollowing: false,
-    isFollowingSent: false,
-    isBlockedByViewer: false,
-    isBlockedByUser: false,
-  };
-
-  if (!isOwner) {
-    relationships = await getCachedRelationships(loggedInUserId, user.id);
-
-    if (relationships.isBlockedByUser) {
-      return notFound();
-    }
-  }
-
-  const canViewContent =
-    isOwner || !user.isPrivate || relationships.isFollowing;
 
   const formatedDate = new Date(user.createdAt).toLocaleDateString("en-US", {
     year: "numeric",
@@ -244,10 +106,10 @@ async function ProfilePage({ params }: { params: any }) {
               : user.username}
           </h1>
 
-          {user.showActivityStatus && user.lastActiveAt && (
+          {visibleLastActiveAt && (
             <div className="flex justify-center">
               <ActivityStatus
-                lastActiveAt={user.lastActiveAt}
+                lastActiveAt={visibleLastActiveAt}
                 size="md"
                 showText={true}
               />
@@ -266,7 +128,7 @@ async function ProfilePage({ params }: { params: any }) {
             isFollowing={relationships.isFollowing}
           />
 
-          <ProfileHighlights userId={user.id} isOwner={isOwner} />
+          {canViewContent && <ProfileHighlights userId={user.id} isOwner={isOwner} />}
 
           {/* Mobile sections */}
           {!isOwner && (

@@ -33,9 +33,6 @@ export default function MediaGrid({ media }: MediaGridProps) {
   // Only show the first 4 items in the grid preview
   const displayedMedia = useMemo(() => media?.slice(0, 4) || [], [media]);
 
-  // Return null if no media exists
-  if (!media || media.length === 0) return null;
-
   const openSlider = (idx: number) => {
     setCurrentIndex(idx);
     // Initialize loading state for the selected slider image if it's a photo
@@ -86,6 +83,8 @@ export default function MediaGrid({ media }: MediaGridProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, media.length, currentIndex]);
+
+  if (!media || media.length === 0) return null;
 
   const handleGridLoadComplete = (idx: number) => {
     setGridLoadingStates((prev) => {

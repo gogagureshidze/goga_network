@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { X, Search, Users, Share2, Check, AlertCircle } from "lucide-react";
 import Image from "next/image";
 import { sharePost, getFollowersForSharing } from "@/actions/sharePost";
-import { io, Socket } from "socket.io-client";
+import { useRealtimeSocket, emitWithAck } from "@/hooks/useRealtimeSocket";
 import { useUser } from "@clerk/nextjs";
 
 interface ShareModalProps {
@@ -34,14 +34,9 @@ export default function ShareModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const { socket } = useRealtimeSocket();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  const SOCKET_SERVER_URL =
-    process.env.NODE_ENV === "production"
-      ? "wss://socket.goga.network"
-      : "http://localhost:3001";
 
   const [mounted, setMounted] = useState(false);
 
@@ -77,30 +72,6 @@ export default function ShareModal({
     fetchFollowers();
   }, []);
 
-  // Initialize socket connection
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const newSocket = io(SOCKET_SERVER_URL, {
-      query: { userId: user.id },
-      transports: ["websocket"],
-    });
-
-    newSocket.on("connect", () => {
-      console.log("ShareModal: Socket connected");
-    });
-
-    newSocket.on("connect_error", (error) => {
-      console.error("ShareModal: Socket connection error:", error);
-    });
-
-    setSocket(newSocket);
-
-    return () => {
-      newSocket.disconnect();
-    };
-  }, [user?.id, SOCKET_SERVER_URL]);
-
   const filteredFollowers = followers.filter(
     (follower) =>
       follower.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -125,11 +96,6 @@ export default function ShareModal({
       return;
     }
 
-    if (!socket) {
-      setErrorMessage("Connection error. Please try again.");
-      return;
-    }
-
     if (!user) {
       setErrorMessage("You must be logged in to share posts");
       return;
@@ -140,28 +106,15 @@ export default function ShareModal({
     setSuccessMessage(null);
 
     try {
-      console.log(
-        "Starting share for post:",
-        postId,
-        "to users:",
-        Array.from(selectedUserIds),
-      );
-
       const result = await sharePost(postId, Array.from(selectedUserIds));
 
-      console.log("Share result:", result);
-
       if (result.success && result.messages) {
-        // Send real-time messages via socket
+        // sharePost already persisted these messages. Announce their IDs without
+        // asking the socket server to create a duplicate copy.
         for (const msgData of result.messages) {
-          if (msgData.success && msgData.message) {
-            socket.emit("sendMessage", {
-              senderId: user.id,
-              receiverId: msgData.recipientId,
-              text: msgData.message.text,
-              mediaUrl: msgData.message.mediaUrl,
-              mediaType: msgData.message.mediaType,
-              createdAt: msgData.message.createdAt,
+          if (socket?.connected && msgData.success && msgData.message) {
+            void emitWithAck(socket, "notifyMessage", { messageId: msgData.message.id }).catch(() => {
+              // Durable messages remain available on the recipient's next refresh.
             });
           }
         }

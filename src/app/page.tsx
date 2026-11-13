@@ -9,11 +9,11 @@ import { checkAndArchiveExpiredStories } from "@/actions/storySettingsActions";
 
 const Homepage = async () => {
   const user = await currentUser();
-    await checkAndArchiveExpiredStories();
 
   if (!user) {
     redirect("/sign-in");
   }
+  await checkAndArchiveExpiredStories();
 
   return (
     <div className="flex justify-center">

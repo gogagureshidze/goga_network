@@ -1,0 +1,2 @@
+'use client';
+export default function ErrorBoundary({reset}:{error:Error&{digest?:string};reset:()=>void}) {return <div role="alert" className="mx-auto my-16 max-w-lg rounded-2xl bg-white p-8 text-center dark:bg-gray-800"><h2 className="text-xl font-semibold">We couldn’t load this page</h2><p className="my-4">Please try again. Your saved messages and posts are safe.</p><button onClick={reset} className="rounded-lg bg-orange-600 px-5 py-2 text-white">Try again</button></div>;}

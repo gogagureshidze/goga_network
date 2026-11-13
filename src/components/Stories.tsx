@@ -13,18 +13,13 @@ export default async function Stories() {
   const stories = await prisma.story.findMany({
     where: {
       expiresAt: { gt: new Date() },
-      OR: [
-        { userId },
-        {
-          user: {
-            followers: {
-              some: {
-                followingId: userId,
-              },
-            },
-          },
+      user: {
+        is: {
+          OR: [{ id: userId }, { followings: { some: { followerId: userId } } }],
+          blocks: { none: { blockedId: userId } },
+          blockedBy: { none: { blockerId: userId } },
         },
-      ],
+      },
     },
     include: {
       user: true,

@@ -1,0 +1,51 @@
+name: Application checks (no deployment)
+on:
+  pull_request:
+  push:
+    branches: [main, 'codex/**']
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: local_test_only
+          MYSQL_DATABASE: goga_validation
+        ports: ['127.0.0.1:33367:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -plocal_test_only"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DATABASE_URL: mysql://root:local_test_only@127.0.0.1:33367/goga_validation
+      GOGA_TEST_DATABASE_URL: mysql://root:local_test_only@127.0.0.1:33367/goga_validation
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS50ZXN0JA
+      CLERK_SECRET_KEY: sk_test_local_build_only
+      GOOGLE_API_KEY: ''
+      NEXT_TELEMETRY_DISABLED: '1'
+      DEPLOYMENT_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install local audio test binaries
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - name: Migrate disposable CI database only
+        run: npm run db:deploy
+      - run: npm run test:integration
+      - run: npm run build
+      - run: node scripts/check-build-artifacts.js
+      - name: Check production dependencies for high or critical advisories
+        run: npm audit --omit=dev --audit-level=high

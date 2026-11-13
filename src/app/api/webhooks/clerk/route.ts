@@ -61,22 +61,9 @@ export async function POST(req: Request) {
       const clerk = await clerkClient();
       const clerkUser = await clerk.users.getUser(id);
 
-      // Handle user creation
-
-      if (type === "user.created") {
-        await prisma.user.create({
-          data: {
-            id: clerkUser.id,
-            username: clerkUser.username ?? "unknown",
-            avatar: clerkUser.imageUrl ?? "/noAvatar.png",
-            cover: "/noCover.png",
-          },
-        });
-        return new Response("✅ user.created handled", { status: 200 });
-      }
-
-      // Handle user updates
-      if (type === "user.updated") {
+      // Both delivery types are retried by Svix. Upsert preserves local profile
+      // fields and makes repeated user.created deliveries safe.
+      if (type === "user.created" || type === "user.updated") {
         // Use upsert to handle both updates and potential creation if a user
         // was missed (very rare, but good practice)
         await prisma.user.upsert({
@@ -92,13 +79,13 @@ export async function POST(req: Request) {
             avatar: clerkUser.imageUrl ?? undefined,
           },
         });
-        return new Response("✅ user.updated handled", { status: 200 });
+        return new Response("User synchronized", { status: 200 });
       }
     }
 
     // Handle user deletion (no need to fetch from Clerk, as the user is already gone)
     if (type === "user.deleted") {
-      await prisma.user.delete({ where: { id } });
+      await prisma.user.deleteMany({ where: { id } });
       return new Response("✅ user.deleted handled", { status: 200 });
     }
 

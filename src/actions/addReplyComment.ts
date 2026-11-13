@@ -4,6 +4,7 @@
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidateTag } from "next/cache";
+import { assertCanViewPost } from "@/lib/social-access";
 
 export async function addReplyComment(
   postId: number,
@@ -18,6 +19,12 @@ export async function addReplyComment(
   }
 
   try {
+    if (typeof desc !== "string" || !desc.trim() || desc.length > 255) throw new Error("Invalid comment");
+    await assertCanViewPost(userId, postId);
+    if (parentId !== undefined) {
+      const parent = await prisma.comment.findFirst({ where: { id: parentId, postId }, select: { id: true } });
+      if (!parent) throw new Error("Parent comment must belong to this post");
+    }
     const createdComment = await prisma.comment.create({
       data: {
         desc,

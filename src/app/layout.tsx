@@ -5,6 +5,8 @@ import ClickSpark from "@/components/ClickSpark";
 import Navbar from "@/components/Navbar";
 import PageTransition from "@/components/PageTransition";
 import prisma from "@/lib/client";
+import { auth } from "@clerk/nextjs/server";
+import CommunicationsProvider from "@/components/communications/CommunicationsProvider";
 import Provider from "./providers";
 import NotificationManager from "../components/NotificationsManager";
 import Footer from "@/components/Footer";
@@ -56,14 +58,18 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const rawUsers = await prisma.user.findMany({
+  const { userId } = await auth();
+  const rawUsers = userId ? await prisma.user.findMany({
+    where: { blocks: { none: { blockedId: userId } }, blockedBy: { none: { blockerId: userId } } },
+    orderBy: { username: "asc" },
+    take: 10,
     select: {
       id: true,
       username: true,
       name: true,
       avatar: true,
     },
-  });
+  }) : [];
 
   const users = rawUsers.map((user) => ({
     id: user.id,
@@ -300,6 +306,7 @@ export default async function RootLayout({
             {/* <ChristmasSnow /> */}
 
             <UserProvider>
+              <CommunicationsProvider>
               <ClickSpark
                 sparkColor="#e65800ff"
                 sparkSize={10}
@@ -321,6 +328,7 @@ export default async function RootLayout({
                   <PageTransition>{children}</PageTransition>
                 </div>
               </ClickSpark>
+              </CommunicationsProvider>
             </UserProvider>
           </Provider>
         </Providers>

@@ -2,6 +2,9 @@
 
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/client";
+import { chatService } from "@/lib/chat-server";
+import { assertCanViewPost } from "@/lib/social-access";
+import { consumeRequestLimit } from '../../server/request-limits';
 import { revalidatePath } from "next/cache"; // 👈 ADD THIS IMPORT
 export async function sharePost(postId: number, recipientIds: string[]) {
   const { userId } = await auth();
@@ -11,6 +14,11 @@ export async function sharePost(postId: number, recipientIds: string[]) {
   }
 
   try {
+    if (!Array.isArray(recipientIds) || recipientIds.length === 0 || recipientIds.length > 20) throw new Error("Choose 1 to 20 recipients");
+    if (!Number.isSafeInteger(postId) || postId < 1 || recipientIds.some(id => typeof id !== 'string' || !id || id.length > 191)) throw new Error("Invalid recipients");
+    recipientIds = [...new Set(recipientIds)];
+    consumeRequestLimit(userId, 'share', recipientIds.length);
+    await assertCanViewPost(userId, postId);
     // Verify post exists
     const post = await prisma.post.findUnique({
       where: { id: postId },
@@ -111,27 +119,14 @@ export async function sharePost(postId: number, recipientIds: string[]) {
     const messages = await Promise.all(
       recipientIds.map(async (recipientId) => {
         try {
-          // Find or create conversation
-          let conversation = await prisma.conversation.findFirst({
-            where: {
-              OR: [
-                { user1Id: userId, user2Id: recipientId },
-                { user1Id: recipientId, user2Id: userId },
-              ],
-            },
-          });
-
-          if (!conversation) {
-            conversation = await prisma.conversation.create({
-              data: {
-                user1Id: userId,
-                user2Id: recipientId,
-              },
-            });
-          }
+          await assertCanViewPost(recipientId, postId);
+          const conversation = await chatService.getOrCreateDirect(userId, recipientId);
 
           // Create message with post data
-          const message = await prisma.message.create({
+          const message = await prisma.$transaction(async tx => {
+            await tx.conversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
+            await chatService.authorizeConversation(userId, conversation.id, tx);
+            return tx.message.create({
             data: {
               conversationId: conversation.id,
               senderId: userId,
@@ -140,6 +135,7 @@ export async function sharePost(postId: number, recipientIds: string[]) {
               mediaUrl: JSON.stringify(sharedData),
               mediaType: "shared_post",
             },
+            });
           });
 
           return {
@@ -148,11 +144,11 @@ export async function sharePost(postId: number, recipientIds: string[]) {
             success: true,
           };
         } catch (err) {
-          console.error(`Error sharing to ${recipientId}:`, err);
+          console.warn(JSON.stringify({event:"chat.share_recipient_failed"}));
           return {
             recipientId,
             success: false,
-            error: err instanceof Error ? err.message : "Unknown error",
+            error: "Unable to share with this recipient",
           };
         }
       }),
@@ -162,7 +158,7 @@ export async function sharePost(postId: number, recipientIds: string[]) {
     const failedMessages = messages.filter((m) => !m.success);
 
     if (failedMessages.length > 0) {
-      console.error("Some shares failed:", failedMessages);
+      console.warn(JSON.stringify({event:"chat.share_partial_failure",count:failedMessages.length}));
     }
 
     // 🆕 CREATE SHARE RECORD (allows multiple shares of same post)
@@ -175,12 +171,10 @@ export async function sharePost(postId: number, recipientIds: string[]) {
             postId: postId,
           },
         });
-        console.log(
-          `✅ Share record created for user ${userId} sharing post ${postId}`,
-        );
+
         revalidatePath("/");
       } catch (shareError) {
-        console.error("Error creating share record:", shareError);
+        console.warn(JSON.stringify({event:"chat.share_record_failed"}));
         // Don't fail the whole operation if share record fails
       }
     }
@@ -198,13 +192,10 @@ export async function sharePost(postId: number, recipientIds: string[]) {
             : null,
     };
   } catch (error) {
-    console.error("Error sharing post:", error);
+    console.warn(JSON.stringify({event:"chat.share_failed"}));
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to share post. Please try again.",
+      error: error instanceof Error && "code" in error && error.code === "RATE_LIMITED" ? "Too many shares. Please try again shortly." : "Failed to share post. Please try again.",
     };
   }
 }

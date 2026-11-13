@@ -12,6 +12,10 @@ async function acceptFollowReq(senderId: string) {
   }
 
   try {
+    const block = await prisma.block.findFirst({ where: { OR: [
+      { blockerId: currentUserId, blockedId: senderId }, { blockerId: senderId, blockedId: currentUserId },
+    ] }, select: { id: true } });
+    if (block) throw new Error("User unavailable");
     const existingFollowReq = await prisma.followRequest.findFirst({
       where: {
         senderId: senderId,

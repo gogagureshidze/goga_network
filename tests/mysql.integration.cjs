@@ -1,0 +1,73 @@
+// Run only against an explicitly supplied disposable loopback database. Never loads .env.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { PrismaClient } = require('../src/generated/prisma');
+const { createChatService } = require('../server/chat-service');
+const { createRoomService } = require('../server/rooms');
+const { createCallCredentials } = require('../server/call-credentials');
+const { createMediaService } = require('../server/media-policy');
+const { randomUUID } = require('node:crypto');
+const configured = process.env.GOGA_TEST_DATABASE_URL;
+if (!configured) throw new Error('GOGA_TEST_DATABASE_URL is required (disposable local database only)');
+const url = new URL(configured);
+if (url.hostname !== '127.0.0.1' || url.port !== '33367' || url.pathname !== '/goga_validation') throw new Error('Integration tests are restricted to 127.0.0.1:33367/goga_validation');
+const prisma = new PrismaClient({datasources:{db:{url:configured}}});
+const chat = createChatService(prisma);
+const rooms = createRoomService({prisma,chat,env:{WATCH_ALLOWED_HOSTS:'media.example.test'}});
+const prefix=`integration-${Date.now()}`;const a=`${prefix}-alice`,b=`${prefix}-bob`,c=`${prefix}-outsider`;
+test('real MySQL migrations, legacy direct rows, race-safe sends, groups, calls and watch authorization',async()=>{
+  try {
+    await prisma.user.createMany({data:[{id:a,username:'Alice'},{id:b,username:'Bob'},{id:c,username:'Outsider'}]});
+    const legacy=await prisma.conversation.create({data:{user1Id:b,user2Id:a}});
+    assert.equal((await chat.getOrCreateDirect(a,b)).id,legacy.id);
+    const sent=await Promise.all(Array.from({length:8},()=>chat.sendMessage(a,{conversationId:legacy.id,text:'Persist once',clientMessageId:'race-message-0001'})));
+    assert.equal(new Set(sent.map(m=>m.id)).size,1);
+    assert.equal(await prisma.message.count({where:{conversationId:legacy.id}}),1);
+    await assert.rejects(chat.getMessages(c,{conversationId:legacy.id}),e=>e.code==='FORBIDDEN');
+    await chat.reactMessage(b,{messageId:sent[0].id,emoji:'❤️'});
+    assert.equal((await chat.getMessage(a,sent[0].id)).reactions.length,1);
+    await chat.markRead(b,{conversationId:legacy.id,messageId:sent[0].id});
+    assert.equal((await chat.getMessage(a,sent[0].id)).isRead,true);
+    await assert.rejects(prisma.user.delete({where:{id:b}}),e=>e.code==='P2003', 'Existing direct-conversation account deletion restriction is preserved');
+    // Real metadata/transaction checks complement the native audio codec suite.
+    const assetId = randomUUID();
+    await prisma.mediaAsset.create({data:{id:assetId,ownerId:a,conversationId:legacy.id,publicId:`goga/voice/${assetId}`,format:'mp4',bytes:1000,durationMs:1000,waveform:[0.2,0.8],expiresAt:new Date(Date.now()+86400000)}});
+    const media = createMediaService({prisma,chat});
+    await assert.rejects(media.authorizeAsset(b,assetId),e=>e.code==='NOT_FOUND');
+    assert.equal((await media.authorizeAsset(a,assetId)).id,assetId);
+    await assert.rejects(chat.sendMessage(b,{conversationId:legacy.id,mediaAssetId:assetId,clientMessageId:'stolen-voice-0001'}),e=>e.code==='FORBIDDEN');
+    const voice = await chat.sendMessage(a,{conversationId:legacy.id,mediaAssetId:assetId,clientMessageId:'voice-message-0001'});
+    assert.equal((await media.authorizeAsset(b,assetId)).id,assetId);
+    await assert.rejects(media.authorizeAsset(c,assetId),e=>e.code==='FORBIDDEN');
+    assert.equal((await chat.sendMessage(a,{conversationId:legacy.id,mediaAssetId:assetId,clientMessageId:'voice-message-0001'})).id,voice.id);
+    await chat.deleteMessage(a,{messageId:voice.id});
+    await assert.rejects(media.authorizeAsset(b,assetId),e=>e.code==='NOT_FOUND');
+    const group=await chat.createGroup(a,{name:'Test group',memberIds:[b]});
+    await assert.rejects(chat.getMessages(b,{conversationId:group.id}),e=>e.code==='FORBIDDEN');
+    await chat.respondInvite(b,{conversationId:group.id,accept:true});
+    const groupMessage=await chat.sendMessage(b,{conversationId:group.id,text:'Group message',clientMessageId:'group-message-0001'});
+    assert.equal(groupMessage.receiverId,null);
+    await assert.rejects(chat.updateMember(b,{conversationId:group.id,memberId:a,remove:true}),e=>e.code==='FORBIDDEN');
+    const call=await rooms.initiate(a,{conversationId:legacy.id,kind:'AUDIO',deviceId:'device-a'});
+    await rooms.respond(b,{callId:call.id,accept:true,deviceId:'device-b'});
+    const credentials=createCallCredentials({rooms,env:{RTC_STUN_URLS:'stun:turn.example.test:3478'}});
+    assert.equal((await credentials.issueIce(b,call.id,'device-b')).iceServers.length,1);
+    await assert.rejects(credentials.issueIce(c,call.id,'device-c'),e=>e.code==='FORBIDDEN');
+    await assert.rejects(rooms.validateSignal(c,{callId:call.id,deviceId:'device-c',toUserId:b,ready:true}),e=>e.code==='FORBIDDEN');
+    const party=await rooms.createWatch(a,{conversationId:group.id,sourceUrl:'https://media.example.test/authorized.mp4',authorized:true});
+    await assert.rejects(rooms.controlWatch(b,{partyId:party.id,version:0,action:'play',position:0}),e=>e.code==='FORBIDDEN');
+    const playing=await rooms.controlWatch(a,{partyId:party.id,version:0,action:'play',position:3});
+    assert.equal(playing.version,1);
+    await assert.rejects(rooms.controlWatch(a,{partyId:party.id,version:0,action:'pause',position:4}),e=>e.code==='CONFLICT');
+    await chat.updateMember(a,{conversationId:group.id,memberId:b,remove:true});
+    await assert.rejects(rooms.getWatch(b,party.id),e=>e.code==='FORBIDDEN');
+    await prisma.block.create({data:{blockerId:b,blockedId:a}});
+    await assert.rejects(chat.sendMessage(a,{conversationId:legacy.id,text:'blocked'}),e=>e.code==='FORBIDDEN');
+    await assert.rejects(credentials.issueIce(a,call.id,'device-a'),e=>e.code==='FORBIDDEN');
+  } finally {
+    rooms.close();
+    await prisma.conversation.deleteMany({where:{OR:[{user1Id:{in:[a,b,c]}},{ownerId:{in:[a,b,c]}}]}});
+    await prisma.user.deleteMany({where:{id:{in:[a,b,c]}}});
+    await prisma.$disconnect();
+  }
+});

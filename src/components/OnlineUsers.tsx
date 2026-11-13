@@ -1,97 +1,12 @@
 "use client";
-import React, { useEffect, useState, useRef } from "react";
-import io, { Socket } from "socket.io-client";
+import React from "react";
+import { useRealtimeSocket } from "@/hooks/useRealtimeSocket";
 import { Users, Wifi, WifiOff } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 
-const SOCKET_SERVER_URL =
-  process.env.NODE_ENV === "production"
-    ? "https://socket.goga.network"
-    : "http://localhost:3001";
 const OnlineUsers = () => {
-  const { user, isLoaded, isSignedIn } = useUser();
-  const [onlineCount, setOnlineCount] = useState<number>(0);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-  const socketRef = useRef<Socket | null>(null);
-
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || !user?.id) return;
-
-    console.log("🔌 Connecting to socket with userId:", user.id);
-
-    // Cleanup previous connection if exists
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-    }
-
-    const socket: Socket = io(SOCKET_SERVER_URL, {
-      query: { userId: user.id },
-      transports: ["websocket"], // Match MainChat - force websocket only
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
-
-    socketRef.current = socket;
-
-    // Connection successful
-    socket.on("connect", () => {
-      console.log("✅ Connected to socket server. Socket ID:", socket.id);
-      setIsConnected(true);
-      setConnectionError(null);
-    });
-
-    // Receive online count updates
-    socket.on("onlineCount", (count: number) => {
-      console.log("📡 Online count received:", count);
-      setOnlineCount(count);
-    });
-
-    // Connection error
-    socket.on("connect_error", (error: Error) => {
-      console.error("🚨 Connection error:", error.message);
-      setIsConnected(false);
-      setConnectionError(error.message);
-    });
-
-    // Disconnect
-    socket.on("disconnect", (reason: string) => {
-      console.log("❌ Disconnected from socket server. Reason:", reason);
-      setIsConnected(false);
-      if (reason === "io server disconnect") {
-        // Server disconnected the socket, reconnect manually
-        socket.connect();
-      }
-    });
-
-    // Reconnection attempt
-    socket.on("reconnect_attempt", (attempt: number) => {
-      console.log(`🔄 Reconnection attempt ${attempt}`);
-      setConnectionError(`Reconnecting... (attempt ${attempt})`);
-    });
-
-    // Reconnection successful
-    socket.on("reconnect", (attempt: number) => {
-      console.log(`🎉 Reconnected after ${attempt} attempts`);
-      setIsConnected(true);
-      setConnectionError(null);
-    });
-
-    // Reconnection failed
-    socket.on("reconnect_failed", () => {
-      console.error("💥 Reconnection failed");
-      setConnectionError("Failed to connect");
-    });
-
-    // Cleanup
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
-    };
-  }, [isLoaded, isSignedIn, user?.id]);
+  const { isLoaded, isSignedIn } = useUser();
+  const { onlineCount, isConnected, connectionError, reconnect } = useRealtimeSocket();
 
   if (!isLoaded) {
     return (
@@ -154,6 +69,7 @@ const OnlineUsers = () => {
           </span>
         </div>
       </div>
+      {!isConnected && <button onClick={reconnect} className="text-sm text-orange-600 dark:text-orange-400">Reconnect</button>}
     </div>
   );
 };

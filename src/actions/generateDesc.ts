@@ -1,6 +1,10 @@
 "use server";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { auth } from "@clerk/nextjs/server";
+import { fetchCaptionImage, validateCaptionMediaUrl } from "@/lib/caption-media";
+
+const captionRequests = new Map<string, number>();
 
 // Initialize the Gemini API
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
@@ -21,10 +25,17 @@ export async function generateDescription(
   media: MediaItem[]
 ): Promise<GenerateDescriptionResult> {
   try {
+    const { userId } = await auth();
+    if (!userId) return { success: false, error: "Not authenticated" };
+    const now = Date.now();
+    for (const [key, expiry] of captionRequests) if (expiry <= now) captionRequests.delete(key);
+    if (captionRequests.has(userId) || captionRequests.size >= 10_000) return { success: false, error: "Please wait before generating another caption" };
     // Validate input
-    if (!media || media.length === 0) {
-      return { success: false, error: "No media provided" };
+    if (!Array.isArray(media) || media.length === 0 || media.length > 4 || media.some((item) => !item || !["image", "video"].includes(item.resource_type) || typeof item.secure_url !== "string")) {
+      return { success: false, error: "Provide between 1 and 4 media items" };
     }
+    for (const item of media) if (item.resource_type === "image") validateCaptionMediaUrl(item.secure_url);
+    captionRequests.set(userId, now + 30_000);
 
     // Check API key
     if (!process.env.GOOGLE_API_KEY) {
@@ -34,7 +45,7 @@ export async function generateDescription(
     // Use Gemini 2.0 Flash for multimodal content
     const model = genAI.getGenerativeModel({
       model: "models/gemini-2.5-flash",
-    });
+    }, { timeout: 30_000 });
 
     // Prepare the prompt parts
     const parts: any[] = [];
@@ -70,14 +81,8 @@ Write the caption NOW:`,
       try {
         if (item.resource_type === "image") {
           // Fetch and convert image to base64
-          const base64Data = await fetchMediaAsBase64(item.secure_url);
-          const mimeType = getMimeType(item.secure_url, item.format);
-
           parts.push({
-            inlineData: {
-              mimeType,
-              data: base64Data,
-            },
+            inlineData: await fetchCaptionImage(item.secure_url),
           });
         } else if (item.resource_type === "video") {
           // Gemini doesn't support video in this model yet
@@ -86,7 +91,7 @@ Write the caption NOW:`,
           });
         }
       } catch (err) {
-        console.error(`Failed to process media item:`, err);
+        return { success: false, error: "Could not load media. Images must be supported uploads under 5 MB." };
       }
     }
 
@@ -123,55 +128,7 @@ Write the caption NOW:`,
 
     return {
       success: false,
-      error: error.message || "Failed to generate description",
+      error: "Failed to generate description",
     };
   }
-}
-
-/**
- convert to base64
- */
-async function fetchMediaAsBase64(url: string): Promise<string> {
-  try {
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch media: ${response.statusText}`);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    return buffer.toString("base64");
-  } catch (error) {
-    console.error("Error fetching media:", error);
-    throw new Error("Failed to fetch media from URL");
-  }
-}
-
-/**
- * Determine MIME type from URL and format
- */
-function getMimeType(url: string, format?: string): string {
-  // If format is provided, use it
-  if (format) {
-    const formatMap: Record<string, string> = {
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      png: "image/png",
-      gif: "image/gif",
-      webp: "image/webp",
-    };
-    return formatMap[format.toLowerCase()] || "image/jpeg";
-  }
-
-  // Otherwise, try to determine from URL extension
-  const extension = url.split(".").pop()?.toLowerCase();
-  const extensionMap: Record<string, string> = {
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    png: "image/png",
-    gif: "image/gif",
-    webp: "image/webp",
-  };
-  return extensionMap[extension || ""] || "image/jpeg";
 }

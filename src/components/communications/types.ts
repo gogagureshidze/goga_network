@@ -1,0 +1,2 @@
+export type Call = {id:string;conversationId:number;initiatorId:string;kind:'AUDIO'|'VIDEO';status:string;transport:'p2p'|'livekit';createdAt:string;startedAt?:string|null;participants:{userId:string;status:string;deviceId?:string|null}[]};
+export type Party = {id:string;conversationId:number;hostId:string;sourceUrl:string;title:string;collaborative:boolean;playing:boolean;position:number;version:number;updatedAt:string;endedAt:string|null;serverTime:number;participants?:string[]};

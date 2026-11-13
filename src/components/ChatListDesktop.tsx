@@ -1,17 +1,13 @@
 "use client";
 
 import React from "react";
+import type { Friend } from "@/app/chat/page";
+import GroupConversations from "./chat/GroupConversations";
 
-type Friend = {
-  id: string;
-  name: string;
-  avatar: string;
-  lastMessage: string;
-};
 
 type Props = {
   selectedFriend: Friend | null;
-  setSelectedFriend: (friend: Friend) => void;
+  setSelectedFriend: (friend: Friend | null) => void;
   Avatar: React.ComponentType;
   friends: Friend[];
 };
@@ -28,11 +24,14 @@ const ChatListDesktop = ({
         Chats
       </div>
       <div className="flex-1 overflow-y-auto pt-2">
+        <GroupConversations friends={friends} selectedFriend={selectedFriend} onSelect={setSelectedFriend} />
+        {friends.length === 0 && <p className="p-4 text-sm text-gray-500">Follow people to start a direct conversation.</p>}
         {friends.map((friend) => (
-          <div
+          <button
+            type="button"
             key={friend.id}
             onClick={() => setSelectedFriend(friend)}
-            className={`flex items-center gap-4 p-4 cursor-pointer transition-colors duration-200 rounded-xl m-2 ${
+            className={`flex w-[calc(100%-1rem)] items-center gap-4 p-4 text-left cursor-pointer transition-colors duration-200 rounded-xl m-2 ${
               selectedFriend?.id === friend.id
                 ? "bg-orange-300 dark:bg-gray-700 shadow-lg"
                 : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
@@ -59,7 +58,7 @@ const ChatListDesktop = ({
                 {friend.lastMessage}
               </span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>

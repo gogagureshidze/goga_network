@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { subscribeUser } from "@/actions/subscribeAction";
 import { BellRing, X } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -20,15 +21,25 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 export default function NotificationManager() {
+  const { userId, isLoaded } = useAuth();
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isLoaded || !userId) return;
+    let active = true;
+    let promptTimeout: ReturnType<typeof setTimeout> | undefined;
+    setIsSubscribed(false);
+    setIsDismissed(false);
+    setShowPrompt(false);
+    setError(null);
     async function checkStatus() {
       // Check if dismissed in this session
-      const dismissed = sessionStorage.getItem("notif-dismissed");
+      const dismissed = sessionStorage.getItem(`notif-dismissed:${userId}`);
       if (dismissed) {
         setIsDismissed(true);
         return;
@@ -40,27 +51,33 @@ export default function NotificationManager() {
         try {
           // Wait for service worker to be ready (it should be registered by PWA component)
           const registration = await navigator.serviceWorker.ready;
+          if (!active) return;
 
           // Check if already subscribed
           const subscription = await registration.pushManager.getSubscription();
 
           if (subscription) {
-            setIsSubscribed(true);
-            // Verify subscription is saved in DB
-            await subscribeUser(JSON.parse(JSON.stringify(subscription)));
+            const result = await subscribeUser(subscription.toJSON() as Parameters<typeof subscribeUser>[0]);
+            if (!active) return;
+            setIsSubscribed(result.success);
+            if (!result.success) { setError(result.error || "Enable notifications for this account."); setShowPrompt(true); }
           } else {
             // Show prompt after a short delay for better UX
-            setTimeout(() => setShowPrompt(true), 2000);
+            promptTimeout = setTimeout(() => { if (active) setShowPrompt(true); }, 2000);
           }
         } catch (error) {
-          console.error("Error checking notification status:", error);
+          if (active) { setError("Notification status could not be checked."); setShowPrompt(true); }
         }
       }
     }
     checkStatus();
-  }, []);
+    return () => { active = false; if (promptTimeout) clearTimeout(promptTimeout); };
+  }, [isLoaded, userId]);
 
   async function handleSubscribe() {
+    if (!userId || isSaving) return;
+    setIsSaving(true);
+    setError(null);
     try {
       const registration = await navigator.serviceWorker.ready;
 
@@ -72,6 +89,11 @@ export default function NotificationManager() {
         return;
       }
 
+      // An explicit Enable click may create a new subscription for a switched
+      // account. The previous account's endpoint is never reassigned server-side.
+      const existing = await registration.pushManager.getSubscription();
+      if (existing) await existing.unsubscribe();
+
       // Subscribe to push notifications
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
@@ -81,19 +103,20 @@ export default function NotificationManager() {
       });
 
       // Save to database
-      await subscribeUser(JSON.parse(JSON.stringify(subscription)));
+      const result = await subscribeUser(subscription.toJSON() as Parameters<typeof subscribeUser>[0]);
+      if (!result.success) throw new Error(result.error || "Notification subscription could not be saved.");
 
       setIsSubscribed(true);
       setShowPrompt(false);
 
       // Show a test notification
-      registration.showNotification("Notifications Enabled! 🎉", {
+      await registration.showNotification("Notifications Enabled! 🎉", {
         body: "You'll now receive updates via notifications.",
         icon: "/icons/icon-192x192.png",
         badge: "/icons/icon-96x96.png",
       });
     } catch (error) {
-      console.error("Subscription failed:", error);
+      setError(error instanceof Error ? error.message : "Could not enable notifications. Please try again.");
 
       // Specific error messages
       if (error instanceof DOMException) {
@@ -107,17 +130,17 @@ export default function NotificationManager() {
       } else {
         alert("Could not enable notifications. Please try again.");
       }
-    }
+    } finally { setIsSaving(false); }
   }
 
   function handleDismiss() {
     setShowPrompt(false);
     setIsDismissed(true);
-    sessionStorage.setItem("notif-dismissed", "true");
+    sessionStorage.setItem(`notif-dismissed:${userId}`, "true");
   }
 
   // Don't render if not supported, already subscribed, dismissed, or shouldn't show
-  if (!isSupported || isSubscribed || !showPrompt || isDismissed) {
+  if (!userId || !isSupported || isSubscribed || !showPrompt || isDismissed) {
     return null;
   }
 
@@ -132,7 +155,7 @@ export default function NotificationManager() {
             Enable Notifications
           </h4>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Get notified when someone likes your posts
+            {error || "Get notified when someone likes your posts"}
           </p>
         </div>
       </div>
@@ -147,9 +170,10 @@ export default function NotificationManager() {
         </button>
         <button
           onClick={handleSubscribe}
+          disabled={isSaving}
           className="px-4 py-2 bg-rose-600 text-white text-sm font-bold rounded-lg shadow-lg hover:bg-rose-700 transition-transform active:scale-95"
         >
-          Enable
+          {isSaving ? "Saving…" : "Enable"}
         </button>
       </div>
     </div>

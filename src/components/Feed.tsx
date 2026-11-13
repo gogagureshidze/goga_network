@@ -49,8 +49,7 @@ async function Feed({
     );
   }
 
-  try {
-    if (username) {
+  if (username) {
       const profileUser = await prisma.user.findFirst({
         where: { username },
         select: { id: true, isPrivate: true },
@@ -115,22 +114,6 @@ async function Feed({
         showOnMobile={showOnMobile}
       />
     );
-  } catch (error) {
-    console.error("Feed error:", error);
-    return (
-      <div className="bg-rose-50 shadow-md rounded-lg flex flex-col gap-8 p-4">
-        <div className="text-center py-8">
-          <p className="text-gray-500">Something went wrong.</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="text-blue-500 text-sm mt-2 hover:underline"
-          >
-            Try again
-          </button>
-        </div>
-      </div>
-    );
-  }
 }
 
 export default Feed;

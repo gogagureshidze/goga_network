@@ -3,12 +3,16 @@
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { assertCanViewStory } from "@/lib/social-access";
 
 export async function likeStoryComment(commentId: number, isLiking: boolean) {
   const user = await currentUser();
   if (!user?.id) throw new Error("Not authenticated");
 
   try {
+    const comment = await prisma.storyComment.findUnique({ where: { id: commentId }, select: { storyId: true } });
+    if (!comment) throw new Error("Comment not found");
+    await assertCanViewStory(user.id, comment.storyId);
     if (isLiking) {
       await prisma.like.upsert({
         where: {
@@ -27,8 +31,8 @@ export async function likeStoryComment(commentId: number, isLiking: boolean) {
     revalidatePath('/')
     return { success: true };
   } catch (error: any) {
-    console.error("FULL ERROR:", error); // 🔥 log full error
-    throw error; // rethrow to see full stack in console
+    console.error("story.comment_like_failed");
+    throw error;
   }
 }
 
@@ -39,9 +43,12 @@ export const addStoryComment = async (storyId: number, desc: string) => {
   const user = await currentUser();
   if (!user) throw new Error("User not authenticated.");
 
-  if (!desc.trim()) throw new Error("Comment cannot be empty.");
+  if (typeof desc !== "string" || !desc.trim() || desc.length > 255) throw new Error("Comment must contain 1–255 characters.");
 
   try {
+    const story = await assertCanViewStory(user.id, storyId);
+    const owner = await prisma.user.findUnique({ where: { id: story.userId }, select: { allowStoryComments: true } });
+    if (!owner?.allowStoryComments) throw new Error("Story comments are disabled");
     const newComment = await prisma.storyComment.create({
       data: {
         desc,
@@ -84,12 +91,13 @@ export const deleteStoryComment = async (commentId: number) => {
     // 1️⃣ Find and check comment ownership in one go
     const comment = await prisma.storyComment.findUnique({
       where: { id: commentId },
-      select: { userId: true },
+      select: { userId: true, story: { select: { userId: true } } },
     });
 
     if (!comment) {
       throw new Error("Comment not found.");
     }
+    if (comment.userId !== userId && comment.story.userId !== userId) throw new Error("Unauthorized");
     
 
     // 3️⃣ Delete the comment
@@ -106,6 +114,8 @@ export const deleteStoryComment = async (commentId: number) => {
 // Function to get comments for a specific story
 export const getStoryComments = async (storyId: number) => {
   try {
+    const user = await currentUser();
+    await assertCanViewStory(user?.id, storyId);
     const comments = await prisma.storyComment.findMany({
       where: {
         storyId: storyId,
@@ -129,6 +139,9 @@ export const getStoryComments = async (storyId: number) => {
 // Record story view
 
 export async function recordStoryView(storyId: number, userId: string) {
+  const user = await currentUser();
+  if (!user || user.id !== userId) throw new Error("Unauthorized");
+  await assertCanViewStory(user.id, storyId);
   return prisma.storyView.upsert({
     where: { storyId_userId: { storyId, userId } },
     update: {},

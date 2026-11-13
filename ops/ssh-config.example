@@ -1,0 +1,25 @@
+# Add to ~/.ssh/config after the administrator authorizes the dedicated public key.
+# Confirm host key fingerprint via Hostinger console before first connection.
+Host goga-staging
+    HostName STAGING_IP
+    User goga-deploy
+    IdentityFile ~/.ssh/goga_deploy_ed25519
+    IdentitiesOnly yes
+    PreferredAuthentications publickey
+    PasswordAuthentication no
+    StrictHostKeyChecking yes
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+
+# Production entry is for the approved release only. Existing CloudPanel site user
+# may replace goga-deploy after owner verifies it; do not use root for app releases.
+Host goga-production
+    HostName 31.97.76.24
+    User goga-deploy
+    IdentityFile ~/.ssh/goga_deploy_ed25519
+    IdentitiesOnly yes
+    PreferredAuthentications publickey
+    PasswordAuthentication no
+    StrictHostKeyChecking yes
+    ServerAliveInterval 30
+    ServerAliveCountMax 3

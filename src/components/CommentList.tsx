@@ -10,7 +10,7 @@ import { addReplyComment } from "../actions/addReplyComment";
 import { likeComment } from "../actions/likeComment";
 import { deleteComment } from "../actions/deleteComment";
 import Link from "next/link";
-import { io, Socket } from "socket.io-client";
+import { useRealtimeSocket } from "@/hooks/useRealtimeSocket";
 
 type CommentWithUser = {
   id: number;
@@ -397,54 +397,27 @@ function CommentList({
   // LOCAL STATE - this is the source of truth
   const [comments, setComments] = useState<CommentWithUser[]>(initialComments);
 
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const { socket } = useRealtimeSocket();
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const SOCKET_SERVER_URL =
-    process.env.NODE_ENV === "production"
-      ? "wss://socket.goga.network"
-      : "http://localhost:3001";
+  const lastTypingRef = useRef(0);
 
   useEffect(() => {
-    if (!user) return;
-
-    const newSocket = io(SOCKET_SERVER_URL, {
-      query: { userId: user.id },
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
-
-    newSocket.on("connect", () => {
-      newSocket.emit("joinPost", { postId });
-    });
-
-    newSocket.on(
-      "typingUpdate",
-      (data: { postId: number; typingUsers: string[] }) => {
-        if (data.postId === postId) {
-          const otherUsers = data.typingUsers.filter(
-            (u) => u !== user.username
-          );
-          setTypingUsers(otherUsers);
-        }
-      }
-    );
-
-    setSocket(newSocket);
-
-    return () => {
-      newSocket.emit("leavePost", { postId });
-      newSocket.removeAllListeners();
-      newSocket.disconnect();
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
+    if (!user || !socket) return;
+    const join = () => socket.emit("joinPost", { postId });
+    const update = (data: { postId: number; typingUsers: string[] }) => {
+      if (data.postId === postId) setTypingUsers(data.typingUsers.filter((name) => name !== user.username));
     };
-  }, [user, postId, SOCKET_SERVER_URL]);
+    socket.on("connect", join);
+    socket.on("typingUpdate", update);
+    if (socket.connected) join();
+    return () => {
+      if (socket.connected) socket.emit("leavePost", { postId });
+      socket.off("connect", join);
+      socket.off("typingUpdate", update);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [socket, user, postId]);
 
   const handleTyping = useCallback(() => {
     if (!socket || !user || !user.username) return;
@@ -453,14 +426,13 @@ function CommentList({
       clearTimeout(typingTimeoutRef.current);
     }
 
-    socket.emit("userTyping", {
-      postId,
-      username: user.username,
-      isTyping: true,
-    });
+    if (socket.connected && Date.now() - lastTypingRef.current > 1500) {
+      socket.emit("userTyping", { postId, isTyping: true });
+      lastTypingRef.current = Date.now();
+    }
 
     typingTimeoutRef.current = setTimeout(() => {
-      socket.emit("userTyping", {
+      if (socket.connected) socket.emit("userTyping", {
         postId,
         username: user.username,
         isTyping: false,

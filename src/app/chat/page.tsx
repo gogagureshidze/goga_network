@@ -17,7 +17,19 @@ export type Message = {
   mediaType?: string | null;
   conversationId?: number;
   isRead?: boolean;
+  readBy?: string[];
   receiverId?: string;
+  clientMessageId?: string | null;
+  replyToId?: number | null;
+  replyTo?: { id: number; text: string | null; senderId: string; deletedAt?: string | Date | null; mediaType?: string | null } | null;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  mediaAssetId?: string | null;
+  durationMs?: number | null;
+  waveform?: number[] | null;
+  reactions?: { userId: string; emoji: string }[];
+  sender?: { username?: string | null; name?: string | null; avatar?: string | null };
+  delivery?: "sending" | "failed" | "sent";
 };
 
 export type Friend = {
@@ -25,6 +37,8 @@ export type Friend = {
   name: string;
   avatar: string;
   lastMessage: string;
+  conversationId?: number;
+  kind?: "DIRECT" | "GROUP";
 };
 
 // Avatar component (themed)
@@ -47,7 +61,7 @@ const SendIcon = () => (
 );
 
 export default function Messenger() {
-  const { user, isSignedIn } = useUser();
+  const { user, isSignedIn, isLoaded } = useUser();
   const [followers, setFollowers] = useState<Friend[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   // messages state is lifted here so MainChat can append incoming socket messages
@@ -65,7 +79,7 @@ export default function Messenger() {
 
   // Fetch followers
   useEffect(() => {
-    if (!isSignedIn || !user) return;
+    if (!isSignedIn) return;
 
     const fetchFollowers = async () => {
       setIsLoading(true);
@@ -79,9 +93,7 @@ export default function Messenger() {
             lastMessage: "Start a conversation!",
           }));
           setFollowers(formattedFollowers);
-          if (!isMobile && formattedFollowers.length > 0) {
-            setSelectedFriend(formattedFollowers[0]);
-          }
+          if (formattedFollowers.length > 0) setSelectedFriend((current) => current || (window.innerWidth >= 768 ? formattedFollowers[0] : null));
         } else {
           setFollowers([]);
         }
@@ -94,7 +106,7 @@ export default function Messenger() {
     };
 
     fetchFollowers();
-  }, [isSignedIn, user, isMobile]);
+  }, [isSignedIn, user?.id]);
 
   // Clear messages when switching friends
   useEffect(() => {
@@ -102,6 +114,8 @@ export default function Messenger() {
   }, [selectedFriend]);
 
   const handleBack = () => setSelectedFriend(null);
+
+  if (!isLoaded) return <p className="p-8 text-center">Loading…</p>;
 
   if (!isSignedIn)
     return (
@@ -114,13 +128,6 @@ export default function Messenger() {
     return (
       <div className="flex justify-center items-center h-screen bg-rose-50 dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
         <p>Loading ...</p>
-      </div>
-    );
-
-  if (followers.length === 0)
-    return (
-      <div className="flex justify-center items-center h-screen bg-rose-50 dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
-        <p>No followers found. Start following people to chat with them!</p>
       </div>
     );
 

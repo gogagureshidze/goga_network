@@ -13,6 +13,11 @@ export const switchFollow = async (userId: string) => {
   }
 
   try {
+    if (!userId || userId === currentUserId) throw new Error("Invalid user");
+    const block = await prisma.block.findFirst({ where: { OR: [
+      { blockerId: currentUserId, blockedId: userId }, { blockerId: userId, blockedId: currentUserId },
+    ] }, select: { id: true } });
+    if (block) throw new Error("User unavailable");
     // 🔹 Check if already following
     const existingFollow = await prisma.follower.findFirst({
       where: { followerId: currentUserId, followingId: userId },

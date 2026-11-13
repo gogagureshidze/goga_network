@@ -3,6 +3,7 @@
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { assertCanViewStory, assertCanViewUserContent } from "@/lib/social-access";
 
 export async function createHighlight(data: {
   title: string;
@@ -108,6 +109,8 @@ export async function createHighlight(data: {
 // Get user's highlights
 export async function getUserHighlights(userId: string) {
   try {
+    const viewer = await currentUser();
+    await assertCanViewUserContent(viewer?.id, userId);
     const highlights = await prisma.highlight.findMany({
       where: { userId },
       include: {
@@ -153,18 +156,18 @@ export async function getHighlightDetails(highlightId: number) {
     const highlight = await prisma.highlight.findUnique({
       where: { id: highlightId },
       include: {
-        user: { select: { id: true, username: true, avatar: true } },
+        user: { select: { id: true, username: true, avatar: true, showStoryLikes: true } },
         stories: {
           include: {
             story: {
               include: {
-                user: true,
-                likes: { include: { user: true } },
+                user: { select: { id: true, username: true, avatar: true } },
+                likes: { include: { user: { select: { id: true, username: true, avatar: true } } } },
                 comments: {
-                  include: { user: true },
+                  include: { user: { select: { id: true, username: true, avatar: true } } },
                   orderBy: { createdAt: "desc" },
                 },
-                views: { include: { user: true } },
+                views: { include: { user: { select: { id: true, username: true, avatar: true } } } },
               },
             },
             archivedStory: {
@@ -181,10 +184,16 @@ export async function getHighlightDetails(highlightId: number) {
     });
 
     if (!highlight) throw new Error("Highlight not found");
+    await assertCanViewUserContent(currentUserId, highlight.userId);
 
     const processedStories = highlight.stories.map((hs) => {
       const active = hs.story;
       const archived = hs.archivedStory;
+      // Viewer lists are owner-only, including nested objects returned to clients.
+      if (currentUserId !== highlight.userId) {
+        if (active) active.views = [];
+        if (archived) archived.views = [];
+      }
 
       let isLiked = false;
       let likesList: any[] = [];
@@ -209,6 +218,14 @@ export async function getHighlightDetails(highlightId: number) {
 
       // ✅ FIX: Filter out the Highlight Creator from the views list
       viewsList = viewsList.filter((v) => v.userId !== highlight.userId);
+
+      // Retain the caller's own reaction state, but do not serialize a hidden likes list.
+      if (currentUserId !== highlight.userId &&
+          (!highlight.user.showStoryLikes || !(active || archived)?.showLikes)) {
+        likesList = [];
+        if (active) active.likes = [];
+        if (archived) archived.likes = [];
+      }
 
       return {
         ...hs,
@@ -246,6 +263,9 @@ export async function commentOnStory(
   if (!user?.id) throw new Error("Unauthorized");
 
   try {
+    const story = await assertCanViewStory(user.id, storyId, isArchived);
+    const owner = await prisma.user.findUnique({ where: { id: story.userId }, select: { allowStoryComments: true } });
+    if (!owner?.allowStoryComments || typeof text !== "string" || !text.trim() || text.length > 255) throw new Error("Comments unavailable or invalid");
     let newComment;
 
     if (!isArchived) {
@@ -279,6 +299,7 @@ export async function toggleStoryLike(storyId: number, isArchived: boolean) {
   if (!user?.id) throw new Error("Not authenticated");
 
   try {
+    await assertCanViewStory(user.id, storyId, isArchived);
     if (!isArchived) {
       // ---------------------------------------------------------
       // 1. HANDLE ACTIVE STORY (Standard 'Like' Model)
@@ -407,11 +428,15 @@ export async function reorderHighlightStories(
     if (!highlight || highlight.userId !== user.id)
       throw new Error("Not authorized");
 
+    if (!Array.isArray(items) || items.length > 100 || items.some((item) => !Number.isSafeInteger(item.id) || !Number.isSafeInteger(item.order) || item.order < 0)) throw new Error("Invalid story order");
+    const entries = await prisma.highlightStory.findMany({ where: { highlightId, id: { in: items.map((item) => item.id) } }, select: { id: true } });
+    if (new Set(items.map((item) => item.id)).size !== items.length || entries.length !== items.length) throw new Error("Stories must belong to this highlight");
+
     // Transaction ensures all updates apply or none do
     await prisma.$transaction(
       items.map((item) =>
         prisma.highlightStory.update({
-          where: { id: item.id }, // We update the HighlightStory row directly
+          where: { id: item.id, highlightId },
           data: { order: item.order },
         })
       )
@@ -548,6 +573,7 @@ export async function viewStory(storyId: number, isArchived: boolean) {
   if (!user?.id) return; // Views don't strictly require auth, but tracking does
 
   try {
+    await assertCanViewStory(user.id, storyId, isArchived);
     if (!isArchived) {
       // 1. Active Story View
       // Check if view exists to avoid unique constraint errors
@@ -604,6 +630,8 @@ export async function getArchivedStoriesForSelection(highlightId: number) {
   if (!user?.id) throw new Error("Not authenticated");
 
   try {
+    const highlight = await prisma.highlight.findUnique({ where: { id: highlightId }, select: { userId: true } });
+    if (highlight?.userId !== user.id) throw new Error("Unauthorized");
     // 1. Get IDs of stories already in this highlight
     const existingEntries = await prisma.highlightStory.findMany({
       where: { highlightId },
@@ -645,6 +673,10 @@ export async function addStoriesToHighlight(
       where: { id: highlightId },
     });
     if (highlight?.userId !== user.id) throw new Error("Unauthorized");
+
+    if (!Array.isArray(storyIds) || storyIds.length > 100 || storyIds.some((id) => !Number.isSafeInteger(id) || id < 1) || new Set(storyIds).size !== storyIds.length) throw new Error("Invalid stories");
+    const ownedStories = await prisma.archivedStory.findMany({ where: { id: { in: storyIds }, userId: user.id }, select: { id: true } });
+    if (ownedStories.length !== storyIds.length) throw new Error("You can only highlight your own stories");
 
     // 2. Get current highest order to append to the end
     const lastStory = await prisma.highlightStory.findFirst({

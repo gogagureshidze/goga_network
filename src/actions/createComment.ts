@@ -4,6 +4,7 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidateTag } from "next/cache";
 import prisma from "@/lib/client";
+import { assertCanViewPost } from "@/lib/social-access";
 
 export const addComment = async (postId: number, desc: string) => {
   const user = await currentUser();
@@ -14,6 +15,8 @@ export const addComment = async (postId: number, desc: string) => {
   }
 
   try {
+    if (typeof desc !== "string" || !desc.trim() || desc.length > 255) throw new Error("Invalid comment");
+    await assertCanViewPost(userId, postId);
     const createdComment = await prisma.comment.create({
       data: {
         desc,

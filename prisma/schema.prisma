@@ -9,52 +9,56 @@ datasource db {
 }
 
 model User {
-  id                     String          @id
-  username               String?
-  avatar                 String?
-  cover                  String?
-  name                   String?
-  surname                String?
-  description            String?
-  city                   String?
-  isPrivate              Boolean         @default(false)
-  school                 String?
-  work                   String?
-  website                String?
-  bioPattern             String?
-  createdAt              DateTime        @default(now())
-  lastActiveAt           DateTime        @default(now())
-  showActivityStatus     Boolean         @default(true)
-  
+  id                 String   @id
+  username           String?
+  avatar             String?
+  cover              String?
+  name               String?
+  surname            String?
+  description        String?
+  city               String?
+  isPrivate          Boolean  @default(false)
+  school             String?
+  work               String?
+  website            String?
+  bioPattern         String?
+  createdAt          DateTime @default(now())
+  lastActiveAt       DateTime @default(now())
+  showActivityStatus Boolean  @default(true)
+
   // 🆕 NEW STORY SETTINGS
-  allowStoryComments     Boolean         @default(true)
-  showStoryLikes         Boolean         @default(true)
-  
-  blockedBy              Block[]         @relation("BlocksReceived")
-  blocks                 Block[]         @relation("BlocksSent")
+  allowStoryComments Boolean @default(true)
+  showStoryLikes     Boolean @default(true)
+
+  blockedBy              Block[]              @relation("BlocksReceived")
+  blocks                 Block[]              @relation("BlocksSent")
   comments               Comment[]
-  followRequestsReceived FollowRequest[] @relation("FollowRequestsReceived")
-  followRequestsSent     FollowRequest[] @relation("FollowRequestsSent")
-  followers              Follower[]      @relation("UserFollowers")
-  followings             Follower[]      @relation("UserFollowings")
+  followRequestsReceived FollowRequest[]      @relation("FollowRequestsReceived")
+  followRequestsSent     FollowRequest[]      @relation("FollowRequestsSent")
+  followers              Follower[]           @relation("UserFollowers")
+  followings             Follower[]           @relation("UserFollowings")
   likes                  Like[]
-  shares                Share[]
+  shares                 Share[]
   posts                  Post[]
   stories                Story[]
   archivedStories        ArchivedStory[] // 🆕 NEW RELATION
   storyComments          StoryComment[]
   storyViews             StoryView[]
-  conversations1         Conversation[]  @relation("User1Conversations")
-  conversations2         Conversation[]  @relation("User2Conversations")
-  sentMessages           Message[]       @relation("SentMessages")
-  receivedMessages       Message[]       @relation("ReceivedMessages")
+  conversations1         Conversation[]       @relation("User1Conversations")
+  conversations2         Conversation[]       @relation("User2Conversations")
+  sentMessages           Message[]            @relation("SentMessages")
+  receivedMessages       Message[]            @relation("ReceivedMessages")
   pollVotes              PollVote[]
   postTags               PostTag[]
   highlights             Highlight[]
-  highlightViews    HighlightView[]
-  highlightLikes    HighlightLike[]
-  highlightComments HighlightComment[]
-  subscriptions PushSubscription[]
+  highlightViews         HighlightView[]
+  highlightLikes         HighlightLike[]
+  highlightComments      HighlightComment[]
+  subscriptions          PushSubscription[]
+  memberships            ConversationMember[]
+  messageReactions       MessageReaction[]
+  mediaAssets            MediaAsset[]
+  callParticipants       CallParticipant[]
 }
 
 model Share {
@@ -62,14 +66,15 @@ model Share {
   createdAt DateTime @default(now())
   userId    String
   postId    Int
-  
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([postId])
   @@index([userId])
-  @@index([userId, postId])  
+  @@index([userId, postId])
 }
+
 model Post {
   id        Int       @id @default(autoincrement())
   desc      String    @db.VarChar(2000)
@@ -147,10 +152,11 @@ model Follower {
   follower    User     @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
   following   User     @relation("UserFollowings", fields: [followingId], references: [id], onDelete: Cascade)
 
-  @@unique([followerId, followingId])  // 👈 ADD THIS
+  @@unique([followerId, followingId]) // 👈 ADD THIS
   @@index([followerId], map: "Follower_followerId_fkey")
   @@index([followingId], map: "Follower_followingId_fkey")
 }
+
 model FollowRequest {
   id         Int      @id @default(autoincrement())
   createdAt  DateTime @default(now())
@@ -176,19 +182,18 @@ model Block {
 }
 
 model Story {
-  id        Int            @id @default(autoincrement())
-  img       String
-  createdAt DateTime       @default(now())
-  expiresAt DateTime
-  showLikes Boolean        @default(true)
-  userId    String
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  likes     Like[]
-  views     StoryView[]
-  comments  StoryComment[]
-    highlightStories HighlightStory[]
+  id               Int              @id @default(autoincrement())
+  img              String
+  createdAt        DateTime         @default(now())
+  expiresAt        DateTime
+  showLikes        Boolean          @default(true)
+  userId           String
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes            Like[]
+  views            StoryView[]
+  comments         StoryComment[]
+  highlightStories HighlightStory[]
 
-  
   @@index([userId])
   @@index([expiresAt])
 }
@@ -196,68 +201,68 @@ model Story {
 // 🆕 NEW MODEL FOR ARCHIVED STORIES
 model ArchivedStory {
   id              Int      @id @default(autoincrement())
-  originalStoryId Int?     // Reference to original story (optional, in case it was deleted)
+  originalStoryId Int? // Reference to original story (optional, in case it was deleted)
   img             String
   createdAt       DateTime // Original creation date
   archivedAt      DateTime @default(now()) // When it was archived
   expiresAt       DateTime // Original expiry date
   showLikes       Boolean  @default(true)
   userId          String
-  
+
   // Snapshot data (frozen at archive time)
-  likesCount      Int      @default(0)
-  viewsCount      Int      @default(0)
-  commentsCount   Int      @default(0)
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  likes           ArchivedStoryLike[]
-  views           ArchivedStoryView[]
-  comments        ArchivedStoryComment[]
+  likesCount    Int @default(0)
+  viewsCount    Int @default(0)
+  commentsCount Int @default(0)
+
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes            ArchivedStoryLike[]
+  views            ArchivedStoryView[]
+  comments         ArchivedStoryComment[]
   highlightStories HighlightStory[]
-  
+
   @@index([userId])
   @@index([archivedAt])
 }
 
 // 🆕 ARCHIVED STORY INTERACTIONS
 model ArchivedStoryLike {
-  id              Int           @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
   archivedStoryId Int
   userId          String
   username        String?
   userAvatar      String?
   createdAt       DateTime
-  
-  archivedStory   ArchivedStory @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
-  
+
+  archivedStory ArchivedStory @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
+
   @@index([archivedStoryId])
 }
 
 model ArchivedStoryView {
-  id              Int           @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
   archivedStoryId Int
   userId          String
   username        String?
   userAvatar      String?
   createdAt       DateTime
-  
-  archivedStory   ArchivedStory @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
-  
+
+  archivedStory ArchivedStory @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
+
   @@index([archivedStoryId])
 }
 
 model ArchivedStoryComment {
-  id              Int           @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
   archivedStoryId Int
   desc            String
   userId          String
   username        String?
   userAvatar      String?
   createdAt       DateTime
-  likesCount      Int           @default(0)
-  
-  archivedStory   ArchivedStory @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
-  
+  likesCount      Int      @default(0)
+
+  archivedStory ArchivedStory @relation(fields: [archivedStoryId], references: [id], onDelete: Cascade)
+
   @@index([archivedStoryId])
 }
 
@@ -292,35 +297,58 @@ model StoryView {
 }
 
 model Conversation {
-  id        Int       @id @default(autoincrement())
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  user1Id   String
-  user2Id   String
-  user1     User      @relation("User1Conversations", fields: [user1Id], references: [id])
-  user2     User      @relation("User2Conversations", fields: [user2Id], references: [id])
-  messages  Message[]
+  id           Int                  @id @default(autoincrement())
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  user1Id      String?
+  user2Id      String?
+  user1        User?                @relation("User1Conversations", fields: [user1Id], references: [id], onDelete: Restrict)
+  user2        User?                @relation("User2Conversations", fields: [user2Id], references: [id], onDelete: Restrict)
+  messages     Message[]
+  kind         String               @default("DIRECT") @db.VarChar(16)
+  name         String?              @db.VarChar(100)
+  ownerId      String?
+  members      ConversationMember[]
+  mediaAssets  MediaAsset[]
+  calls        CallSession[]
+  watchParties WatchParty[]
 
   @@unique([user1Id, user2Id])
+  @@index([updatedAt])
   @@index([user1Id])
   @@index([user2Id])
 }
 
 model Message {
   id             Int      @id @default(autoincrement())
-  text           String?
+  text           String?  @db.Text
   createdAt      DateTime @default(now())
   senderId       String
-  receiverId     String
+  receiverId     String?
   conversationId Int
   isRead         Boolean  @default(false)
-  mediaUrl   String?       @db.Text           
-  mediaType  String?      @db.VarChar(50)    
+  mediaUrl       String?  @db.Text
+  mediaType      String?  @db.VarChar(50)
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation("SentMessages", fields: [senderId], references: [id])
-  receiver     User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  receiver     User?        @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Restrict)
 
+  clientMessageId String?           @db.VarChar(64)
+  editedAt        DateTime?
+  deletedAt       DateTime?
+  replyToId       Int?
+  replyTo         Message?          @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies         Message[]         @relation("MessageReplies")
+  durationMs      Int?
+  waveform        Json?
+  mediaAssetId    String?           @unique
+  mediaAsset      MediaAsset?       @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  reactions       MessageReaction[]
+
+  @@unique([senderId, clientMessageId])
+  @@index([conversationId, id])
+  @@index([receiverId, isRead])
   @@index([conversationId])
   @@index([senderId])
   @@index([receiverId])
@@ -385,34 +413,33 @@ model PostTag {
   @@index([userId])
 }
 
-
 model Highlight {
-  id          Int              @id @default(autoincrement())
-  title       String
-  desc        String?
-  coverUrl    String?
-  createdAt   DateTime         @default(now())
+  id        Int      @id @default(autoincrement())
+  title     String
+  desc      String?
+  coverUrl  String?
+  createdAt DateTime @default(now())
 
-  userId      String
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  stories     HighlightStory[]
-  views       HighlightView[]
-  likes       HighlightLike[]
-  comments    HighlightComment[]
+  stories  HighlightStory[]
+  views    HighlightView[]
+  likes    HighlightLike[]
+  comments HighlightComment[]
 }
 
 model HighlightStory {
-  id              Int            @id @default(autoincrement())
-  highlightId     Int
-  order           Int            @default(0)
+  id          Int @id @default(autoincrement())
+  highlightId Int
+  order       Int @default(0)
 
   // Link to the parent Highlight
-  highlight       Highlight      @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  highlight Highlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
 
   // 1️⃣ Link to ACTIVE Story (Optional)
-  storyId         Int?
-  story           Story?         @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  storyId Int?
+  story   Story? @relation(fields: [storyId], references: [id], onDelete: Cascade)
 
   // 2️⃣ Link to ARCHIVED Story (Optional)
   archivedStoryId Int?
@@ -425,43 +452,41 @@ model HighlightStory {
 }
 
 model HighlightView {
-  id          Int        @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   highlightId Int
   userId      String
-  createdAt   DateTime   @default(now())
+  createdAt   DateTime @default(now())
 
-  highlight   Highlight  @relation(fields: [highlightId], references: [id], onDelete: Cascade)
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  highlight Highlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([highlightId, userId])
 }
-
 
 model HighlightLike {
-  id          Int        @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   highlightId Int
   userId      String
-  createdAt   DateTime   @default(now())
+  createdAt   DateTime @default(now())
 
-  highlight   Highlight  @relation(fields: [highlightId], references: [id], onDelete: Cascade)
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  highlight Highlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([highlightId, userId])
 }
 
-
 model HighlightComment {
-  id          Int        @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   highlightId Int
   userId      String
   desc        String
-  createdAt   DateTime   @default(now())
+  createdAt   DateTime @default(now())
 
-  highlight   Highlight  @relation(fields: [highlightId], references: [id], onDelete: Cascade)
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  highlight Highlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model PushSubscription {  
+model PushSubscription {
   id        String   @id @default(cuid())
   endpoint  String   @unique
   p256dh    String
@@ -469,4 +494,99 @@ model PushSubscription {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+}
+
+// Additive communications expansion; legacy direct conversations remain valid.
+model ConversationMember {
+  conversationId    Int
+  userId            String
+  role              String       @default("MEMBER") @db.VarChar(16)
+  status            String       @default("ACTIVE") @db.VarChar(16)
+  joinedAt          DateTime     @default(now())
+  lastReadMessageId Int?
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId, status])
+}
+
+model MessageReaction {
+  messageId Int
+  userId    String
+  emoji     String  @db.VarChar(16)
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId, emoji])
+  @@index([userId])
+}
+
+model MediaAsset {
+  id             String       @id @default(uuid())
+  ownerId        String
+  conversationId Int
+  publicId       String       @unique
+  format         String       @db.VarChar(16)
+  bytes          Int
+  durationMs     Int
+  waveform       Json?
+  createdAt      DateTime     @default(now())
+  expiresAt      DateTime
+  owner          User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message        Message?
+
+  @@index([expiresAt])
+  @@index([conversationId])
+}
+
+model CallSession {
+  id             String            @id @default(uuid())
+  conversationId Int
+  initiatorId    String
+  kind           String            @db.VarChar(8)
+  status         String            @default("RINGING") @db.VarChar(16)
+  roomName       String            @unique
+  createdAt      DateTime          @default(now())
+  startedAt      DateTime?
+  endedAt        DateTime?
+  expiresAt      DateTime
+  conversation   Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  participants   CallParticipant[]
+
+  @@index([conversationId, status])
+  @@index([status, expiresAt])
+}
+
+model CallParticipant {
+  deviceId String?     @db.VarChar(64)
+  callId   String
+  userId   String
+  status   String      @default("INVITED") @db.VarChar(16)
+  joinedAt DateTime?
+  leftAt   DateTime?
+  call     CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([callId, userId])
+  @@index([userId, status])
+}
+
+model WatchParty {
+  id             String       @id @default(uuid())
+  conversationId Int
+  hostId         String
+  sourceUrl      String       @db.Text
+  title          String       @db.VarChar(100)
+  collaborative  Boolean      @default(false)
+  playing        Boolean      @default(false)
+  position       Float        @default(0)
+  version        Int          @default(0)
+  updatedAt      DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  endedAt        DateTime?
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, endedAt])
 }

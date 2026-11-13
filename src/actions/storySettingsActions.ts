@@ -3,108 +3,17 @@
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { archiveExpiredStoryBatch, archiveStorySnapshot } from "@/lib/story-archive";
 
 
-// Check and auto-archive expired stories on-the-fly
+// Public server actions may process only the authenticated owner's stories.
 export async function checkAndArchiveExpiredStories() {
-  
-  try {
-    const expiredStories = await prisma.story.findMany({
-      where: {
-        expiresAt: {
-          lte: new Date(),
-        },
-      },
-      include: {
-        likes: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-              },
-            },
-          },
-        },
-        views: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-              },
-            },
-          },
-        },
-        comments: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-              },
-            },
-            likes: true,
-          },
-        },
-      },
-    });
-
-    for (const story of expiredStories) {
-      await prisma.archivedStory.create({
-        data: {
-          originalStoryId: story.id,
-          img: story.img,
-          createdAt: story.createdAt,
-          expiresAt: story.expiresAt,
-          showLikes: story.showLikes,
-          userId: story.userId,
-          likesCount: story.likes.length,
-          viewsCount: story.views.length,
-          commentsCount: story.comments.length,
-          likes: {
-            create: story.likes.map((like) => ({
-              userId: like.user.id,
-              username: like.user.username,
-              userAvatar: like.user.avatar,
-              createdAt: like.createdAt,
-            })),
-          },
-          views: {
-            create: story.views.map((view) => ({
-              userId: view.user.id,
-              username: view.user.username,
-              userAvatar: view.user.avatar,
-              createdAt: view.createdAt,
-            })),
-          },
-          comments: {
-            create: story.comments.map((comment) => ({
-              desc: comment.desc,
-              userId: comment.user.id,
-              username: comment.user.username,
-              userAvatar: comment.user.avatar,
-              createdAt: comment.createdAt,
-              likesCount: comment.likes.length,
-            })),
-          },
-        },
-      });
-
-      await prisma.story.delete({
-        where: { id: story.id },
-      });
-    }
-
-    return { success: true, count: expiredStories.length };
-  } catch (error) {
-    console.error("Failed to auto-archive stories:", error);
-    return { success: false, count: 0 };
-  }
+  const user = await currentUser();
+  if (!user?.id) return { success: false, count: 0 };
+  try { return await archiveExpiredStoryBatch({ ownerId: user.id, limit: 25 }); }
+  catch { console.error("story.archive_batch_failed"); return { success: false, count: 0 }; }
 }
+
 // Toggle allow story comments
 export async function toggleAllowStoryComments() {
   const user = await currentUser();
@@ -129,7 +38,7 @@ export async function toggleAllowStoryComments() {
       allowStoryComments: updated.allowStoryComments,
     };
   } catch (error) {
-    console.error("Failed to toggle story comments:", error);
+    console.error("story.comments_setting_failed");
     throw error;
   }
 }
@@ -158,116 +67,19 @@ export async function toggleShowStoryLikes() {
       showStoryLikes: updated.showStoryLikes,
     };
   } catch (error) {
-    console.error("Failed to toggle story likes:", error);
+    console.error("story.likes_setting_failed");
     throw error;
   }
 }
 
-// Archive a story manually
+// Manual retries return the existing archive without duplicating snapshots.
 export async function archiveStory(storyId: number) {
   const user = await currentUser();
   if (!user?.id) throw new Error("Not authenticated");
-
-  try {
-    // Get the story with all its data
-    const story = await prisma.story.findUnique({
-      where: { id: storyId },
-      include: {
-        likes: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-              },
-            },
-          },
-        },
-        views: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-              },
-            },
-          },
-        },
-        comments: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-              },
-            },
-            likes: true,
-          },
-        },
-      },
-    });
-
-    if (!story) throw new Error("Story not found");
-    if (story.userId !== user.id) throw new Error("Not authorized");
-
-    // Create archived story with snapshot data
-    const archivedStory = await prisma.archivedStory.create({
-      data: {
-        originalStoryId: story.id,
-        img: story.img,
-        createdAt: story.createdAt,
-        expiresAt: story.expiresAt,
-        showLikes: story.showLikes,
-        userId: story.userId,
-        likesCount: story.likes.length,
-        viewsCount: story.views.length,
-        commentsCount: story.comments.length,
-        // Archive likes
-        likes: {
-          create: story.likes.map((like) => ({
-            userId: like.user.id,
-            username: like.user.username,
-            userAvatar: like.user.avatar,
-            createdAt: like.createdAt,
-          })),
-        },
-        // Archive views
-        views: {
-          create: story.views.map((view) => ({
-            userId: view.user.id,
-            username: view.user.username,
-            userAvatar: view.user.avatar,
-            createdAt: view.createdAt,
-          })),
-        },
-        // Archive comments
-        comments: {
-          create: story.comments.map((comment) => ({
-            desc: comment.desc,
-            userId: comment.user.id,
-            username: comment.user.username,
-            userAvatar: comment.user.avatar,
-            createdAt: comment.createdAt,
-            likesCount: comment.likes.length,
-          })),
-        },
-      },
-    });
-
-    // Delete the original story
-    await prisma.story.delete({
-      where: { id: storyId },
-    });
-
-    revalidatePath("/");
-    return { success: true, archivedStoryId: archivedStory.id };
-  } catch (error) {
-    console.error("Failed to archive story:", error);
-    throw error;
-  }
+  const archive = await archiveStorySnapshot(storyId, user.id);
+  if (!archive) throw new Error("Story unavailable");
+  revalidatePath("/");
+  return { success: true, archivedStoryId: archive.id };
 }
 
 // Get user's archived stories
@@ -288,16 +100,16 @@ export async function getArchivedStories() {
 
     return archivedStories;
   } catch (error) {
-    console.error("Failed to fetch archived stories:", error);
+    console.error("story.archives_read_failed");
     throw error;
   }
 }
 
 // Repost an archived story
-// Repost an archived story
 export async function repostArchivedStory(archivedStoryId: number) {
   const user = await currentUser();
   if (!user?.id) throw new Error("Not authenticated");
+  if (!Number.isSafeInteger(archivedStoryId) || archivedStoryId < 1) throw new Error("Invalid archive");
 
   try {
     const archivedStory = await prisma.archivedStory.findUnique({
@@ -307,36 +119,26 @@ export async function repostArchivedStory(archivedStoryId: number) {
     if (!archivedStory) throw new Error("Archived story not found");
     if (archivedStory.userId !== user.id) throw new Error("Not authorized");
 
-    // Create new story from archived data
-    const newStory = await prisma.story.create({
-      data: {
-        userId: user.id,
-        img: archivedStory.img,
-        showLikes: archivedStory.showLikes,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-      },
-      include: {
-        user: true,
-        likes: true,
-        views: true,
-        comments: {
-          include: {
-            user: true,
-            likes: true,
-          },
+    const newStory = await prisma.$transaction(async (tx) => {
+      await tx.archivedStory.update({ where: { id: archivedStoryId, userId: user.id }, data: { id: archivedStoryId } });
+      const story = await tx.story.create({
+        data: {
+          userId: user.id,
+          img: archivedStory.img,
+          showLikes: archivedStory.showLikes,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
-      },
-    });
-
-    // Delete the archived story after reposting
-    await prisma.archivedStory.delete({
-      where: { id: archivedStoryId },
-    });
+        include: { user: true, likes: true, views: true, comments: { include: { user: true, likes: true } } },
+      });
+      await tx.highlightStory.updateMany({ where: { archivedStoryId }, data: { archivedStoryId: null, storyId: story.id } });
+      await tx.archivedStory.delete({ where: { id: archivedStoryId } });
+      return story;
+    }, { isolationLevel: "Serializable" });
 
     revalidatePath("/");
     return { success: true, story: newStory };
   } catch (error) {
-    console.error("Failed to repost archived story:", error);
+    console.error("story.repost_failed");
     throw error;
   }
 }
@@ -345,6 +147,7 @@ export async function repostArchivedStory(archivedStoryId: number) {
 export async function deleteArchivedStory(archivedStoryId: number) {
   const user = await currentUser();
   if (!user?.id) throw new Error("Not authenticated");
+  if (!Number.isSafeInteger(archivedStoryId) || archivedStoryId < 1) throw new Error("Invalid archive");
 
   try {
     const archivedStory = await prisma.archivedStory.findUnique({
@@ -362,110 +165,13 @@ export async function deleteArchivedStory(archivedStoryId: number) {
     revalidatePath("/");
     return { success: true };
   } catch (error) {
-    console.error("Failed to delete archived story:", error);
+    console.error("story.archive_delete_failed");
     throw error;
   }
 }
 
-// Auto-archive expired stories (to be called by a cron job)
+// Legacy action contract retained, now authenticated and owner-scoped. A trusted
+// scheduler imports archiveExpiredStoryBatch from the server-only module.
 export async function autoArchiveExpiredStories() {
-  try {
-    const expiredStories = await prisma.story.findMany({
-      where: {
-        expiresAt: {
-          lte: new Date(),
-        },
-      },
-      include: {
-        likes: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-              },
-            },
-          },
-        },
-        views: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-              },
-            },
-          },
-        },
-        comments: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                avatar: true,
-              },
-            },
-            likes: true,
-          },
-        },
-      },
-    });
-
-    for (const story of expiredStories) {
-      // Create archived version
-      await prisma.archivedStory.create({
-        data: {
-          originalStoryId: story.id,
-          img: story.img,
-          createdAt: story.createdAt,
-          expiresAt: story.expiresAt,
-          showLikes: story.showLikes,
-          userId: story.userId,
-          likesCount: story.likes.length,
-          viewsCount: story.views.length,
-          commentsCount: story.comments.length,
-          likes: {
-            create: story.likes.map((like) => ({
-              userId: like.user.id,
-              username: like.user.username,
-              userAvatar: like.user.avatar,
-              createdAt: like.createdAt,
-            })),
-          },
-          views: {
-            create: story.views.map((view) => ({
-              userId: view.user.id,
-              username: view.user.username,
-              userAvatar: view.user.avatar,
-              createdAt: view.createdAt,
-            })),
-          },
-          comments: {
-            create: story.comments.map((comment) => ({
-              desc: comment.desc,
-              userId: comment.user.id,
-              username: comment.user.username,
-              userAvatar: comment.user.avatar,
-              createdAt: comment.createdAt,
-              likesCount: comment.likes.length,
-            })),
-          },
-        },
-      });
-
-      // Delete the expired story
-      await prisma.story.delete({
-        where: { id: story.id },
-      });
-    }
-
-    console.log(`Auto-archived ${expiredStories.length} expired stories`);
-    return { success: true, count: expiredStories.length };
-  } catch (error) {
-    console.error("Failed to auto-archive stories:", error);
-    throw error;
-  }
+  return checkAndArchiveExpiredStories();
 }

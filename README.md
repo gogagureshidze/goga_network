@@ -40,8 +40,12 @@ Goga Network is a **feature-rich social media platform** that combines the best 
 - **Activity Tracking** - See who viewed your posts and stories in real-time
 
 ### 💬 Real-Time Communication
+
+These upgrades are implemented on the communications branch and require the staging checks below before production release. Real device interoperability is not yet certified.
 - **Instant Messaging** - Lightning-fast chat powered by Socket.io
-- **Voice & Video Calls** - Stay connected face-to-face
+- **Voice notes and group chat** - Private audio storage, roles and invitations
+- **Voice & Video Calls** - Native one-to-one WebRTC and screen sharing; group LiveKit disabled pending security and capacity validation
+- **Watch parties** - Authorized direct media playback synchronized through Socket.IO
 - **Media Sharing** - Send images and videos directly in conversations
 - **Online Status** - Live user presence tracking
 - **Message Delivery** - Real-time message status updates
@@ -139,7 +143,7 @@ Prisma + MySQL architecture providing:
 - [x] Events & locations
 - [x] Albums & media management
 - [x] Polls with live updates
-- [x] Voice & video calling
+- [ ] Voice & video calling production validation (implementation available on the communications branch)
 - [x] Online status tracking
 
 ### 🚧 In Progress
@@ -178,21 +182,28 @@ Creating a full-featured social platform as a solo developer means:
 # Clone the repository
 git clone https://github.com/gogagureshidze/goga_network.git
 
-# Install dependencies
+# Use Node 24 LTS and install locked dependencies
 cd goga_network
-npm install
+npm ci
 
 # Set up environment variables
 cp .env.example .env
 
-# Run database migrations
-npx prisma migrate dev
+# Configure a DISPOSABLE local database and Clerk development instance first.
+# Empty local databases only; existing databases need baseline reconciliation.
+npm run db:deploy
 
-# Start the development server
+# Start the app; load socket settings securely in a second terminal and run npm run socket.
 npm run dev
 ```
 
 ---
+
+## Communications release and verification
+
+Start with [the architecture audit](docs/architecture-audit.md), [recorded validation](docs/validation.md), [the two-device test procedure](docs/media-test-procedure.md), and [operations, backups and rollback](docs/operations.md). Configuration names are in [.env.example](.env.example); use separate app and socket environments, including separate PORT values. [Secure access setup](docs/deployment-access.md) is an operator step, not an automatic deployment.
+
+Run `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`. The guarded MySQL integration suite requires the disposable loopback database described in the operations guide. CI performs checks only. No production deployment or infrastructure modification is automated.
 
 ## 📸 Screenshots
 

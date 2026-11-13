@@ -1,4 +1,5 @@
 import prisma from "@/lib/client";
+import { assertCanViewUserContent } from "@/lib/social-access";
 import { currentUser } from "@clerk/nextjs/server";
 import MediaGallery from "@/components/MediaGallery";
 import { notFound } from "next/navigation";
@@ -12,6 +13,8 @@ export default async function SeeAllMedia({ params }: SeeAllMediaProps) {
    if (!id) return null;
   const authUser = await currentUser();
   const currentUserId = authUser?.id ?? null;
+
+  try { await assertCanViewUserContent(currentUserId, id); } catch { notFound(); }
 
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user) notFound();

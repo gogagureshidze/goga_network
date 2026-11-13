@@ -2,6 +2,7 @@
 
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
+import { validatePushSubscription } from "@/lib/push-policy";
 
 interface PushSubscriptionJSON {
   endpoint: string;
@@ -20,44 +21,20 @@ export async function subscribeUser(subscription: PushSubscriptionJSON) {
       return { success: false, error: "User not authenticated" };
     }
 
-    console.log(`💾 Saving subscription for user: ${user.id}`);
-
-    // Check if this exact endpoint already exists
-    const existingSubscription = await prisma.pushSubscription.findFirst({
-      where: {
-        endpoint: subscription.endpoint,
-      },
-    });
-
-    if (existingSubscription) {
-      // Update existing subscription
-      await prisma.pushSubscription.update({
-        where: { id: existingSubscription.id },
-        data: {
-          userId: user.id,
-          p256dh: subscription.keys.p256dh,
-          auth: subscription.keys.auth,
-        },
-      });
-
-      console.log("✅ Subscription updated");
-      return { success: true, message: "Subscription updated" };
-    }
-
-    // Create new subscription - store endpoint, p256dh, and auth separately
-    await prisma.pushSubscription.create({
-      data: {
-        userId: user.id,
-        endpoint: subscription.endpoint, // Store endpoint URL as-is
-        p256dh: subscription.keys.p256dh,
-        auth: subscription.keys.auth,
-      },
-    });
-
-    console.log("✅ Subscription created");
-    return { success: true, message: "Subscription created" };
+    const checked = validatePushSubscription(subscription);
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.pushSubscription.findUnique({ where: { endpoint: checked.endpoint } });
+      if (existing) {
+        if (existing.userId !== user.id) return { success: false, error: "This subscription is unavailable. Re-enable notifications in this browser." };
+        await tx.pushSubscription.update({ where: { id: existing.id, userId: user.id }, data: checked.keys });
+        return { success: true, message: "Subscription updated" };
+      }
+      if (await tx.pushSubscription.count({ where: { userId: user.id } }) >= 20) return { success: false, error: "Too many subscribed devices. Remove old subscriptions first." };
+      await tx.pushSubscription.create({ data: { userId: user.id, endpoint: checked.endpoint, ...checked.keys } });
+      return { success: true, message: "Subscription created" };
+    }, { isolationLevel: "Serializable" });
   } catch (error) {
-    console.error("❌ Error saving subscription:", error);
+    console.error("push.subscription_save_failed");
     return { success: false, error: "Failed to save subscription" };
   }
 }
@@ -76,10 +53,9 @@ export async function removeSubscription() {
       },
     });
 
-    console.log("✅ All subscriptions removed for user");
     return { success: true, message: "Unsubscribed successfully" };
   } catch (error) {
-    console.error("❌ Error removing subscription:", error);
+    console.error("push.subscription_remove_failed");
     return { success: false, error: "Failed to unsubscribe" };
   }
 }
@@ -98,7 +74,7 @@ export async function getSubscriptionStatus() {
 
     return { isSubscribed: count > 0 };
   } catch (error) {
-    console.error("❌ Error checking subscription status:", error);
+    console.error("push.subscription_status_failed");
     return { isSubscribed: false };
   }
 }

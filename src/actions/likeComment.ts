@@ -3,6 +3,7 @@
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { assertCanViewPost } from "@/lib/social-access";
 
 // In-memory lock to prevent race conditions
 const likeLocks = new Map<string, Promise<any>>();
@@ -21,6 +22,13 @@ export async function likeComment(commentId: number, shouldLike?: boolean) {
   }
 
   const lockKey = `${userId}-${commentId}`;
+  try {
+    const comment = await prisma.comment.findUnique({ where: { id: commentId }, select: { postId: true } });
+    if (!comment) throw new Error("Comment unavailable");
+    await assertCanViewPost(userId, comment.postId);
+  } catch {
+    return { success: false, error: "Comment unavailable", likeUserIds: [], likeCount: 0 };
+  }
 
   // Wait for any existing operation to complete
   if (likeLocks.has(lockKey)) {

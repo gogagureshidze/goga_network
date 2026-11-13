@@ -2,6 +2,7 @@
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { assertCanViewStory } from "@/lib/social-access";
 
 export const likeStory = async (storyId: number, isLiking: boolean) => {
   const user = await currentUser();
@@ -12,10 +13,13 @@ export const likeStory = async (storyId: number, isLiking: boolean) => {
   }
 
   try {
+    await assertCanViewStory(userId, storyId);
     if (isLiking) {
       // Create a new like record for the story
-      await prisma.like.create({
-        data: {
+      await prisma.like.upsert({
+        where: { userId_storyId: { userId, storyId } },
+        update: {},
+        create: {
           userId: userId,
           storyId: storyId,
         },

@@ -2,7 +2,7 @@
 "use server";
 import prisma from "@/lib/client";
 import { currentUser } from "@clerk/nextjs/server";
-import { unstable_cache } from "next/cache";
+import { assertCanViewPost, assertCanViewUserContent, visiblePostWhere } from "@/lib/social-access";
 
 const postSelectFields = {
   id: true,
@@ -97,41 +97,11 @@ const postSelectFields = {
   }
 };
 
-const getCachedBlockedUsers = unstable_cache(
-  async (userId: string) => {
-    const [blockedUsers, usersWhoBlockedMe] = await Promise.all([
-      prisma.block.findMany({
-        where: { blockerId: userId },
-        select: { blockedId: true },
-      }),
-      prisma.block.findMany({
-        where: { blockedId: userId },
-        select: { blockerId: true },
-      }),
-    ]);
-
-    return [
-      ...blockedUsers.map((b) => b.blockedId),
-      ...usersWhoBlockedMe.map((b) => b.blockerId),
-    ];
-  },
-  ["blocked-users"],
-  { revalidate: 3600, tags: ["blocked-users"] }
-);
-
-const getCachedFollowing = unstable_cache(
-  async (userId: string) => {
-    const following = await prisma.follower.findMany({
-      where: { followerId: userId },
-      select: { followingId: true },
-    });
-    return following.map((f) => f.followingId);
-  },
-  ["following-list"],
-  { revalidate: 1800, tags: ["following-list"] }
-);
-
 const POSTS_PER_PAGE = 10;
+
+function respectActivityPrivacy<T extends { user: { showActivityStatus: boolean; lastActiveAt: Date } }>(post: T) {
+  return { ...post, user: { ...post.user, lastActiveAt: post.user.showActivityStatus ? post.user.lastActiveAt : null } };
+}
 
 export async function fetchPosts({
   page,
@@ -142,26 +112,25 @@ export async function fetchPosts({
 }) {
   const user = await currentUser();
   if (!user) return [];
+  if (!Number.isSafeInteger(page) || page < 1 || page > 10000) return [];
 
   const currentUserId = user.id;
 
   try {
-    const excludedUserIds = await getCachedBlockedUsers(currentUserId);
     const skipAmount = (page - 1) * POSTS_PER_PAGE;
 
     // --- Profile Page Feed ---
     if (username) {
+      const profile = await prisma.user.findFirst({ where: { username }, select: { id: true } });
+      if (!profile) return [];
+      await assertCanViewUserContent(currentUserId, profile.id);
       const posts = await prisma.post.findMany({
         where: {
+          ...visiblePostWhere(currentUserId),
           OR: [
             { user: { is: { username } } },
             { tags: { some: { user: { is: { username } }, deleted: false } } },
           ],
-          NOT: {
-            ...(excludedUserIds.length > 0 && {
-              userId: { in: excludedUserIds },
-            }),
-          },
         },
         select: postSelectFields,
         orderBy: { createdAt: "desc" },
@@ -171,38 +140,14 @@ export async function fetchPosts({
 
       return posts.filter(
         (post) => post.user.username === username || post.tags?.length > 0
-      );
+      ).map(respectActivityPrivacy);
     }
 
     // --- Main User Feed (FIXED) ---
-    const followingIds = await getCachedFollowing(currentUserId);
-
-    // Get private users that current user doesn't follow
-    const privateUsers = await prisma.user.findMany({
-      where: {
-        isPrivate: true,
-        NOT: {
-          id: { in: [...followingIds, currentUserId] },
-        },
-      },
-      select: { id: true },
-    });
-    const privateUsersToExclude = privateUsers.map((u) => u.id);
-
-    // ALL users to exclude (blocked + private unfollowed)
-    const allExcludedIds = [
-      currentUserId,
-      ...excludedUserIds,
-      ...privateUsersToExclude,
-    ];
-
-    // SIMPLE, CLEAN QUERY - no conflicting conditions
     const posts = await prisma.post.findMany({
       where: {
-        userId: {
-          notIn: allExcludedIds,
-        },
-        // That's it. No OR conditions that conflict with notIn.
+        ...visiblePostWhere(currentUserId),
+        userId: { not: currentUserId },
       },
       select: postSelectFields,
       orderBy: { createdAt: "desc" },
@@ -210,7 +155,7 @@ export async function fetchPosts({
       skip: skipAmount,
     });
 
-    return posts;
+    return posts.map(respectActivityPrivacy);
   } catch (error) {
     console.error("Error fetching posts:", error);
     return [];
@@ -222,13 +167,14 @@ export async function fetchSinglePost(postId: number) {
   if (!user) return null;
 
   try {
+    await assertCanViewPost(user.id, postId);
     // Force fresh data by using a direct query without cache
     const post = await prisma.post.findUnique({
       where: { id: postId },
       select: postSelectFields,
     });
 
-    return post;
+    return post ? respectActivityPrivacy(post) : null;
   } catch (error) {
     console.error("Error fetching single post:", error);
     return null;

@@ -1,5 +1,6 @@
 "use client";
 import Shuffle from "../components/ShuffleText";
+import { searchUsers } from "@/actions/searchUsers";
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Image from "next/image";
@@ -74,21 +75,16 @@ function Navbar({ users }: { users: User[] }) {
     }
   }, [isSignedIn, isLoaded, router]);
 
-  // Debounced search filtering to improve performance
-  const filteredUsers = useMemo(() => {
-    if (query.trim() === "") {
-      return users.slice(0, 10);
-    }
-
-    const lowerCaseQuery = query.toLowerCase();
-    return users
-      .filter(
-        (user) =>
-          user.username?.toLowerCase().includes(lowerCaseQuery) ||
-          user.name?.toLowerCase().includes(lowerCaseQuery)
-      )
-      .slice(0, 20);
-  }, [query, users]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>(users);
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      void searchUsers(query).then(results => {
+        if (active) setFilteredUsers(results.map(result => ({ ...result, username: result.username || "Unknown" })));
+      }).catch(() => { if (active) setFilteredUsers([]); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [query]);
 
   // Optimized user profile change detection
   useEffect(() => {

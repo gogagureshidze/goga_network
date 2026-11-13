@@ -2,6 +2,8 @@
 "use server";
 import prisma from "@/lib/client";
 import { revalidatePath } from "next/cache";
+import { auth } from "@clerk/nextjs/server";
+import { assertCanViewPost } from "@/lib/social-access";
 
 // =================================================================
 // 1. ACTION: CREATE A NEW POLL POST
@@ -21,6 +23,11 @@ export async function createPollPost({
   question,
   options,
 }: PollCreationData) {
+  const session = await auth();
+  if (!session.userId || session.userId !== userId) return { error: "Not authenticated or unauthorized." };
+  if (typeof question !== "string" || question.length > 2000 || !Array.isArray(options) || options.some((option) => typeof option !== "string" || option.length > 255)) {
+    return { error: "Invalid poll question or options." };
+  }
   const validOptions = options.filter((opt) => opt.trim().length > 0);
 
   if (validOptions.length < 2 || validOptions.length > 5) {
@@ -111,34 +118,22 @@ interface PollVoteData {
  * Checks for expiration and existing votes within the same poll.
  */
 export async function castPollVote({ userId, pollId, optionId }: PollVoteData) {
+  const session = await auth();
+  if (!session.userId || session.userId !== userId) return { error: "Not authenticated or unauthorized." };
+  if (!Number.isSafeInteger(pollId) || pollId < 1 || !Number.isSafeInteger(optionId) || optionId < 1) return { error: "Invalid poll or option." };
   try {
-    const poll = await prisma.poll.findUnique({
-      where: { id: pollId },
-    });
-
-    if (!poll || poll.expiresAt < new Date()) {
-      return { error: "This poll has expired and can no longer accept votes." };
-    }
-
-    const existingVote = await prisma.pollVote.findFirst({
-      where: {
-        userId: userId,
-        option: {
-          pollId: pollId,
-        },
-      },
-    });
-
-    if (existingVote) {
-      return { error: "You have already voted in this poll." };
-    }
-
-    const newVote = await prisma.pollVote.create({
-      data: {
-        userId: userId,
-        optionId: optionId,
-      },
-    });
+    const poll = await prisma.poll.findUnique({ where: { id: pollId } });
+    if (!poll) return { error: "Poll not found." };
+    await assertCanViewPost(session.userId, poll.postId);
+    const newVote = await prisma.$transaction(async (tx) => {
+      const currentPoll = await tx.poll.findUnique({ where: { id: pollId } });
+      if (!currentPoll || currentPoll.expiresAt <= new Date()) throw new Error("Poll expired");
+      const option = await tx.pollOption.findFirst({ where: { id: optionId, pollId }, select: { id: true } });
+      if (!option) throw new Error("Option does not belong to this poll");
+      const existingVote = await tx.pollVote.findFirst({ where: { userId: session.userId!, option: { pollId } } });
+      if (existingVote) throw new Error("Already voted");
+      return tx.pollVote.create({ data: { userId: session.userId!, optionId } });
+    }, { isolationLevel: "Serializable" });
 
     // Clear caches
     revalidatePath("/", "layout");
@@ -165,6 +160,11 @@ export async function castPollVote({ userId, pollId, optionId }: PollVoteData) {
  */
 export async function getPollResults(pollId: number) {
   try {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated." };
+    const poll = await prisma.poll.findUnique({ where: { id: pollId }, select: { postId: true } });
+    if (!poll) return { error: "Poll not found." };
+    await assertCanViewPost(userId, poll.postId);
     const results = await prisma.poll.findUnique({
       where: { id: pollId },
       select: {

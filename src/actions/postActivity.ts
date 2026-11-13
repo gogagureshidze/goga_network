@@ -2,6 +2,7 @@
 
 import prisma from "@/lib/client";
 import { auth } from "@clerk/nextjs/server";
+import { assertCanViewPost } from "@/lib/social-access";
 
 export const postActivity = async (postId: number) => {
   const { userId } = await auth();
@@ -11,6 +12,7 @@ export const postActivity = async (postId: number) => {
   }
 
   try {
+    await assertCanViewPost(userId, postId);
     const post = await prisma.post.findUnique({
       where: { id: postId },
       select: { userId: true },
