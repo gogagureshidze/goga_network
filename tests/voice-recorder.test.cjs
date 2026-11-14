@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const loadTs = require('./helpers/load-ts.cjs');
 
-function harness({ decodedDuration = 119.25, decoderUnavailable = false } = {}) {
+function harness({ decodedDuration = 119.25, decoderUnavailable = false, uploadVoice, onSend = () => { throw new Error('Unexpected upload'); } } = {}) {
   const hooks = [], effects = [], deadlines = new Map(), intervals = new Map();
   let cursor = 0, clock = 0, nextTimer = 0, recorder, tree, urls = 0;
   const track = { stopped: false, stop() { this.stopped = true; } };
@@ -28,9 +28,11 @@ function harness({ decodedDuration = 119.25, decoderUnavailable = false } = {}) 
     react,
     'react/jsx-runtime': { jsx: element, jsxs: element, Fragment: Symbol('fragment') },
     'lucide-react': { Mic: () => {}, Square: () => {}, X: () => {} },
+    '@clerk/nextjs': { useAuth: () => ({ getToken: async () => 'test-session' }) },
+    '@/lib/voice-api': { uploadPrivateVoice(...args) { if (!uploadVoice) throw new Error('Unexpected upload'); return uploadVoice(...args); } },
     './VoiceMessage': { default: VoiceMessage, __esModule: true, formatDuration: value => String(value) },
   }, {
-    Blob, AbortController, DOMException,
+    Blob, FormData, AbortController, DOMException, Error,
     window: { isSecureContext: true, MediaRecorder: Recorder },
     MediaRecorder: Recorder,
     navigator: { mediaDevices: { getUserMedia: async () => stream } },
@@ -50,7 +52,7 @@ function harness({ decodedDuration = 119.25, decoderUnavailable = false } = {}) 
   });
   function render() {
     cursor = 0;
-    tree = VoiceRecorder({ conversationId: 1, onSend() { throw new Error('Unexpected upload'); } });
+    tree = VoiceRecorder({ conversationId: 1, onSend });
     effects.splice(0).forEach(effect => effect());
     return tree;
   }
@@ -70,6 +72,7 @@ function harness({ decodedDuration = 119.25, decoderUnavailable = false } = {}) 
     deadline(at) { clock = at; const deadline = [...deadlines.values()][0]; assert.ok(deadline); deadline.callback(); render(); },
     async finish(at) { clock = at; recorder.ondataavailable({ data: new Blob(['synthetic-recording']) }); await recorder.onstop(); render(); },
     stop() { find(node => node.props?.['aria-label'] === 'Stop recording').props.onClick(); render(); },
+    async upload() { const pending = find(node => node.type === 'button' && node.props.children === 'Send voice').props.onClick(); render(); await pending; render(); },
     cancel() { find(node => node.props?.['aria-label'] === 'Cancel voice message').props.onClick(); render(); },
     unmount() { for (const hook of hooks) hook.cleanup?.(); },
     preview() { return find(node => node.type === VoiceMessage)?.props; },
@@ -131,4 +134,30 @@ test('cancel and unmount clear the hard deadline and release tracks without late
     assert.equal(fixture.intervals.size, 0);
     assert.equal(fixture.urls, 0);
   }
+});
+
+test('recorded attachments use authenticated media API with conversation scope and normalize the sent result', async () => {
+  let sent;
+  const attachment = { mediaAssetId: '98556c70-17e4-4be0-bddd-4452d128ce22', mediaUrl: '/api/chat/media/98556c70-17e4-4be0-bddd-4452d128ce22', mediaType: 'voice', durationMs: 1000, waveform: [0.1] };
+  const fixture = harness({ decodedDuration: 1, onSend(value) { sent = value; }, async uploadVoice(form, getToken, signal) {
+    assert.equal(await getToken(), 'test-session');
+    assert.equal(form.get('conversationId'), '1'); assert.equal(form.get('durationMs'), '1000');
+    assert.equal(form.get('audio').type, 'audio/webm;codecs=opus');
+    assert.equal(signal.aborted, false); return attachment;
+  } });
+  await fixture.start(); fixture.now(1000); fixture.stop(); await fixture.finish(1000); await fixture.upload();
+  assert.equal(sent.mediaAssetId, attachment.mediaAssetId); assert.equal(sent.mediaUrl, attachment.mediaUrl);
+  assert.equal(fixture.preview(), undefined); assert.equal(fixture.deadlines.size, 0);
+});
+
+test('cancelled or unauthorized voice uploads cannot send a late attachment and retain a retryable preview on failure', async () => {
+  let resolve, requestSignal, sent = false;
+  const cancelled = harness({ decodedDuration: 1, onSend() { sent = true; }, uploadVoice(_form, _getToken, signal) { requestSignal = signal; return new Promise(done => { resolve = done; }); } });
+  await cancelled.start(); cancelled.now(1000); cancelled.stop(); await cancelled.finish(1000);
+  const pending = cancelled.upload(); cancelled.cancel();
+  assert.equal(requestSignal.aborted, true); resolve({}); await pending;
+  assert.equal(sent, false); assert.equal(cancelled.preview(), undefined);
+  const denied = harness({ decodedDuration: 1, uploadVoice() { throw new Error('Sign in again to use voice messages.'); } });
+  await denied.start(); denied.now(1000); denied.stop(); await denied.finish(1000); await denied.upload();
+  assert.match(denied.error(), /Sign in again/); assert.ok(denied.preview()); assert.equal(denied.deadlines.size, 0);
 });

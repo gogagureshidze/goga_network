@@ -1,0 +1,53 @@
+# Review on Ubuntu 24.04 before installation. Never install over an existing unit.
+# /usr/bin/node must be an operator-verified, maintained Node 24 binary.
+[Unit]
+Description=Goga private voice HTTP API
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=exec
+User=goga-media
+Group=goga-media
+WorkingDirectory=/srv/goga/media/current
+EnvironmentFile=/etc/goga/media.env
+ExecStart=/usr/bin/node --max-old-space-size=192 media-server.js
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=35
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/goga/private-voice
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+# Initial containment, not measured capacity. Includes Node, Prisma and FFmpeg.
+CPUAccounting=true
+CPUQuota=50%
+CPUWeight=25
+Nice=10
+MemoryAccounting=true
+MemoryHigh=384M
+MemoryMax=512M
+TasksMax=64
+LimitNOFILE=1024
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=goga-media
+
+[Install]
+WantedBy=multi-user.target

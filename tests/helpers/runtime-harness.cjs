@@ -62,8 +62,7 @@ async function runtimeHarness(t, configured) {
   const { createSocketApp } = require('../../server/socket-app');
   const { createRoomService, createRoomRegistrar } = require('../../server/rooms');
   const { createCallCredentials } = require('../../server/call-credentials');
-  const { createMediaService } = require('../../server/media-policy');
-  const { createVoiceStorage } = require('../../server/voice-storage');
+  const { createMediaApi } = require('../../server/media-http');
   const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   const prefix = `runtime_${randomUUID()}`;
   const ids = Object.fromEntries(['alice', 'bob', 'outsider'].map(name => [name, `${prefix}_${name}`]));
@@ -74,10 +73,11 @@ async function runtimeHarness(t, configured) {
   const chat = createChatService(prisma, { mediaCloudName: 'runtime-test-only' });
   const rooms = createRoomService({ prisma, chat, env: { WATCH_ALLOWED_HOSTS: 'media.example.test' } });
   const credentials = createCallCredentials({ rooms, env: { RTC_STUN_URLS: 'stun:127.0.0.1:3478' } });
-  let socketApp, httpServer, root;
+  let socketApp, httpServer, mediaApi, root;
   t.after(async () => {
     for (const socket of clients) socket.disconnect();
     if (socketApp) await socketApp.close(); else rooms.close();
+    if (mediaApi) await mediaApi.close();
     if (httpServer?.listening) {
       httpServer.closeAllConnections();
       await new Promise(resolve => httpServer.close(resolve));
@@ -94,12 +94,15 @@ async function runtimeHarness(t, configured) {
   await prisma.$queryRaw`SELECT 1`;
   await prisma.user.createMany({ data: userIds.map(id => ({ id, username: id.split('_').at(-1) })) });
   root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'goga-runtime-voice-'));
-  const storage = createVoiceStorage({ env: {
+  mediaApi = createMediaApi({ prisma, verifyToken: sessions.verify, env: {
+    NODE_ENV: 'development', GOGA_LOCAL_DEVELOPMENT: 'true', MEDIA_ALLOWED_ORIGINS: origin,
+    MEDIA_API_PUBLIC_ORIGIN: 'http://localhost:3002',
     VOICE_STORAGE_DIR: root, VOICE_STORAGE_RESERVE_BYTES: String(64 * 1024 * 1024),
     FFMPEG_PATH: process.env.FFMPEG_PATH || (process.platform === 'darwin' ? '/opt/homebrew/bin/ffmpeg' : '/usr/bin/ffmpeg'),
     FFPROBE_PATH: process.env.FFPROBE_PATH || (process.platform === 'darwin' ? '/opt/homebrew/bin/ffprobe' : '/usr/bin/ffprobe'),
-  } });
-  const media = createMediaService({ prisma, chat, upload: storage.upload, destroy: storage.destroy });
+  }, logger: { info() {}, error(message) { t.diagnostic(message); } } });
+  await new Promise((resolve, reject) => { mediaApi.server.once('error', reject); mediaApi.server.listen(0, '127.0.0.1', resolve); });
+  const mediaUrl = `http://127.0.0.1:${mediaApi.server.address().port}`;
   const requests = new AsyncLocalStorage();
   const auth = async () => {
     const token = requests.getStore()?.headers.get('authorization')?.replace(/^Bearer /, '');
@@ -111,7 +114,6 @@ async function runtimeHarness(t, configured) {
   const httpSecurity = loadTs('src/lib/http-security.ts', { 'server-only': {} }, globals);
   const dependencies = {
     '@clerk/nextjs/server': { auth },
-    '@/lib/media-server': { mediaService: media, mediaStorage: () => storage },
     '@/lib/call-server': { callCredentials: () => credentials },
     '@/lib/http-security': httpSecurity,
     '../../../../../server/request-limits': require('../../server/request-limits'),
@@ -121,8 +123,6 @@ async function runtimeHarness(t, configured) {
   };
   // Execute the application's actual route handlers. Only Next's request-local
   // session binding is adapted, using the cryptographically verified JWT above.
-  const voiceRoute = loadTs('src/app/api/chat/voice/route.ts', dependencies, globals);
-  const mediaRoute = loadTs('src/app/api/chat/media/[id]/route.ts', dependencies, globals);
   const iceRoute = loadTs('src/app/api/calls/[id]/ice/route.ts', dependencies, globals);
   const tokenRoute = loadTs('src/app/api/calls/[id]/token/route.ts', dependencies, globals);
   let httpUrl;
@@ -135,11 +135,8 @@ async function runtimeHarness(t, configured) {
       request.once('aborted', () => controller.abort());
       const input = new Request(url, { method: request.method, headers, signal: controller.signal,
         ...(['GET', 'HEAD'].includes(request.method) ? {} : { body: Readable.toWeb(request), duplex: 'half' }) });
-      const mediaMatch = /^\/api\/chat\/media\/([^/]+)$/.exec(url.pathname);
       const callMatch = /^\/api\/calls\/([^/]+)\/(ice|token)$/.exec(url.pathname);
       const result = await requests.run(input, async () => {
-        if (request.method === 'POST' && url.pathname === '/api/chat/voice') return voiceRoute.POST(input);
-        if (request.method === 'GET' && mediaMatch) return mediaRoute.GET(input, { params: Promise.resolve({ id: mediaMatch[1] }) });
         if (callMatch) {
           const context = { params: Promise.resolve({ id: callMatch[1] }) };
           if (request.method === 'GET' && callMatch[2] === 'ice') return iceRoute.GET(input, context);
@@ -194,11 +191,11 @@ async function runtimeHarness(t, configured) {
     assert.equal(result.ok, false, name); assert.equal(result.error.code, code, name);
     return result;
   };
-  const request = (userId, pathname, options = {}) => fetch(`${httpUrl}${pathname}`, { ...options,
+  const request = (userId, pathname, options = {}) => fetch(`${pathname.startsWith('/api/chat/') ? mediaUrl : httpUrl}${pathname}`, { ...options,
     headers: { Origin: origin, ...(userId ? { Authorization: `Bearer ${sessions.token(userId)}` } : {}), ...options.headers },
     signal: AbortSignal.timeout(30000), redirect: 'error',
   });
-  return { prisma, ids, rooms, storage, media, credentials, client, ack, rawAck, denied, request, event, sessions, origin, socketUrl };
+  return { prisma, ids, rooms, credentials, client, ack, rawAck, denied, request, event, sessions, origin, socketUrl };
 }
 
 function audioWav() {

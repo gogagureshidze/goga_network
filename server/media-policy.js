@@ -27,6 +27,25 @@ function limitMedia(userId, now = Date.now()) {
 }
 function createMediaService({ prisma, chat, upload, destroy, now = () => Date.now() }) {
   return {
+    async deleteDraft(userId, id) {
+      if (!userId) throw new MediaError('UNAUTHORIZED', 401);
+      if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new MediaError('NOT_FOUND', 404);
+      const initial = await prisma.mediaAsset.findUnique({ where: { id } });
+      if (!initial || initial.ownerId !== userId) throw new MediaError('NOT_FOUND', 404);
+      // Match sendMessage's parent-first lock order. Expiry commits before filesystem
+      // removal, so a concurrent send cannot attach an asset being discarded.
+      const asset = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM Conversation WHERE id = ${initial.conversationId} FOR UPDATE`;
+        await chat.authorizeConversation(userId, initial.conversationId, tx);
+        const current = await tx.mediaAsset.findUnique({ where: { id }, include: { message: { select: { id: true } } } });
+        if (!current || current.ownerId !== userId) throw new MediaError('NOT_FOUND', 404);
+        if (current.message) throw new MediaError('MEDIA_ATTACHED', 409);
+        return tx.mediaAsset.update({ where: { id }, data: { expiresAt: new Date(now()) } });
+      });
+      await destroy(asset.publicId);
+      // A storage error leaves expired metadata for a safe retry or retention job.
+      await prisma.mediaAsset.deleteMany({ where: { id, ownerId: userId, message: null, expiresAt: { lte: new Date(now()) } } });
+    },
     async uploadVoice(userId, input) {
       if (!userId) throw new MediaError('UNAUTHORIZED',401);
       validateVoice(input.bytes, input.mime, input.durationMs);

@@ -15,6 +15,7 @@ Then run these in separate terminals:
 ```sh
 npm run dev
 npm run dev:socket
+npm run dev:media
 ```
 
 Open **http://localhost:3000** consistently. Setup preserves local rows, uses `goga_development` on `127.0.0.1:33367`, and leaves the original `.env` and production untouched. Do not substitute a Docker database on this port: the launchers verify this checkout's ownership marker and Unix-socket datadir. Do not launch a duplicate frontend or delete an active development cache.
@@ -23,7 +24,7 @@ Use Clerk **development** accounts. Each account must sign in and load the app o
 
 For representative local data, run `npm run dev:fixtures` after the first sign-in, then refresh. `npm run dev:status` reports sanitized local counts. Demo profiles are offline synthetic fixtures, not second Clerk sessions. They support feed, profile, saved chat, voice playback and caller-side permission/cancellation checks; they cannot answer a call or establish two-way media. Use the real second account below for those tests.
 
-Check that `http://localhost:3001/ready` returns `{"status":"ok"}`. Open **http://localhost:3000/local-test/watch.mp4**: setup generates this original 15-second test pattern and tone. This is authorized test content. The HTTP exception applies only to isolated development and allowlisted loopback hosts; staging/production sources require approved HTTPS.
+Check that both `http://localhost:3001/ready` and `http://localhost:3002/ready` return `{"status":"ok"}`. Voice uploads/playback now use the third process with the signed-in Clerk bearer identity; the Next.js filesystem routes are disabled. Open **http://localhost:3000/local-test/watch.mp4**: setup generates this original 15-second test pattern and tone. This is authorized test content. The HTTP exception applies only to isolated development and allowlisted loopback hosts; staging/production sources require approved HTTPS.
 
 ## One account: group, text, voice and watch
 
@@ -50,9 +51,10 @@ Use Alice and Bob in separate browser profiles, not tabs sharing one Clerk sessi
 
 ## Staging release checks
 
-Local success is not production readiness. Use approved isolated HTTPS staging, persistent private voice storage, FFmpeg and an authorized coturn setup. Add Carol as an outsider and complete:
+Local success is not production readiness. Use an approved Netlify staging frontend, isolated HTTPS VPS media API, persistent private voice storage, staging MySQL, FFmpeg and an authorized coturn setup. Follow [VPS-MEDIA-DEPLOYMENT.md](VPS-MEDIA-DEPLOYMENT.md) for exact CORS/Clerk/HTTPS setup; the frontend stays on Netlify. Add Carol as an outsider and complete:
 
 - **Authorization:** copied conversation/media IDs do not grant Carol access or call credentials. Bob cannot read Alice's unsent voice draft. Removal/blocking denies subsequent history, voice byte ranges, signaling and watch controls, including from open tabs. Hangup or account switching during pending requests must not let late replies reopen calls.
+- **Separate media API:** confirm the browser sends upload/playback to the configured HTTPS VPS origin with bearer authentication and no cookies/query tokens. Allowed-origin preflight must succeed and an unapproved origin fail. Test GET/HEAD/Range and invalid ranges, expired/tampered tokens, draft deletion by the uploader versus another account, denial of direct deletion once attached, and denied playback after message deletion. Bytes already downloaded into a browser cannot be recalled; verify every new fetch is denied after revocation. Keep bearer values out of evidence captures.
 - **Recovery:** interrupt networking for 5 and 25 seconds, restart sockets, background mobile tabs, cross session refresh, and switch Wi-Fi/mobile. Chat retries must not duplicate durable messages; calls must recover or end without indefinite capture. Test interrupted upload/cancel/retry.
 - **Device coverage:** test the release's Chrome, Safari/iOS and Android browser/device matrix, bidirectional media, permission failures, autoplay and track cleanup. Record unsupported screen-source choices; browsers do not all expose screen/window/tab selection.
 - **TURN:** prove an actual successful `relay` candidate pair, UDP relay and TLS/TCP fallback on restrictive networks. A configured URL or same-computer call is insufficient. Keep credentials/candidate addresses private. Review and remove any temporary staging-only forced-relay override before release.

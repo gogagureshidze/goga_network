@@ -1,8 +1,8 @@
-/** Small single-process HTTP/action limits. Deploy one Next process until a shared limiter is reviewed. */
+/** Bounded per-process HTTP/action limits. The dedicated media API uses one process. */
 const { ChatError } = require('./chat-service');
 const stateKey = Symbol.for('goga.http.request-limits');
 const state = globalThis[stateKey] || (globalThis[stateKey] = { buckets: new Map(), lastSweep: 0, voiceInFlight: 0 });
-const policies = { message: [60, 60_000], share: [30, 60_000], voice: [6, 60_000], mediaRead: [600, 60_000], history: [120, 60_000] };
+const policies = { message: [60, 60_000], share: [30, 60_000], voice: [6, 60_000], mediaRead: [600, 60_000], mediaDelete: [30, 60_000], history: [120, 60_000] };
 function consumeRequestLimit(userId, category, cost = 1, now = Date.now()) {
   if (typeof userId !== 'string' || !userId || userId.length > 191) throw new ChatError('UNAUTHENTICATED', 'Sign in required', 401);
   if (!policies[category] || !Number.isSafeInteger(cost) || cost < 1) throw new ChatError('INVALID_INPUT', 'Invalid request');

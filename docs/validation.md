@@ -2,6 +2,24 @@
 
 Branch: `codex/communications-hardening`. Local application candidate only; no production deployment or infrastructure mutation. The original user change in `src/components/Post.tsx` is preserved separately. No exposed passwords were used.
 
+## Netlify / VPS voice architecture update — 14 November
+
+Next.js remains on Netlify. The prepared `media-server.js` process serves private voice HTTP requests on VPS loopback port 3002 behind the dedicated HTTPS CloudPanel proxy; deployment targets `/srv/goga/private-voice`. It reuses the existing Prisma/MySQL, conversation authorization, media policy and FFmpeg storage modules. No schema, migration or dependency-version change was needed. Nothing was deployed, and no production database or infrastructure was contacted or changed.
+
+The browser uses `NEXT_PUBLIC_MEDIA_API_URL` with a current Clerk bearer token, omits cookies and refuses redirects. Existing stored relative media references remain valid. The API verifies signatures, expiry, session ID and exact authorized party/origin, then current account, membership and block rules. It supports authenticated GET/HEAD/Range, owner-only unattached DELETE, bounded multipart uploads, account/concurrency limits, timeouts, disk quotas, sanitized diagnostics and readiness. Next voice routes return an actionable service-required error without importing filesystem processing. The Netlify trace check also excludes VPS-only runtime code.
+
+Final verification for this update:
+
+- **187 unit tests passed**, including cross-origin frontend uploads/playback, blob cleanup, Clerk signatures, CORS, HTTPS/Host enforcement, size/rate limits, early/partial upload aborts and failed readiness.
+- **19 MySQL integration tests passed**: original 1, Socket.IO/runtime 8, fixtures 1, dedicated media API 9. Actual HTTP, signed synthetic sessions through the Clerk SDK, FFmpeg and isolated MySQL exercise file permissions, upload/send, full/range/suffix/HEAD playback, group invite/removal/block denial, deletion, concurrent send/delete, post-encoding revocation and repeated playback aborts. No tests skipped.
+- Typecheck, lint (zero errors/six existing warnings), production build under Node 24.7 and all 28 artifact traces passed. Existing Next middleware/Prisma tracing warnings remain. Production build used an explicit guarded local database override and a placeholder HTTPS media origin; it is not a deployed Netlify build.
+- Dedicated local service readiness, CORS preflight and anonymous denial passed on port 3002. The signed-in in-app browser played the existing generated three-second private note across origins (frontend 3000 → API 3002), showed Pause/seek controls and reached its duration; service metrics confirmed a successful read with no failures. The existing relative reference required no rewrite. A new browser recording attempt remained at microphone permission and was cancelled; new browser upload and real HTTPS Netlify-to-VPS playback remain staging checks. Automated actual HTTP uploads passed.
+- Local nginx snippet validation and 16 documented shell-block syntax checks passed. Linux systemd hardening, real CloudPanel/TLS and resource ceilings were not exercised.
+
+Tests uncovered and fixed a FileHandle ownership race after HEAD/aborted playback, and a 20-second capacity leak when a client disconnected during asynchronous authentication. The browser initially exposed a stale public media environment value in the long-running Next process; a controlled development-only restart loaded it. Local startup now requires `npm run dev`, `npm run dev:socket` and `npm run dev:media` in separate terminals. No automatic migrations occur on startup.
+
+Use [VPS-MEDIA-DEPLOYMENT.md](VPS-MEDIA-DEPLOYMENT.md) for exact conditional commands, service/environment/proxy templates, preservation of existing recordings, staging gates, backups and rollback. Production physical-file retention still requires a separately reviewed job; the existing CLI deliberately refuses production. Group LiveKit remains disabled. The earlier browser and migration evidence below records the preceding local implementation and is not additional proof of this new production topology.
+
 ## Implemented scope
 
 - Existing Clerk identities, Prisma/MySQL models and Socket.IO transport retained. Authenticated socket handshakes and refresh; current membership/block checks on events, room joins, media and credentials; bounded rate/in-flight limits, multi-tab presence and reconnect recovery.

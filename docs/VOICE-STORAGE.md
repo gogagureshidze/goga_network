@@ -1,12 +1,12 @@
 # Private self-hosted voice storage
 
-New voice messages use private files on the Hostinger VPS. This path has no cloud-media API subscription. The existing social-post Cloudinary integration is independent and is unchanged.
+Next.js stays on Netlify. New voice messages use a dedicated authenticated HTTP API and private files on the Hostinger VPS, alongside the existing MySQL and Socket.IO services. This path has no new cloud-media API subscription. The existing social-post Cloudinary integration is independent and is unchanged.
 
-The Next.js upload and playback routes must run on a host with the same persistent storage directory. Vercel's ephemeral function filesystem is not suitable. Keep one Next.js process and one Socket.IO process on this 1 vCPU / 4 GB server until staging measurements justify a different topology; media processing has a process-wide concurrency limit of one and returns `VOICE_PROCESSING_BUSY` while occupied.
+`media-server.js` owns uploads, playback and draft deletion; the frontend uses `NEXT_PUBLIC_MEDIA_API_URL` to reach it with a fresh Clerk bearer token. Netlify's routes fail closed and never write recordings to its ephemeral filesystem. Keep one media API process and the existing Socket.IO process on the VPS; media processing has a process-wide concurrency limit of one and returns `VOICE_PROCESSING_BUSY` while occupied. Do not cluster media writers sharing this directory. See [the exact staging and release runbook](VPS-MEDIA-DEPLOYMENT.md) for service, CloudPanel, environment, backup and rollback steps.
 
 ## Configuration
 
-Set the following on the application server only. No storage path is exposed to the browser.
+Set the following on the VPS media service only. No storage path is exposed to the browser. It also needs the existing database connection, Clerk verification configuration, `MEDIA_API_PUBLIC_ORIGIN` and exact `MEDIA_ALLOWED_ORIGINS`; these are documented in the runbook. Keep the frontend and social routes on Netlify.
 
 ```dotenv
 VOICE_STORAGE_DIR=/srv/goga/private-voice
@@ -29,8 +29,9 @@ Install a maintained system FFmpeg/ffprobe package in staging first. The local t
 - Browser WebM recordings without a container duration are decoded to a maximum of 121 seconds; an actual duration above 120 seconds is rejected.
 - Commands have no shell, only local generated filenames, `file,pipe` protocol and container allowlists, one codec/filter thread, a 32 MiB individual-allocation limit, a 5-second probe timeout, and a 20-second encode timeout. Keep FFmpeg patched and run the app as an unprivileged user.
 - Space checks preserve at least the configured disk reserve plus processing headroom. A process-shared quota and file cap refuse further uploads; the app never deletes other user data to make room.
-- `/api/chat/media/[id]` authenticates Clerk identity and rechecks current conversation membership, block rules, asset expiry, and message deletion for every request. Unsent previews are visible only to their uploader.
-- Playback streams private files through the authorized route, supports one HTTP byte range including suffix ranges, and does not redirect to a public file URL. File descriptors use `O_NOFOLLOW`; range responses carry `private, no-store` and `nosniff` headers.
+- VPS `/api/chat/media/:id` authenticates the Clerk bearer identity and rechecks current conversation membership, block rules, asset expiry, and message deletion for every GET/HEAD request. Unsent previews are visible only to their uploader. Exact CORS origins and Clerk authorized parties must match the Netlify application's real origin. Cookies and query tokens never grant access.
+- Playback streams private files through the authorized API, supports one HTTP byte range including suffix ranges, and does not redirect to a public file URL. File descriptors use `O_NOFOLLOW`; range responses carry `private, no-store` and `nosniff` headers. The frontend obtains the bounded file with an authenticated fetch and plays a temporary blob URL, so no bearer token is placed in an audio URL.
+- `DELETE /api/chat/media/:id` cancels an uploader-owned, unattached draft. A sent asset returns `409`; use the existing Socket.IO message deletion flow, which expires its access immediately. Cleanup of expired sent files follows the retention policy below.
 
 At 64 kbps, a two-minute recording uses approximately 0.96 MB plus MP4 overhead. The default 1 GiB quota holds roughly one thousand maximum-length recordings; shorter messages use less space. Persistent disk, backups, and VPS egress remain operational costs. No bandwidth or concurrency claim has been validated on the production VPS.
 
@@ -45,7 +46,7 @@ DEPLOYMENT_ENV=staging node scripts/prune-voice-media.js
 DEPLOYMENT_ENV=staging node scripts/prune-voice-media.js --apply
 ```
 
-Review the dry-run counts before applying. The script locks each expired metadata row before deleting its file, so an asset whose retention was extended concurrently is preserved. It also removes unreferenced completed files older than 48 hours after checking the database. No production retention job is installed or enabled by this change; operations must review and schedule an equivalent production job separately. After a separate cleanup process frees files, restart the application during a maintenance window to refresh its conservative in-memory quota counters.
+Review the dry-run counts before applying. The script locks each expired metadata row before deleting its file, so an asset whose retention was extended concurrently is preserved. It also removes unreferenced completed files older than 48 hours after checking the database. No production retention job is installed or enabled by this change; operations must review and schedule an equivalent production job separately. Never label production as staging to bypass the CLI guard. After a separate cleanup process frees files, restart only the media API during its approved maintenance window to refresh conservative in-memory quota counters; Next.js and Socket.IO need no restart for this reason.
 
 ## Verified locally and required in staging
 

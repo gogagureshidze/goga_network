@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node scripts/dev-runner.js web",
     "dev:socket": "node scripts/dev-runner.js socket",
+    "dev:media": "node scripts/dev-runner.js media",
     "dev:setup": "node scripts/dev-setup.js",
     "dev:fixtures": "node scripts/dev-fixtures.js",
     "dev:status": "node scripts/dev-status.js",
@@ -17,6 +18,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.*",
     "socket": "node socket-server.js",
+    "media": "node media-server.js",
     "db:deploy": "prisma migrate deploy",
     "test:integration": "node scripts/dev-integration.js",
     "voice:prune": "node scripts/prune-voice-media.js"

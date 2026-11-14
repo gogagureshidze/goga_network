@@ -1,6 +1,6 @@
 /** Private local voice storage. No URL supplied by a client reaches FFmpeg. */
 const fs = require('node:fs/promises');
-const { constants, createReadStream } = require('node:fs');
+const { constants } = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { execFile } = require('node:child_process');
@@ -158,10 +158,9 @@ function createVoiceStorage({ env = process.env, run = execute } = {}) {
       try { range = parseRange(rangeHeader, stat.size); }
       catch (error) { error.size = stat.size; throw error; }
       // The open descriptor prevents path-swap and deletion races during playback.
-      const stream = createReadStream('', { fd: handle.fd, autoClose: false, start: range.start, end: range.end });
-      let closed = false;
-      const close = () => { if (!closed) { closed = true; void handle.close(); } };
-      stream.once('end', close); stream.once('close', close); stream.once('error', close);
+      // Transfer descriptor ownership to the FileHandle's stream. Manually closing
+      // on both end/close races destroy() (HEAD/client abort) and fd reuse.
+      const stream = handle.createReadStream({ autoClose: true, start: range.start, end: range.end });
       return { stream, size: stat.size, ...range };
     } catch (error) {
       await handle?.close().catch(() => {});
@@ -180,6 +179,10 @@ function createVoiceStorage({ env = process.env, run = execute } = {}) {
     }
     return result;
   }
-  return { upload, destroy, open, listStored };
+  async function ready() {
+    await initialize();
+    await Promise.all([fs.access(root, constants.R_OK | constants.W_OK), fs.access(ffmpeg, constants.X_OK), fs.access(ffprobe, constants.X_OK)]);
+  }
+  return { upload, destroy, open, listStored, ready };
 }
 module.exports = { createVoiceStorage, parseRange, assetId };

@@ -14,7 +14,7 @@ npm run dev:setup
 
 Setup starts an owned MySQL instance in ignored `.local/mysql`, verifies its datadir and port, creates only the two local databases, generates Prisma and applies the two reviewed migrations using explicit local connection URLs. Repeating setup preserves existing local rows. It writes an ignored, permission-restricted `.env.local`, leaving `.env` untouched. It creates a limited local app database user with a generated password, never printed. `.local/mysql-owner.json` is private local credential/ownership state; do not share or commit it. Local MySQL administrative access is socket/loopback-only and intended for a single-user development machine, never deployment.
 
-In two terminals:
+In three terminals:
 
 ```sh
 # Terminal 1
@@ -22,15 +22,18 @@ npm run dev
 
 # Terminal 2
 npm run dev:socket
+
+# Terminal 3
+npm run dev:media
 ```
 
-Open **http://localhost:3000**. Use that hostname consistently; the supported launcher binds Next to `localhost` to keep Clerk's internal rewrite handling consistent. Socket.IO binds `127.0.0.1:3001` and accepts the exact frontend origin. Its `/health` and `/ready` endpoints are available at http://localhost:3001.
+Open **http://localhost:3000**. Use that hostname consistently; the supported launcher binds Next to `localhost` to keep Clerk's internal rewrite handling consistent. Socket.IO binds `127.0.0.1:3001` and the separate private media API binds `127.0.0.1:3002`; both accept the exact frontend origin. Their `/health` and `/ready` endpoints are available on the corresponding port. `dev:setup` writes `NEXT_PUBLIC_MEDIA_API_URL=http://localhost:3002` and the corresponding server origin settings into the guarded local override. Rerun setup and restart the local frontend when upgrading from the previous two-process workflow; existing local rows and voice files are preserved.
 
-Both launchers use Next's development environment precedence (`process.env`, `.env.development.local`, `.env.local`, `.env.development`, `.env`). Exported variables still win: remove an exported remote `DATABASE_URL` if the guard refuses startup. The guard accepts only `mysql` on `127.0.0.1:33367/goga_development` and rejects socket overrides. No automatic fallback or migration occurs during normal frontend/socket startup. A read-only schema preflight runs first; `dev:setup` is the explicit local migration command.
+All three launchers use Next's development environment precedence (`process.env`, `.env.development.local`, `.env.local`, `.env.development`, `.env`). Exported variables still win: remove an exported remote `DATABASE_URL` if the guard refuses startup. The guard accepts only `mysql` on `127.0.0.1:33367/goga_development` and rejects socket overrides. No automatic fallback or migration occurs during normal frontend/socket/media startup. A read-only schema preflight runs first; `dev:setup` is the explicit local migration command. The media launcher also checks storage and audio binary availability. The standalone `npm run media` entry point is for an explicitly configured service environment; use `dev:media` for the safe local workflow.
 
 The existing Clerk **development** keys are used. If they are absent, configure `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_…` and `CLERK_SECRET_KEY=sk_test_…` securely in `.env.local`; live keys are refused by these launchers. Sign in using existing development accounts. After successful Clerk authentication, a development-only helper mirrors that authenticated account into local MySQL. It checks the verified identity and exact local database, preserves existing profiles, and completes before sockets connect. It does not create Clerk users or bypass authentication, and does not require a public webhook tunnel.
 
-Stop each foreground launcher with Ctrl-C. MySQL remains available across frontend restarts. After stopping both launchers, `npm run dev:db:stop` gracefully stops only the database verified as belonging to this checkout, preserving its files. `npm run dev:setup` starts it again.
+Stop each foreground launcher with Ctrl-C. MySQL remains available across frontend restarts. After stopping all three launchers, `npm run dev:db:stop` gracefully stops only the database verified as belonging to this checkout, preserving its files. `npm run dev:setup` starts it again.
 
 ## Populate usable local content
 
@@ -47,7 +50,7 @@ Fixtures link to existing local `user_…` identities created by verified Clerk 
 
 The command is additive: it never resets, deletes or migrates a database, overwrites a real profile, or uses production. Repeating it preserves IDs, edited fixture posts and renamed groups using ignored `.local/fixtures-v1.json`; message idempotency keys prevent duplicates. It recreates missing fixtures and refreshes expired synthetic stories. Keep the state file with this local database. Do not run concurrent seeders. If interrupted, inspect a stale `.local/fixtures.lock` before removing it and retrying. A deliberate block against a demo person may prevent that conversation's fixture refresh; the guard respects the block.
 
-`dev:status` prints only sanitized local database identifiers, row counts and account counts. Both services use the same guarded environment loader. Next also guards Prisma construction directly; Socket.IO checks schema before starting. Development Server Action argument logging is disabled so message bodies and push keys do not enter terminal logs.
+`dev:status` prints only sanitized local database identifiers, row counts and account counts. The three services use the same guarded environment loader. Next also guards Prisma construction directly; Socket.IO and the media API check schema before starting. Development Server Action argument logging is disabled so message bodies and push keys do not enter terminal logs.
 
 If a browser tab is empty after seeding, refresh it: server-rendered feed data and the contact list are loaded on navigation/mount. Sign-in sessions are browser/profile-specific. A signed-out in-app browser will still show sign-in even when Chrome is authenticated. Extensions that inject markup (observed `data-writer-injected` and `speechify-screenshot-mode`) can cause hydration warnings; use a clean test profile to isolate them. Do not suppress real hydration errors to hide extension interference.
 
@@ -60,11 +63,11 @@ Production content is not required for this workflow and was not accessed or cop
 1. Sign in as two different Clerk development users in separate browser profiles. Each must load the app once so its local profile exists. Find/follow the other test account using the existing social UI, then open Chat.
 2. Send text in both directions, reload, open history, switch conversations, send a reply, react, edit/delete your own message, and check read/typing/presence behavior across tabs.
 3. Create a group, invite the second account, accept from that account, then test owner/admin removal. An invitation alone must not grant history access.
-4. In the direct conversation, record a short voice note, preview/cancel one recording, then send another. Verify play/pause/seek and reload persistence. FFmpeg normalizes audio into private storage outside the checkout. The local storage path is in `.env.local`; the default is a per-user OS temporary directory, so local audio may be removed by OS cleanup. Database persistence alone does not preserve audio after deleting that directory.
+4. In the direct conversation, record a short voice note, preview/cancel one recording, then send another. Verify play/pause/seek and reload persistence. The browser sends its current Clerk bearer token directly to port 3002; FFmpeg normalizes audio into private storage outside the checkout. Inspect only request destinations/statuses, never copy tokens. The local storage path is in `.env.local`; the default is a per-user OS temporary directory, so local audio may be removed by OS cleanup. Database persistence alone does not preserve audio after deleting that directory. Next's old private audio routes intentionally return `MEDIA_API_REQUIRED`; a request to port 3000 for stored voice indicates an old client build or missing media-origin configuration.
 5. Start audio/video calls; accept on the other account, mute, toggle camera, share a screen/window, stop sharing, hang up and check that device indicators stop. Group LiveKit remains disabled. Localhost testing does not prove TURN traversal or separate-device media quality; follow [the device procedure](media-test-procedure.md) on approved HTTPS staging before release.
 6. Create a watch party with the generated, original test-pattern video: **http://localhost:3000/local-test/watch.mp4**. Confirm that you have permission to play it. Join from the other account; test play/pause/seek, host controls, reconnect, and theater mode. This HTTP exception is limited to explicitly enabled isolated development and allowlisted loopback hosts. Production still requires approved HTTPS sources. No movie is relayed or transcoded by the watch-party service.
 
-For separate physical devices, use approved HTTPS staging and its own database. Do not expose this local MySQL or insecure HTTP development server to a network to work around browser media permissions. The existing [coturn example](../ops/coturn.conf.example) and [operations guide](operations.md) require operator approval before VPS changes.
+For separate physical devices, use approved HTTPS staging and its own database. Do not expose this local MySQL or insecure HTTP development server to a network to work around browser media permissions. Production keeps Next.js on Netlify and serves private voice through the [dedicated VPS API](VPS-MEDIA-DEPLOYMENT.md). That runbook, the existing [coturn example](../ops/coturn.conf.example) and [operations guide](operations.md) require operator approval before VPS changes.
 
 ## Verify
 

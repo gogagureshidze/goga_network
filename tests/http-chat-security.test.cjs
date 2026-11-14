@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
-const { Readable } = require('node:stream');
 const loadTs = require('./helpers/load-ts.cjs');
 const { consumeRequestLimit, beginVoiceRequest } = require('../server/request-limits');
 const error = () => Object.assign(new Error('Limited'), { code: 'RATE_LIMITED', status: 429 });
@@ -42,36 +41,14 @@ test('sharePost accounts for recipient count before database or snapshot access'
   assert.equal(charged, 2); assert.equal(reads, 0);
 });
 
-test('voice route refuses excess requests before reading or allocating upload body', async () => {
-  let reads = 0;
-  const route = loadTs('src/app/api/chat/voice/route.ts', {
-    '@clerk/nextjs/server': { auth: async () => ({ userId: 'alice' }) },
-    '@/lib/media-server': {},
-    '@/lib/http-security': { requireSameOrigin() {}, boundedBody: async () => reads++, apiError: error => Response.json({ error: error.code }, { status: error.status }) },
-    '../../../../../server/request-limits': { beginVoiceRequest: () => { throw error(); } },
-    '../../../../../server/media-policy': { MAX_VOICE_BYTES: 4194304 },
-  });
-  const response = await route.POST(new Request('https://goga.test/api/chat/voice', { method: 'POST' }));
-  assert.equal(response.status, 429); assert.equal(reads, 0);
-});
-
-test('authorized media route streams exact range and denies outsider before filesystem access', async () => {
-  let opened = 0;
-  let allowed = true;
-  const route = loadTs('src/app/api/chat/media/[id]/route.ts', {
-    '@clerk/nextjs/server': { auth: async () => ({ userId: 'alice' }) },
-    'node:stream': { Readable },
-    '@/lib/media-server': {
-      mediaService: { authorizeAsset: async () => { if (!allowed) throw Object.assign(new Error('denied'), { status: 403 }); return { publicId: 'private' }; } },
-      mediaStorage: () => ({ open: async () => { opened++; return { stream: Readable.from(Buffer.from('bc')), start: 1, end: 2, size: 4, partial: true }; } }),
-    },
-    '@/lib/http-security': { apiError: error => new Response(null, { status: error.status }) },
-    '../../../../../../server/request-limits': { consumeRequestLimit() {} },
-  }, { Headers });
-  const request = () => new Request('https://goga.test/api/chat/media/id', { headers: { Range: 'bytes=1-2' } });
-  const response = await route.GET(request(), { params: Promise.resolve({ id: 'id' }) });
-  assert.equal(response.status, 206); assert.equal(response.headers.get('content-range'), 'bytes 1-2/4'); assert.equal(await response.text(), 'bc');
-  allowed = false;
-  assert.equal((await route.GET(request(), { params: Promise.resolve({ id: 'id' }) })).status, 403);
-  assert.equal(opened, 1);
+test('Netlify voice routes fail closed without importing storage or allocating uploads', async () => {
+  // loadTs rejects any dependency not explicitly mocked; these routes import none.
+  const upload = loadTs('src/app/api/chat/voice/route.ts', {});
+  const playback = loadTs('src/app/api/chat/media/[id]/route.ts', {});
+  for (const response of [await upload.POST(), await playback.GET(), await playback.HEAD()]) {
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('location'), null);
+  }
+  assert.equal((await (await upload.POST()).json()).error, 'MEDIA_API_REQUIRED');
 });

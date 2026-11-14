@@ -1,0 +1,7 @@
+# Add once inside the EXISTING nginx http {} context, after operator review.
+# Do not put these zone declarations inside a server {} or location {} block.
+# If a CDN/proxy precedes nginx, first audit the existing trusted real-IP setup;
+# never trust arbitrary client-supplied X-Forwarded-For.
+limit_req_zone $binary_remote_addr zone=goga_media_requests:1m rate=10r/s;
+limit_conn_zone $binary_remote_addr zone=goga_media_clients:1m;
+limit_conn_zone $server_name zone=goga_media_total:1m;

@@ -7,7 +7,7 @@ const nextConfig = {
   logging: { serverFunctions: false },
   // Prisma 5's dynamic runtime lookup can otherwise trace local environment files.
   outputFileTracingExcludes: {
-    '/*': ['./.env*', './.git/**/*', './.local/**/*', './public/local-test/**/*', './*.pem', './*.key', './tests/**/*', './docs/**/*', './ops/**/*', './.github/**/*'],
+    '/*': ['./.env*', './.git/**/*', './.local/**/*', './public/local-test/**/*', './*.pem', './*.key', './tests/**/*', './docs/**/*', './ops/**/*', './.github/**/*', './media-server.js', './server/media-http.js', './server/voice-storage.js', './scripts/prune-voice-media.js'],
   },
   async headers() {
     return [{ source: '/(.*)', headers: [

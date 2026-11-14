@@ -6,7 +6,7 @@ const COLUMNS = new Set(Object.values(REQUIRED_SCHEMA).flat());
 const CHECKS = new Set([...MODELS, ...Object.entries(REQUIRED_SCHEMA).flatMap(([table, columns]) => columns.map(column => `${table}.${column}`))]);
 const NAMES = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'PrismaClientKnownRequestError', 'PrismaClientUnknownRequestError', 'PrismaClientInitializationError', 'PrismaClientValidationError', 'DatabasePreflightError', 'ChatError', 'MediaError', 'TokenVerificationError']);
 const CODES = new Set(['DB_CLIENT_OUTDATED', 'DB_SCHEMA_NOT_READY', 'DB_PREFLIGHT_TIMEOUT', 'SERVER_CONFIGURATION_INVALID', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'EADDRINUSE', 'EACCES', 'EPERM', 'ENOSPC', 'ENOENT', 'FORBIDDEN', 'UNAUTHENTICATED', 'UNAUTHORIZED', 'RATE_LIMITED', 'UNAVAILABLE', 'INVALID_INPUT', 'CONFLICT', 'NOT_FOUND']);
-const FILES = new Set(['socket-server.js', 'server/socket-app.js', 'server/chat-service.js', 'server/rooms.js', 'server/db-preflight.js', 'server/diagnostics.js', 'server/call-credentials.js', 'server/media-policy.js', 'server/voice-storage.js', 'server/request-limits.js', 'node_modules/@prisma/client/runtime/library.js', 'src/generated/prisma/runtime/library.js']);
+const FILES = new Set(['socket-server.js', 'media-server.js', 'server/media-http.js', 'server/socket-app.js', 'server/chat-service.js', 'server/rooms.js', 'server/db-preflight.js', 'server/diagnostics.js', 'server/call-credentials.js', 'server/media-policy.js', 'server/voice-storage.js', 'server/request-limits.js', 'node_modules/@prisma/client/runtime/library.js', 'src/generated/prisma/runtime/library.js']);
 
 function identifier(value, allowed) {
   if (typeof value !== 'string') return undefined;

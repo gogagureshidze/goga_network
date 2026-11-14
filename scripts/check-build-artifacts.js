@@ -15,6 +15,9 @@ async function inspect(directory) {
         if (/^\.env(?:\.|$)/.test(relative) || relative.startsWith(`.git${path.sep}`) || relative.startsWith(`.local${path.sep}`) || relative.startsWith(`public${path.sep}local-test${path.sep}`) || /^[^/\\]+\.(?:pem|key)$/.test(relative)) {
           throw new Error(`Private file appears in a deployment trace: ${relative}`);
         }
+        if (['media-server.js', 'server/media-http.js', 'server/voice-storage.js', 'scripts/prune-voice-media.js'].includes(relative.split(path.sep).join('/'))) {
+          throw new Error(`VPS-only media code appears in a Netlify deployment trace: ${relative}`);
+        }
       }
       checked++;
     }
@@ -23,5 +26,5 @@ async function inspect(directory) {
 }
 inspect(path.join(root, '.next')).then(count => {
   if (!count) throw new Error('No build traces found; run the production build first');
-  console.log(`Checked ${count} deployment traces: no environment files, keys, Git metadata, local databases or local test media`);
+  console.log(`Checked ${count} deployment traces: no private environment/data files or VPS-only media runtime`);
 }).catch(error => { console.error(error.message); process.exitCode = 1; });

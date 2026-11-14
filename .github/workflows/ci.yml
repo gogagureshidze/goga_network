@@ -49,6 +49,7 @@ jobs:
       - run: node --test tests/mysql.integration.cjs
       - run: node --test tests/runtime.integration.cjs
       - run: node --test tests/fixtures.integration.cjs
+      - run: node --test tests/media-api.integration.cjs
       - run: npm run build
       - run: node scripts/check-build-artifacts.js
       - name: Check production dependencies for high or critical advisories

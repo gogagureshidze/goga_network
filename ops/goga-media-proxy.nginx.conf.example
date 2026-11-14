@@ -1,0 +1,68 @@
+# Merge only into the dedicated MEDIA hostname's existing CloudPanel HTTPS
+# server {}. Retain its TLS certificate/renewal and ACME challenge configuration.
+# Do not apply this to the existing app/socket vhost, replace nginx.conf, or
+# introduce any root/alias serving /srv/goga/private-voice.
+# Requires goga-media-limits.nginx.conf.example in the http {} context.
+client_max_body_size 5m;
+client_body_timeout 20s;
+send_timeout 30s;
+limit_req_status 429;
+limit_conn_status 429;
+
+location /api/chat/ {
+    limit_req zone=goga_media_requests burst=30 nodelay;
+    limit_conn goga_media_clients 20;
+    limit_conn goga_media_total 64;
+    proxy_pass http://127.0.0.1:3002;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header Cookie "";
+    proxy_set_header Range $http_range;
+    proxy_connect_timeout 3s;
+    proxy_send_timeout 25s;
+    proxy_read_timeout 40s;
+    # The API bounds streamed input; avoid nginx writing private upload bodies.
+    proxy_request_buffering off;
+    proxy_buffering off;
+    proxy_max_temp_file_size 0;
+    proxy_cache off;
+    proxy_next_upstream off;
+    # CORS/security/cache headers belong to the API; never add wildcard CORS.
+    # This disables access logs only. Audit inherited CloudPanel/nginx error
+    # logs separately: early proxy errors can still include the request URI.
+    access_log off;
+}
+
+location = /health {
+    proxy_pass http://127.0.0.1:3002;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Cookie "";
+    proxy_cache off;
+    access_log off;
+}
+
+location = /ready {
+    # Readiness is for the local operator/monitor, not a public database probe.
+    allow 127.0.0.1;
+    allow ::1;
+    deny all;
+    proxy_pass http://127.0.0.1:3002;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Cookie "";
+    proxy_cache off;
+    access_log off;
+}
+
+# Preserve an existing ACME challenge location if CloudPanel uses it.
+# This replaces only the dedicated media vhost's catch-all, if one exists.
+location / {
+    return 404;
+}

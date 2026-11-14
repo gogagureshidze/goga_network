@@ -5,9 +5,9 @@ const {spawn} = require('node:child_process');
 async function main() {
   ensureSupportedNode();
   const mode = process.argv[2] || 'web';
-  if (!['web','socket'].includes(mode)) throw new Error('Use npm run dev or npm run dev:socket');
+  if (!['web','socket','media'].includes(mode)) throw new Error('Use npm run dev, npm run dev:socket or npm run dev:media');
   const env = {...loadDevelopmentEnv()};
-  const port = mode === 'web' ? 3000 : 3001;
+  const port = mode === 'web' ? 3000 : mode === 'socket' ? 3001 : 3002;
   if (await portOpen(port)) throw new Error(`LOCAL_PORT_IN_USE: ${port} already has a listener. Stop that local process before starting another; no cache was removed.`);
   if (!await portOpen(33367)) throw new Error('LOCAL_MYSQL_OFFLINE: run npm run dev:setup first.');
   const generated = path.join(root,'src/generated/prisma/schema.prisma');
@@ -21,7 +21,13 @@ async function main() {
   finally {await prisma.$disconnect();}
   env.PORT = String(port);
   env.SOCKET_HOST = '127.0.0.1';
-  const script = mode === 'web' ? require.resolve('next/dist/bin/next') : path.join(root,'socket-server.js');
+  // Explicit local defaults support existing .env.local without rerunning setup/migrations.
+  env.NEXT_PUBLIC_MEDIA_API_URL = 'http://localhost:3002';
+  env.MEDIA_API_PUBLIC_ORIGIN = 'http://localhost:3002';
+  env.MEDIA_ALLOWED_ORIGINS = 'http://localhost:3000';
+  env.MEDIA_API_HOST = '127.0.0.1';
+  env.MEDIA_API_PORT = '3002';
+  const script = mode === 'web' ? require.resolve('next/dist/bin/next') : path.join(root,mode === 'socket' ? 'socket-server.js' : 'media-server.js');
   // Next normalizes loopback IPs to localhost in middleware URLs. Clerk's
   // same-page rewrite must share that origin or Next proxies it back to itself.
   const args = mode === 'web' ? [script,'dev','--turbopack','--hostname','localhost','--port','3000'] : [script];

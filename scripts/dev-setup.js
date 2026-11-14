@@ -91,6 +91,8 @@ GRANT ALL PRIVILEGES ON goga_development.* TO 'goga_local'@'localhost';`);
   const settings = {
     DATABASE_URL:databaseUrl, APP_ORIGIN:'http://localhost:3000', NEXT_PUBLIC_SOCKET_URL:'http://localhost:3001',
     SOCKET_ALLOWED_ORIGINS:'http://localhost:3000', SOCKET_HOST:'127.0.0.1',
+    NEXT_PUBLIC_MEDIA_API_URL:'http://localhost:3002', MEDIA_API_PUBLIC_ORIGIN:'http://localhost:3002',
+    MEDIA_ALLOWED_ORIGINS:'http://localhost:3000', MEDIA_API_HOST:'127.0.0.1', MEDIA_API_PORT:'3002',
     GOGA_LOCAL_DEVELOPMENT:'true', DEPLOYMENT_ENV:'development', ENABLE_GROUP_CALLS:'false', GROUP_CALL_SECURITY_REVIEWED:'false',
     VOICE_STORAGE_DIR:voice, FFMPEG_PATH:ffmpeg, FFPROBE_PATH:ffprobe,
     WATCH_ALLOWED_HOSTS:current.WATCH_ALLOWED_HOSTS || 'localhost',
@@ -118,7 +120,7 @@ GRANT ALL PRIVILEGES ON goga_development.* TO 'goga_local'@'localhost';`);
   }
   console.info('Isolated MySQL is ready on 127.0.0.1:33367 (goga_development and goga_validation).');
   console.info('.env.local now selects only local MySQL; original .env was not modified.');
-  console.info('Start npm run dev and npm run dev:socket in separate terminals. Open http://localhost:3000.');
+  console.info('Start npm run dev, npm run dev:socket and npm run dev:media in separate terminals. Open http://localhost:3000.');
   console.info('Watch sample: http://localhost:3000/local-test/watch.mp4 (generated test pattern).');
 }
 if (require.main === module) main().catch(error=>{console.error(error.message);process.exitCode=1;});

@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Mic, Square, X } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
+import { uploadPrivateVoice, type VoiceAttachment } from "@/lib/voice-api";
 import VoiceMessage, { formatDuration } from "./VoiceMessage";
 
-export type VoiceAttachment = { mediaAssetId: string; mediaUrl: string; mediaType: "voice"; durationMs: number; waveform?: number[] };
+export type { VoiceAttachment } from "@/lib/voice-api";
 type Recording = { blob: Blob; url: string; durationMs: number; waveform: number[] };
 const MAX_SECONDS = 120;
 // MediaRecorder stop/data events are queued, and codec tails add a little time.
@@ -34,6 +36,7 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
   disabled?: boolean;
   onSend: (attachment: VoiceAttachment) => void;
 }) {
+  const { getToken } = useAuth();
   const [supported, setSupported] = useState(false);
   const [state, setState] = useState<"idle" | "permission" | "recording" | "processing" | "preview" | "uploading">("idle");
   const [recording, setRecording] = useState<Recording | null>(null);
@@ -171,9 +174,7 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
       form.set("waveform", JSON.stringify(recording.waveform));
       if (conversationId) form.set("conversationId", String(conversationId));
       else if (receiverId) form.set("receiverId", receiverId);
-      const response = await fetch("/api/chat/voice", { method: "POST", body: form, signal: controller.signal });
-      const attachment = await response.json();
-      if (!response.ok) throw new Error(typeof attachment.error === "string" ? attachment.error : "Voice upload failed. Please retry.");
+      const attachment = await uploadPrivateVoice(form, getToken, controller.signal);
       if (!mounted.current || cancelled.current || session.current !== uploadSession) return;
       onSend({ ...attachment, waveform: attachment.waveform || recording.waveform });
       cancel();
@@ -191,7 +192,7 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
           {state === "recording" && <><span role="status" className="text-sm text-red-600">Recording {formatDuration(seconds)} / 2:00</span><button aria-label="Stop recording" type="button" onClick={() => stopRef.current?.()} className="rounded-full bg-red-600 p-2 text-white"><Square size={16} /></button></>}
           {state === "permission" && <span role="status" className="text-sm">Waiting for microphone permission…</span>}
           {state === "processing" && <span role="status" className="text-sm">Preparing recording…</span>}
-          {recording && <div className="flex-1"><VoiceMessage src={recording.url} durationMs={recording.durationMs} waveform={recording.waveform} /></div>}
+          {recording && <div className="flex-1"><VoiceMessage src={recording.url} preview durationMs={recording.durationMs} waveform={recording.waveform} /></div>}
           {recording && <button type="button" onClick={upload} disabled={disabled || state !== "preview"} className="rounded-full bg-orange-500 px-4 py-2 text-sm text-white disabled:opacity-50">{state === "uploading" ? "Uploading…" : "Send voice"}</button>}
           <button type="button" onClick={cancel} aria-label="Cancel voice message" className="p-2"><X size={18} /></button>
         </div>

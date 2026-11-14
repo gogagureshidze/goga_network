@@ -12,7 +12,7 @@
 
 ## Infrastructure constraint supplied by owner
 
-Hostinger KVM 1, Ubuntu 24.04, CloudPanel, 1 vCPU, 4 GB memory, 50 GB disk, 4 TB/month transfer. MySQL shares the VPS. Preserve the existing app, socket process, database and CloudPanel configuration. Initial calls use browser P2P with optional TURN; group LiveKit disabled by default. Watch synchronization carries small control messages, never movie bytes/transcoding.
+Hostinger KVM 1, Ubuntu 24.04, CloudPanel, 1 vCPU, 4 GB memory, 50 GB disk, 4 TB/month transfer. The owner subsequently confirmed **Next.js is on Netlify, while MySQL and Socket.IO are on the VPS**. Keep that split. A dedicated authenticated HTTP media process on the VPS handles private voice audio/FFmpeg; Netlify calls it directly and does not need persistent local storage. Preserve the existing socket process, database and CloudPanel configuration. Initial calls use browser P2P with optional TURN; group LiveKit disabled by default. Watch synchronization carries small control messages, never movie bytes/transcoding.
 
 Read-only SSH attempted using the supplied root target with BatchMode/key authentication and strict host checking. Authentication was rejected. Capacity, actual firewall, ports, process topology and CloudPanel proxy remain **unverified**. Passwords shared in chat were not used or written into files. Run the supplied audit script through an authorized operator session and review sanitized results before infrastructure planning.
 
@@ -27,7 +27,7 @@ Read-only SSH attempted using the supplied root target with BatchMode/key authen
 ## Decisions
 
 - Reuse Clerk, MySQL, Prisma, Socket.IO, Cloudinary and UI palette. No Redis adapter on the single socket process: adding Redis would consume resources without making in-memory coordination safely multi-instance. Scaling requires a separately reviewed shared state/limiter/presence design.
-- New voice notes use a private self-hosted filesystem with bounded FFmpeg audio normalization, authenticated range reads, a disk quota and retention. Existing social Cloudinary media remains unchanged. No new paid media service is required. Staging must supply an approved persistent private directory and FFmpeg binaries.
+- New voice notes use `/srv/goga/private-voice` through the standalone VPS HTTP API, with bounded FFmpeg normalization, Clerk bearer authentication, exact CORS, membership/block checks, range reads, a disk quota and retention. Existing social Cloudinary media remains unchanged. No new paid media service is required. Staging must supply the approved directory/FFmpeg/HTTPS endpoint; see [VPS-MEDIA-DEPLOYMENT.md](VPS-MEDIA-DEPLOYMENT.md). This split does not change the schema or move Next.js off Netlify.
 - Self-hosted LiveKit on a separate staging host is preferred for group load measurement. Do not assume spare CPU on this VPS; disable group calls until measured headroom exists.
 - For deployment, additive SQL is reviewed first, reconciled against actual schema, applied to disposable staging, then approved with `prisma migrate deploy`. Never `db push` or reset on production.
 
