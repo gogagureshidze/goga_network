@@ -1,6 +1,7 @@
 const { createServer } = require('node:http');
 const { Server } = require('socket.io');
 const { ChatError, object, positiveId } = require('./chat-service');
+const { reportException, clientDiagnostic, diagnosticCode } = require('./diagnostics');
 
 const DEFAULT_LIMITS = {
   message: [60, 60_000], mutation: [60, 60_000], typing: [30, 10_000],
@@ -51,7 +52,7 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
     if (req.url === '/ready') {
       let timer;
       try { healthy = await Promise.race([ready(), new Promise(resolve => { timer = setTimeout(() => resolve(false), 3000); })]); }
-      catch { healthy = false; }
+      catch (error) { healthy = false; reportException(logger, 'server.readiness_failed', error, { phase: 'readiness' }); }
       finally { clearTimeout(timer); }
     }
     res.writeHead(healthy ? 200 : 503);
@@ -88,10 +89,12 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
       socket.data.expiresAt = claims.exp * 1000;
       socket.data.profile = profile;
       next();
-    } catch {
+    } catch (cause) {
       metrics.rejected++;
-      const error = new Error('Authentication required');
-      error.data = { code: 'UNAUTHENTICATED' };
+      const databaseFailure = diagnosticCode(cause).startsWith('DB_');
+      const reference = databaseFailure ? reportException(logger, 'socket.authentication_dependency_failed', cause, { phase: 'authentication' }) : null;
+      const error = new Error(reference ? 'Connection service is unavailable. Try again shortly.' : 'Authentication required');
+      error.data = reference ? clientDiagnostic(reference) : { code: 'UNAUTHENTICATED' };
       next(error);
     }
   });
@@ -165,10 +168,12 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
         } catch (error) {
           metrics.failures++;
           const known = error instanceof ChatError || (typeof error.code === 'string' && ['FORBIDDEN', 'INVALID_INPUT', 'CONFLICT', 'NOT_FOUND', 'RATE_LIMITED', 'UNAVAILABLE'].includes(error.code));
-          const failure = { code: known ? error.code : 'INTERNAL', message: known ? error.message : 'Request failed. Please try again.', ...(error.retryAfterMs ? { retryAfterMs: error.retryAfterMs } : {}) };
-          log(known ? 'info' : 'error', 'socket.event_failed', { socketEvent: event, code: failure.code });
+          const failure = known
+            ? { code: error.code, message: error.message, ...(error.retryAfterMs ? { retryAfterMs: error.retryAfterMs } : {}) }
+            : clientDiagnostic(reportException(logger, 'socket.event_failed', error, { socketEvent: event }));
+          if (known) log('info', 'socket.event_rejected', { socketEvent: event, code: failure.code });
           if (typeof ack === 'function') ack({ ok: false, error: failure });
-          else socket.emit('messageError', { error: failure.message, code: failure.code });
+          else socket.emit('messageError', { ...failure, error: failure.message });
         } finally {
           if (acquired) {
             const count = (inFlight.get(userId) || 1) - 1;
@@ -294,33 +299,33 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
       if (deleteTyping(postTyping, postId, socket.id)) await emitPostTyping(postId);
       return {};
     });
-    registerRoomEvents?.({ socket, io, chat, handle, userRoom, conversationRoom, emitToConversation });
-    socket.on('error', () => log('error', 'socket.transport_error'));
+    registerRoomEvents?.({ socket, io, chat, handle, userRoom, conversationRoom, emitToConversation, logger });
+    socket.on('error', error => reportException(logger, 'socket.transport_error', error, { phase: 'transport' }));
     socket.on('disconnect', () => {
       clearTimeout(expiryTimer);
       online.get(userId)?.delete(socket.id);
       if (!online.get(userId)?.size) { online.delete(userId); }
       io.emit('onlineCount', online.size);
-      for (const postId of postTyping.keys()) if (deleteTyping(postTyping, postId, socket.id)) emitPostTyping(postId).catch(() => {});
+      for (const postId of postTyping.keys()) if (deleteTyping(postTyping, postId, socket.id)) emitPostTyping(postId).catch(error => reportException(logger, 'socket.typing_cleanup_failed', error, { phase: 'cleanup' }));
       for (const conversationId of chatTyping.keys()) if (deleteTyping(chatTyping, conversationId, socket.id)) {
         const stillTyping = [...(chatTyping.get(conversationId)?.values() || [])].some(entry => entry.userId === userId);
-        if (!stillTyping) emitToConversation(conversationId, 'chatTyping', { conversationId, userId, isTyping: false }).catch(() => {});
+        if (!stillTyping) emitToConversation(conversationId, 'chatTyping', { conversationId, userId, isTyping: false }).catch(error => reportException(logger, 'socket.typing_cleanup_failed', error, { phase: 'cleanup' }));
       }
       log('info', 'socket.disconnected', { activeUsers: online.size, activeSockets: io.engine.clientsCount });
     });
   });
   const cleanup = setInterval(() => {
     limiter.sweep();
-    Promise.resolve(sweepRooms?.()).catch(() => log('error', 'rooms.sweep_failed'));
+    Promise.resolve().then(() => sweepRooms?.()).catch(error => reportException(logger, 'rooms.sweep_failed', error, { phase: 'sweep' }));
     for (const [postId, entries] of postTyping) {
       let changed = false;
       for (const [socketId, entry] of entries) if (now() - entry.timestamp > 7000) changed = deleteTyping(postTyping, postId, socketId) || changed;
-      if (changed) emitPostTyping(postId).catch(() => {});
+      if (changed) emitPostTyping(postId).catch(error => reportException(logger, 'socket.typing_cleanup_failed', error, { phase: 'cleanup' }));
     }
     for (const [conversationId, entries] of chatTyping) for (const [socketId, entry] of entries) if (now() - entry.timestamp > 7000) {
       deleteTyping(chatTyping, conversationId, socketId);
       if (![...(chatTyping.get(conversationId)?.values() || [])].some(other => other.userId === entry.userId)) {
-        emitToConversation(conversationId, 'chatTyping', { conversationId, userId: entry.userId, isTyping: false }).catch(() => {});
+        emitToConversation(conversationId, 'chatTyping', { conversationId, userId: entry.userId, isTyping: false }).catch(error => reportException(logger, 'socket.typing_cleanup_failed', error, { phase: 'cleanup' }));
       }
     }
   }, 5000);

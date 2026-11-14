@@ -65,15 +65,19 @@ function Navbar({ users }: { users: User[] }) {
     user?.updatedAt,
     isLoaded,
   ]);
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, isLoaded: isAuthLoaded } = useAuth();
+  const previousSignedIn = useRef<boolean>();
   const router = useRouter();
 
   useEffect(() => {
-    // When the user signs out, redirect them automatically
-    if (isLoaded && !isSignedIn) {
+    if (!isAuthLoaded || typeof isSignedIn !== "boolean") return;
+    const wasSignedIn = previousSignedIn.current;
+    previousSignedIn.current = isSignedIn;
+    // Preserve sign-out navigation without redirecting anonymous sign-in visits.
+    if (wasSignedIn === true && !isSignedIn) {
       router.push("/sign-up");
     }
-  }, [isSignedIn, isLoaded, router]);
+  }, [isSignedIn, isAuthLoaded, router]);
 
   const [filteredUsers, setFilteredUsers] = useState<User[]>(users);
   useEffect(() => {

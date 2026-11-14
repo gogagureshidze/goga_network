@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { createRoomService, createRoomRegistrar } = require('../server/rooms');
 const { ChatError } = require('../server/chat-service');
 
-function setup({ group = false, enabled = false } = {}) {
+function setup({ group = false, enabled = false, env = {} } = {}) {
   let clock = 1_800_000_000_000;
   const members = new Set(group ? ['alice', 'bob', 'charlie'] : ['alice', 'bob']);
   const calls = new Map(), parties = new Map();
@@ -53,7 +53,7 @@ function setup({ group = false, enabled = false } = {}) {
   };
   const removed = [], deleted = [], published = [];
   const service = createRoomService({ prisma, chat, now: () => clock,
-    env: { ENABLE_GROUP_CALLS: enabled ? 'true' : 'false', GROUP_CALL_SECURITY_REVIEWED: enabled ? 'true' : 'false', WATCH_ALLOWED_HOSTS: 'media.example.test' },
+    env: { ENABLE_GROUP_CALLS: enabled ? 'true' : 'false', GROUP_CALL_SECURITY_REVIEWED: enabled ? 'true' : 'false', WATCH_ALLOWED_HOSTS: 'media.example.test', ...env },
     livekit: enabled ? { removeParticipant: async (...args) => removed.push(args), deleteRoom: async (...args) => deleted.push(args) } : undefined });
   service.setPublisher(async (...args) => published.push(args));
   return { service, prisma, members, calls, parties, removed, deleted, published, advance: ms => { clock += ms; } };
@@ -122,6 +122,63 @@ test('watch creation requires membership, authorization declaration and approved
     await assert.rejects(service.createWatch('alice', { conversationId: 1, authorized: true, sourceUrl }), error => error.code === 'INVALID_INPUT');
   }
   await assert.rejects(service.createWatch('alice', { conversationId: 1, sourceUrl: 'https://media.example.test/movie.mp4' }), error => error.code === 'INVALID_INPUT');
+});
+
+const localWatchEnvironment = {
+  NODE_ENV: 'development', GOGA_LOCAL_DEVELOPMENT: 'true',
+  DATABASE_URL: 'mysql://synthetic:private-test-password@127.0.0.1:33367/goga_development',
+  WATCH_ALLOWED_HOSTS: 'localhost,127.0.0.1,media.example.test',
+};
+
+test('watch source permits explicitly allowlisted local HTTP fixtures only with the isolated development configuration', async () => {
+  for (const sourceUrl of ['http://localhost:3000/dev-fixtures/movie.mp4', 'http://127.0.0.1:3000/dev-fixtures/movie.webm']) {
+    const { service, parties } = setup({ env: localWatchEnvironment });
+    const party = await service.createWatch('alice', { conversationId: 1, authorized: true, sourceUrl });
+    assert.equal(party.sourceUrl, sourceUrl);
+    assert.equal(parties.size, 1);
+  }
+});
+
+test('local HTTP watch fixtures cannot bypass production, opt-in, database or host restrictions', async () => {
+  const cases = [
+    { NODE_ENV: 'production' },
+    { NODE_ENV: 'test' },
+    { NODE_ENV: undefined },
+    { GOGA_LOCAL_DEVELOPMENT: undefined },
+    { GOGA_LOCAL_DEVELOPMENT: 'false' },
+    { DATABASE_URL: undefined },
+    { DATABASE_URL: localWatchEnvironment.DATABASE_URL.replace('127.0.0.1', 'production.example.test') },
+    { DATABASE_URL: localWatchEnvironment.DATABASE_URL.replace(':33367', ':3306') },
+    { DATABASE_URL: localWatchEnvironment.DATABASE_URL.replace('/goga_development', '/goga_validation') },
+    { DATABASE_URL: `${localWatchEnvironment.DATABASE_URL}?socket=/tmp/mysql.sock` },
+    { WATCH_ALLOWED_HOSTS: 'media.example.test' },
+  ];
+  for (const overrides of cases) {
+    const { service, parties } = setup({ env: { ...localWatchEnvironment, ...overrides } });
+    await assert.rejects(service.createWatch('alice', { conversationId: 1, authorized: true, sourceUrl: 'http://localhost:3000/dev-fixtures/movie.mp4' }), error => {
+      assert.equal(error.code, 'INVALID_INPUT');
+      assert.doesNotMatch(error.message, /synthetic|private-test-password|DATABASE_URL|mysql:/);
+      return true;
+    });
+    assert.equal(parties.size, 0);
+  }
+});
+
+test('development watch exception rejects remote HTTP and keeps credential, format and HTTPS port checks', async () => {
+  const { service, parties } = setup({ env: localWatchEnvironment });
+  for (const sourceUrl of [
+    'http://media.example.test/movie.mp4',
+    'http://localhost.evil.test:3000/movie.mp4',
+    'http://localhost:3000@media.example.test/movie.mp4',
+    'http://user:secret@localhost:3000/movie.mp4',
+    'http://localhost:3000/page',
+    'ftp://localhost:3000/movie.mp4',
+    'https://media.example.test:8443/movie.mp4',
+  ]) {
+    await assert.rejects(service.createWatch('alice', { conversationId: 1, authorized: true, sourceUrl }), error => error.code === 'INVALID_INPUT');
+  }
+  assert.equal(parties.size, 0);
+  assert.equal((await watch(service)).sourceUrl, 'https://media.example.test/movie.mp4');
 });
 
 test('watch controls enforce host privilege and reject stale event versions', async () => {

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const loadTs = require('./helpers/load-ts.cjs');
 
-function harness({ getToken, connectImmediately = true } = {}) {
+function harness({ getToken, connectImmediately = true, accountReady = true } = {}) {
   const effects = [];
   const sockets = [];
   let tokens = 0;
@@ -18,6 +18,7 @@ function harness({ getToken, connectImmediately = true } = {}) {
   page.removeEventListener = page.off.bind(page);
   const loadedModule = loadTs('src/hooks/useRealtimeSocket.ts', {
     '@clerk/nextjs': { useAuth: () => ({ userId: 'member-a', isLoaded: true, getToken: getToken || (async () => `fresh-token-${++tokens}`) }) },
+    '@/components/auth/LocalAccountBootstrap': { useLocalAccountReady: () => accountReady },
     react: { useEffect: effect => effects.push(effect), useRef: value => ({ current: value }), useState: value => [value, () => {}] },
     'socket.io-client': { io: (url, options) => {
       const socket = new EventEmitter();
@@ -31,7 +32,7 @@ function harness({ getToken, connectImmediately = true } = {}) {
     setInterval: callback => { intervals += 1; intervalCallbacks.set(intervals, callback); return intervals; },
     clearInterval: id => { intervals -= 1; intervalCallbacks.delete(id); },
   });
-  return { module: loadedModule, sockets, effects, page, browser, intervalCallbacks, intervals: () => intervals };
+  return { module: loadedModule, sockets, effects, page, browser, intervalCallbacks, intervals: () => intervals, setAccountReady: value => { accountReady = value; } };
 }
 
 test('components share one connection and only the final subscriber disconnects it', async () => {
@@ -109,6 +110,21 @@ test('late authentication promises cannot revive or refresh a released account c
   assert.equal(callbacks, 0);
   assert.equal(socket.connects, 1);
   assert.equal(socket.disconnects, 1);
+});
+
+test('local sign-in waits for server-confirmed user bootstrap before opening a socket', async () => {
+  const fixture = harness({ accountReady: false });
+  fixture.module.useRealtimeSocket();
+  assert.equal(fixture.effects[0](), undefined);
+  assert.equal(fixture.sockets.length, 0);
+  assert.equal(fixture.intervals(), 0);
+  // The authenticated server layout awaits mirroring before providing readiness.
+  fixture.setAccountReady(true);
+  fixture.module.useRealtimeSocket(); const cleanup = fixture.effects[1]();
+  assert.equal(fixture.sockets.length, 1);
+  const auth = await new Promise(resolve => fixture.sockets[0].options.auth(resolve));
+  assert.equal(auth.token, 'fresh-token-1', 'readiness never replaces genuine Clerk token authentication');
+  cleanup(); await new Promise(resolve => setImmediate(resolve));
 });
 
 test('socket handshake supplies a fresh session token and no forgeable user ID query', async () => {

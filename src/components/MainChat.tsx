@@ -8,7 +8,7 @@ import { emitWithAck, useRealtimeSocket } from "@/hooks/useRealtimeSocket";
 import VoiceMessage from "./chat/VoiceMessage";
 import VoiceRecorder, { type VoiceAttachment } from "./chat/VoiceRecorder";
 import { Reply, Pencil, Trash2, X } from "lucide-react";
-import { mergeMessages, reconcileHistory } from "@/lib/chat-client";
+import { leaveConversationRoom, mergeMessages, reconcileHistory } from "@/lib/chat-client";
 import ConversationExperience from "@/components/communications/ConversationExperience";
 
 type Props = {
@@ -190,7 +190,7 @@ export default function MainChat({ selectedFriend, messages, setMessages, Avatar
       active = false;
       clearInterval(presenceTimer);
       socket.off("chatTyping", update);
-      if (socket.connected) { socket.emit("chatTyping", { conversationId, isTyping: false }); socket.emit("leaveConversation", { conversationId }); }
+      leaveConversationRoom(socket, conversationId);
       if (typingTimeout.current) clearTimeout(typingTimeout.current);
       expiryTimers.forEach(clearTimeout);
       expiryTimers.clear();

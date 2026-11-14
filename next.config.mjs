@@ -4,7 +4,7 @@ const nextConfig = {
   reactCompiler: true,
   // Prisma 5's dynamic runtime lookup can otherwise trace local environment files.
   outputFileTracingExcludes: {
-    '/*': ['./.env*', './.git/**/*', './*.pem', './*.key', './tests/**/*', './docs/**/*', './ops/**/*', './.github/**/*'],
+    '/*': ['./.env*', './.git/**/*', './.local/**/*', './public/local-test/**/*', './*.pem', './*.key', './tests/**/*', './docs/**/*', './ops/**/*', './.github/**/*'],
   },
   async headers() {
     return [{ source: '/(.*)', headers: [

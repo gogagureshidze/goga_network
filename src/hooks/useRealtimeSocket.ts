@@ -3,6 +3,7 @@
 import { useAuth } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
+import { useLocalAccountReady } from "@/components/auth/LocalAccountBootstrap";
 
 export type RealtimeAck<T> =
   | ({ ok: true } & T)
@@ -126,6 +127,7 @@ function release(userId: string) {
 
 export function useRealtimeSocket() {
   const { userId, isLoaded, getToken } = useAuth();
+  const accountReady = useLocalAccountReady(userId);
   const sessionRef = useRef({ userId, isLoaded, getToken });
   sessionRef.current = { userId, isLoaded, getToken };
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -134,7 +136,7 @@ export function useRealtimeSocket() {
   const [onlineCount, setOnlineCount] = useState(0);
 
   useEffect(() => {
-    if (!isLoaded || !userId) {
+    if (!isLoaded || !userId || !accountReady) {
       setSocket(null);
       setConnected(false);
       setOnlineCount(0);
@@ -171,7 +173,7 @@ export function useRealtimeSocket() {
       current.io.off("reconnect_failed", exhausted);
       release(userId);
     };
-  }, [isLoaded, userId]);
+  }, [isLoaded, userId, accountReady]);
 
   return { socket, isConnected, connectionError, onlineCount, reconnect: () => { if (userId) connections.get(userId)?.reconnect(); } };
 }

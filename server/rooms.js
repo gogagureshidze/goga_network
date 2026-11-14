@@ -1,5 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const { ChatError, positiveId, object } = require('./chat-service');
+const { reportException } = require('./diagnostics');
+const { assertLocalDatabase } = require('./development-guard');
 
 const callInclude = { conversation: { select: { kind: true } }, participants: { include: { user: { select: { id: true, username: true, avatar: true } } } } };
 const activeStatuses = ['RINGING', 'ACTIVE'];
@@ -9,7 +11,7 @@ const roomId = value => { if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,64
 const device = value => { if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)) invalid('A valid device identifier is required'); return value; };
 const versionValue = value => { if (!Number.isSafeInteger(value) || value < 0) invalid('Invalid playback version'); return value; };
 
-function createRoomService({ prisma, chat, now = Date.now, livekit, env = process.env }) {
+function createRoomService({ prisma, chat, now = Date.now, livekit, env = process.env, logger = console }) {
   const groupLimit = Math.min(4, Math.max(2, Number(env.GROUP_CALL_MAX_PARTICIPANTS) || 4));
   const maxDuration = Math.min(4 * 60 * 60_000, Math.max(60_000, Number(env.CALL_MAX_DURATION_MS) || 2 * 60 * 60_000));
   const watchHosts = new Set((env.WATCH_ALLOWED_HOSTS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean));
@@ -178,7 +180,14 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     if (typeof sourceUrl !== 'string' || sourceUrl.length > 2048) invalid('Invalid media URL');
     let url;
     try { url = new URL(sourceUrl); } catch { invalid('Invalid media URL'); }
-    if (url.protocol !== 'https:' || url.username || url.password || url.port || !watchHosts.has(url.hostname.toLowerCase())) invalid('Use an approved HTTPS media host');
+    let localDevelopmentSource = false;
+    if (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname) &&
+        env.NODE_ENV === 'development' && env.GOGA_LOCAL_DEVELOPMENT === 'true') {
+      // Browser fixtures may use a local HTTP server only with the isolated development database.
+      // This guard parses configuration; it does not contact the database.
+      try { assertLocalDatabase(env); localDevelopmentSource = true; } catch { /* Keep the normal source rejection below. */ }
+    }
+    if ((!localDevelopmentSource && (url.protocol !== 'https:' || url.port)) || url.username || url.password || !watchHosts.has(url.hostname.toLowerCase())) invalid('Use an approved HTTPS media host');
     if (!/\.(mp4|webm|ogg|ogv)(?:$)/i.test(url.pathname)) invalid('Use a direct supported video file');
     return url.href;
   }
@@ -308,7 +317,7 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
             const result = await leaveInternal(call, userId);
             await publish(result.conversationId, 'callUpdated', { call: result });
           }
-        } catch { /* The periodic sweeper still expires durable abandoned sessions. */ }
+        } catch (error) { reportException(logger, 'rooms.disconnect_cleanup_failed', error, { phase: 'disconnect-grace' }); }
       }, 20_000);
       timer.unref?.(); disconnectTimers.set(key, timer);
     }
@@ -385,7 +394,7 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
 }
 
 function createRoomRegistrar(service) {
-  return ({ socket, io, handle, userRoom, emitToConversation }) => {
+  return ({ socket, io, handle, userRoom, emitToConversation, logger = console }) => {
     const userId = socket.data.userId;
     service.setPublisher(emitToConversation);
     service.setRevoker((revokedUserId, payload) => io.to(userRoom(revokedUserId)).emit('callRevoked', payload));
@@ -422,7 +431,7 @@ function createRoomRegistrar(service) {
     handle('watch:control', 'mutation', async input => watchUpdated(await service.controlWatch(userId, input)));
     handle('watch:end', 'mutation', async input => watchUpdated(await service.endWatch(userId, input)));
     handle('session:sync', 'read', async input => service.sync(userId, input.conversationId));
-    socket.on('disconnect', () => { service.disconnected(socket.id).catch(() => {}); });
+    socket.on('disconnect', () => { service.disconnected(socket.id).catch(error => reportException(logger, 'rooms.disconnect_failed', error, { phase: 'disconnect' })); });
   };
 }
 

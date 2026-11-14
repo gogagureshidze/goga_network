@@ -5,6 +5,7 @@ const { once } = require('node:events');
 const { createChatService } = require('../server/chat-service');
 const { createSocketApp, DEFAULT_LIMITS } = require('../server/socket-app');
 const { createFixture } = require('./helpers/chat-fixture');
+const { leaveConversationRoom } = require('./helpers/load-ts.cjs')('src/lib/chat-client.ts');
 
 async function setup(t, options = {}) {
   const fixture = createFixture();
@@ -112,4 +113,23 @@ test('typing across tabs stays active and presence respects changed privacy pref
   assert.equal((await update)[0].isTyping, true);
   state.users.find(user => user.id === 'alice').showActivityStatus = false;
   assert.deepEqual((await ack(bob, 'getPresence', { conversationId })).presence, ['bob']);
+});
+
+test('chat client cleanup releases the actual server room and typing without removing group membership', async t => {
+  const { client, ack, chat, app } = await setup(t);
+  const alice = await client('alice');
+  const bob = await client('bob');
+  const group = await chat.createGroup('alice', { name: 'Cleanup contract', memberIds: ['bob'] });
+  await chat.respondInvite('bob', { conversationId: group.id, accept: true });
+  assert.equal((await ack(alice, 'joinConversation', { conversationId: group.id })).ok, true);
+  const serverSocket = app.io.sockets.sockets.get(alice.id);
+  assert.equal(serverSocket.rooms.has(`conversation:${group.id}`), true);
+  await ack(alice, 'chatTyping', { conversationId: group.id, isTyping: true });
+  const typingStopped = once(bob, 'chatTyping');
+  leaveConversationRoom(alice, group.id);
+  assert.equal((await typingStopped)[0].isTyping, false);
+  assert.equal(serverSocket.rooms.has(`conversation:${group.id}`), false);
+  assert.equal(serverSocket.rooms.has('alice'), true, 'personal delivery room stays joined');
+  assert.deepEqual((await chat.authorizeConversation('alice', group.id)).participantIds, ['alice', 'bob']);
+  assert.equal((await ack(alice, 'joinConversation', { conversationId: group.id })).ok, true);
 });

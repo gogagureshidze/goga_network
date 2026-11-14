@@ -39,3 +39,7 @@ next-env.d.ts
 
 # Documented non-secret configuration template
 !.env.example
+
+# Isolated local runtime (database, logs, credentials, generated sample media)
+/.local/
+/public/local-test/

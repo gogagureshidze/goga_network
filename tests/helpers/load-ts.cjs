@@ -11,7 +11,7 @@ module.exports = function loadTs(file, mocks = {}, globals = {}, cache = new Map
   const exports = {};
   cache.set(absolute, exports);
   const output = ts.transpileModule(fs.readFileSync(absolute, "utf8"), {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
     fileName: absolute,
   }).outputText;
   vm.runInNewContext(output, {

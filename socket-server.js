@@ -4,6 +4,8 @@ const { createChatService } = require('./server/chat-service');
 const { createSocketApp } = require('./server/socket-app');
 const { createRoomService, createRoomRegistrar } = require('./server/rooms');
 const { isIP } = require('node:net');
+const { preflightDatabase } = require('./server/db-preflight');
+const { reportException } = require('./server/diagnostics');
 
 function configuredHost(env) {
   const host = env.SOCKET_HOST || '127.0.0.1';
@@ -21,51 +23,70 @@ function configuredOrigins(env) {
   });
 }
 
-async function main() {
-  const origins = configuredOrigins(process.env);
-  if (!process.env.CLERK_SECRET_KEY && !process.env.CLERK_JWT_KEY) throw new Error('Configure CLERK_SECRET_KEY or CLERK_JWT_KEY on the socket server');
-  const prisma = new PrismaClient();
-  const chat = createChatService(prisma);
-  let livekit;
-  if (process.env.ENABLE_GROUP_CALLS === 'true') {
-    if (!process.env.LIVEKIT_URL || !process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) throw new Error('Group calls require LiveKit server configuration');
-    const { RoomServiceClient } = require('livekit-server-sdk');
-    livekit = new RoomServiceClient(process.env.LIVEKIT_URL.replace(/^ws/, 'http'), process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET);
+async function main({ env = process.env, PrismaClientConstructor = PrismaClient, socketFactory = createSocketApp,
+  roomFactory = createRoomService, roomRegistrar = createRoomRegistrar, preflight = preflightDatabase,
+  logger = console, signalSource = process, developmentGuard = env => require('./server/development-guard').assertLocalDatabase(env, { allowValidation: true }) } = {}) {
+  let prisma, app;
+  let phase = 'configuration';
+  try {
+    const origins = configuredOrigins(env);
+    const host = configuredHost(env);
+    const port = Number(env.PORT || 3001);
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT');
+    if (!env.CLERK_SECRET_KEY && !env.CLERK_JWT_KEY) throw new Error('Configure Clerk verification on the socket server');
+    let livekit;
+    if (env.ENABLE_GROUP_CALLS === 'true') {
+      if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) throw new Error('Group calls require LiveKit server configuration');
+      const { RoomServiceClient } = require('livekit-server-sdk');
+      livekit = new RoomServiceClient(env.LIVEKIT_URL.replace(/^ws/, 'http'), env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
+    }
+    if (env.NODE_ENV !== 'production') developmentGuard(env);
+    phase = 'database-preflight';
+    prisma = new PrismaClientConstructor();
+    // Do not construct the socket application or its sweep timers until schema readiness
+    // is established. This performs metadata reads only; migration approval is separate.
+    const readiness = await preflight(prisma);
+    logger.info?.(JSON.stringify({ event: 'server.preflight_passed', ...readiness }));
+    phase = 'application';
+    const chat = createChatService(prisma);
+    const rooms = roomFactory({ prisma, chat, livekit, env, logger });
+    app = socketFactory({
+      chat, logger, allowedOrigins: origins,
+      verifyToken: token => verifyToken(token, {
+        ...(env.CLERK_JWT_KEY ? { jwtKey: env.CLERK_JWT_KEY } : { secretKey: env.CLERK_SECRET_KEY }),
+        authorizedParties: origins,
+      }),
+      registerRoomEvents: roomRegistrar(rooms),
+      onMembershipRevoked: (conversationId, userId) => rooms.onMembershipRevoked(conversationId, userId),
+      sweepRooms: () => rooms.sweep(),
+      closeRooms: () => rooms.close?.(),
+      ready: async () => { await prisma.$queryRaw`SELECT 1`; return true; },
+    });
+    phase = 'listen';
+    await app.listen(port, host);
+    let stopping = false;
+    const shutdown = async signal => {
+      if (stopping) return;
+      stopping = true;
+      logger.info?.(JSON.stringify({ event: 'server.shutdown', signal }));
+      const deadline = setTimeout(() => process.exit(1), 10_000);
+      deadline.unref();
+      try { await app.close(); await prisma.$disconnect(); }
+      catch (error) { reportException(logger, 'server.shutdown_failed', error, { phase: 'shutdown' }); process.exitCode = 1; }
+      finally { clearTimeout(deadline); }
+    };
+    signalSource.once('SIGINT', () => { void shutdown('SIGINT'); });
+    signalSource.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+    logger.info?.(JSON.stringify({ event: 'server.ready', port, allowedOriginCount: origins.length }));
+    return { app, prisma, shutdown };
+  } catch (error) {
+    if (phase === 'configuration' && !error.code) error.code = 'SERVER_CONFIGURATION_INVALID';
+    reportException(logger, 'server.start_failed', error, { phase });
+    try { await app?.close(); await prisma?.$disconnect(); }
+    catch (cleanupError) { reportException(logger, 'server.start_cleanup_failed', cleanupError, { phase: 'cleanup' }); }
+    throw error;
   }
-  const rooms = createRoomService({ prisma, chat, livekit });
-  const app = createSocketApp({
-    chat,
-    allowedOrigins: origins,
-    verifyToken: token => verifyToken(token, {
-      ...(process.env.CLERK_JWT_KEY ? { jwtKey: process.env.CLERK_JWT_KEY } : { secretKey: process.env.CLERK_SECRET_KEY }),
-      authorizedParties: origins,
-    }),
-    registerRoomEvents: createRoomRegistrar(rooms),
-    onMembershipRevoked: (conversationId, userId) => rooms.onMembershipRevoked(conversationId, userId),
-    sweepRooms: () => rooms.sweep(),
-    closeRooms: () => rooms.close?.(),
-    ready: async () => { await prisma.$queryRaw`SELECT 1`; return true; },
-  });
-  let stopping = false;
-  const shutdown = async signal => {
-    if (stopping) return;
-    stopping = true;
-    console.info(JSON.stringify({ event: 'server.shutdown', signal }));
-    const deadline = setTimeout(() => process.exit(1), 10_000);
-    deadline.unref();
-    try { await app.close(); await prisma.$disconnect(); clearTimeout(deadline); }
-    catch { process.exitCode = 1; }
-  };
-  process.once('SIGINT', () => { void shutdown('SIGINT'); });
-  process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
-  const port = Number(process.env.PORT || 3001);
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT');
-  await app.listen(port, configuredHost(process.env));
-  console.info(JSON.stringify({ event: 'server.ready', port, allowedOriginCount: origins.length }));
 }
 
-if (require.main === module) main().catch(() => {
-  console.error(JSON.stringify({ event: 'server.start_failed', message: 'Verify server environment, dependencies and database connectivity' }));
-  process.exitCode = 1;
-});
+if (require.main === module) main().catch(() => { process.exitCode = 1; });
 module.exports = { main, configuredOrigins, configuredHost };

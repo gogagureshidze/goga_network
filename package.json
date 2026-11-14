@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo",
+    "dev": "node scripts/dev-runner.js web",
+    "dev:socket": "node scripts/dev-runner.js socket",
+    "dev:setup": "node scripts/dev-setup.js",
+    "dev:db:stop": "node scripts/dev-db-stop.js",
+    "dev:clean": "node scripts/dev-clean.js",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
@@ -12,7 +16,7 @@
     "test": "node --test tests/*.test.*",
     "socket": "node socket-server.js",
     "db:deploy": "prisma migrate deploy",
-    "test:integration": "node --test tests/mysql.integration.cjs",
+    "test:integration": "node scripts/dev-integration.js",
     "voice:prune": "node scripts/prune-voice-media.js"
   },
   "dependencies": {

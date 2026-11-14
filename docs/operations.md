@@ -23,7 +23,8 @@ Native direct P2P sends negligible media through this VPS unless TURN is selecte
 ## Local checks
 
 - `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
-- `npm run test:integration` requires `GOGA_TEST_DATABASE_URL` pointing **only** to disposable 127.0.0.1:33367/goga_validation. It refuses all other targets. Never load production `.env` for tests. The suite seeds three test users and cleans its rows.
+- Follow [LOCAL-DEVELOPMENT.md](LOCAL-DEVELOPMENT.md): `npm run dev:setup`, then `npm run dev` and `npm run dev:socket`. The original `.env` may select production; development launchers require the isolated local override and fail before connecting otherwise.
+- `npm run test:integration` verifies this checkout's owned local MySQL, then supplies its own URL for **only** disposable 127.0.0.1:33367/goga_validation. It runs MySQL and actual socket/HTTP/voice suites with synthetic users, then cleans their rows. Direct test-file invocation requires an explicit guarded `GOGA_TEST_DATABASE_URL`.
 - Unit/service tests use fake auth/DB adapters; Socket.IO tests bind loopback; voice tests run real FFmpeg. The real MySQL suite verifies migrations, historical direct-row orientation, concurrent idempotent sends, group invites/roles, outsider call credentials, watch controls and blocks.
 - Full Clerk login, mobile permission prompts, actual peer media, TURN relay and self-hosted LiveKit still require the staging browser matrix below. Passing mocks/builds does not verify them.
 

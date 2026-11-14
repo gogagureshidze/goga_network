@@ -6,6 +6,8 @@ import Navbar from "@/components/Navbar";
 import PageTransition from "@/components/PageTransition";
 import prisma from "@/lib/client";
 import { auth } from "@clerk/nextjs/server";
+import { ensureLocalDevelopmentUser } from "@/lib/local-user-bootstrap";
+import { LocalAccountBootstrap } from "@/components/auth/LocalAccountBootstrap";
 import CommunicationsProvider from "@/components/communications/CommunicationsProvider";
 import Provider from "./providers";
 import NotificationManager from "../components/NotificationsManager";
@@ -59,6 +61,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const { userId } = await auth();
+  await ensureLocalDevelopmentUser(userId);
   const rawUsers = userId ? await prisma.user.findMany({
     where: { blocks: { none: { blockedId: userId } }, blockedBy: { none: { blockerId: userId } } },
     orderBy: { username: "asc" },
@@ -299,6 +302,7 @@ export default async function RootLayout({
       <body className="font-sans bg-rose-50 dark:bg-gray-900 transition-colors">
         <Providers>
           <Provider>
+            <LocalAccountBootstrap required={process.env.NODE_ENV === "development" && process.env.GOGA_LOCAL_DEVELOPMENT === "true"} readyUserId={userId}>
             <PWA />
             <NotificationManager />
 
@@ -330,6 +334,7 @@ export default async function RootLayout({
               </ClickSpark>
               </CommunicationsProvider>
             </UserProvider>
+            </LocalAccountBootstrap>
           </Provider>
         </Providers>
       </body>

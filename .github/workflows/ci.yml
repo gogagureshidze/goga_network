@@ -44,7 +44,10 @@ jobs:
       - run: npm test
       - name: Migrate disposable CI database only
         run: npm run db:deploy
-      - run: npm run test:integration
+      # CI owns a disposable service container, not the Mac's dev:setup datadir.
+      # Both test entry points independently restrict the explicit URL to loopback.
+      - run: node --test tests/mysql.integration.cjs
+      - run: node --test tests/runtime.integration.cjs
       - run: npm run build
       - run: node scripts/check-build-artifacts.js
       - name: Check production dependencies for high or critical advisories

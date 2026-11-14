@@ -12,7 +12,7 @@ async function inspect(directory) {
       for (const file of trace.files || []) {
         const resolved = path.resolve(path.dirname(target), file);
         const relative = path.relative(root, resolved);
-        if (/^\.env(?:\.|$)/.test(relative) || relative.startsWith(`.git${path.sep}`) || /^[^/\\]+\.(?:pem|key)$/.test(relative)) {
+        if (/^\.env(?:\.|$)/.test(relative) || relative.startsWith(`.git${path.sep}`) || relative.startsWith(`.local${path.sep}`) || relative.startsWith(`public${path.sep}local-test${path.sep}`) || /^[^/\\]+\.(?:pem|key)$/.test(relative)) {
           throw new Error(`Private file appears in a deployment trace: ${relative}`);
         }
       }
@@ -23,5 +23,5 @@ async function inspect(directory) {
 }
 inspect(path.join(root, '.next')).then(count => {
   if (!count) throw new Error('No build traces found; run the production build first');
-  console.log(`Checked ${count} deployment traces: no root environment files, keys or Git metadata`);
+  console.log(`Checked ${count} deployment traces: no environment files, keys, Git metadata, local databases or local test media`);
 }).catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -1,4 +1,4 @@
-# Validation record — 13 November 2026
+# Validation record — 14 November 2026
 
 Branch: `codex/communications-hardening`. Local application candidate only; no production deployment or infrastructure mutation. The original user change in `src/components/Post.tsx` is preserved separately. No exposed passwords were used.
 
@@ -18,18 +18,22 @@ Branch: `codex/communications-hardening`. Local application candidate only; no p
 |---|---|
 | `npm run typecheck` | Passed with the final source and generated Prisma client |
 | `npm run lint` | Passed: zero errors, six existing warnings in highlights, Greet, Navbar, Observer and PostInteractions |
-| `npm test` | 112 passed, zero failed/skipped; actual loopback Socket.IO and FFmpeg tests plus isolated service/client tests |
-| `npm run test:integration` | Passed against disposable local MySQL 8.4.9 on `127.0.0.1:33367/goga_validation`; synthetic Alice/Bob/outsider users, eight concurrent duplicate sends, groups/roles, voice ownership/deletion, call/device/outsider checks, watch ordering, blocks and original account deletion restriction |
+| `npm test` | 149 passed, zero failed/skipped; actual loopback Socket.IO and FFmpeg tests plus isolated service/client/bootstrap/redirect/diagnostic tests |
+| `npm run test:integration` | Original MySQL suite 1/1 and runtime suite 8/8 passed against owned disposable MySQL 8.4.9 on `127.0.0.1:33367/goga_validation`. Runtime suite uses actual Socket.IO, Prisma, Clerk SDK signature verification with ephemeral synthetic JWTs, HTTP voice/media/ICE handlers and FFmpeg. Covers list/history, duplicate sends/tabs, group roles, upload/range ownership, calls, watch ordering/reconnect and revocation. No interactive Clerk session is implied. |
 | Migration deploy | Both migrations applied successfully to empty disposable MySQL |
 | Historical-data rehearsal | Applied baseline, inserted synthetic existing users/post/direct conversation/message/media fields, applied expansion; original values and all three RESTRICT foreign keys preserved |
 | Schema comparison | Migrated local database matches the Prisma schema: no difference detected. Schema-file diff differs only by explicit drop/recreation of the three preserved RESTRICT constraints; no production introspection used |
-| `npm run build` | Passed under Node 24.7 with synthetic Clerk and loopback dummy database configuration; existing and new routes compiled |
-| `node scripts/check-build-artifacts.js` | Passed: 28 deployment traces exclude root environment files, private keys and Git metadata |
+| `npm run build` | Passed under Node 24.7 with the isolated local database override and existing development Clerk configuration; existing and new routes compiled. Frontend HTTP still returned 200 after the build while dev remained running. |
+| `node scripts/check-build-artifacts.js` | Passed: 28 deployment traces exclude root environment files, private keys, Git metadata, `.local` databases/credentials and generated local test media |
+| Live local startup | `dev:setup` applied both reviewed migrations to fresh owned development/test databases, then repeated with no pending migrations. Next and Socket.IO start through guarded commands; schema preflight checks 12 tables/87 columns. Socket sweeps ran for over nine minutes without errors. Duplicate frontend startup and active-cache deletion were safely refused. |
+| Browser/HTTP | Home, sign-in, generated MP4 fixture and socket readiness returned 200. The actual Clerk development sign-in form remained on `/sign-in` after the redirect fix. An existing authenticated Chrome session loaded Chat, bootstrapped one local profile, connected its socket and displayed the empty conversation list/new-group controls without request errors. Two-account interactive sending/media remains unverified; the group dialog opened but its interrupted submission did not persist a group. |
 | Lockfile check | `npm ci --dry-run --ignore-scripts --offline` passed; full clean Linux install is delegated to CI/staging, not claimed executed locally |
 | Dependency audit | Zero high/critical; eight moderate advisories remain in minimatch/nodemon/TypeScript ESLint dependency chains. No forced incompatible upgrades applied |
 | Shell/config checks | SSH/audit scripts pass `bash -n`; `git diff --check` passed. coturn options reviewed against upstream example, not run on a TURN server |
 
-The first sandboxed socket test invocation could not bind loopback (`EPERM`); the authorized local execution passed. This was an execution restriction, not a skipped test. The complete suite was rerun after the client fixes. The real MySQL suite and build were repeated after preserving foreign-key deletion behavior.
+The complete suite and build were rerun after the local runtime and sign-in fixes. Local socket/MySQL tests require execution permission for loopback networking; no tests were silently skipped. Historical-data migration rehearsal, dependency and lockfile checks above were performed on 13 November; no migration file or dependency version changed during the 14 November repair.
+
+The original `.env` selected the supplied production VPS and lacked a local override. Existing development logs identified missing `Conversation.kind`; a separate local baseline reproduced the failed conversation query and `CallSession` sweep (`P2021`). The original `.env` was left untouched; `.env.local` now selects an isolated database. No new production connection, migration, seed or infrastructure change was made. The actual production schema beyond the existing log was not introspected. See [LOCAL-DEVELOPMENT.md](LOCAL-DEVELOPMENT.md) for exact startup, account setup and cache recovery commands.
 
 Build warnings remain for the existing middleware naming convention and Prisma 5 dynamic filesystem tracing. The trace exclusion/check addresses private-file packaging; warning-free migration to a new Prisma generation strategy is outside this compatibility slice. The newly added GitHub workflow runs checks only and has not been executed on GitHub yet.
 
@@ -45,7 +49,7 @@ Build warnings remain for the existing middleware naming convention and Prisma 5
 ## Unverified and release-blocking
 
 1. Actual VPS capacity, CloudPanel site/process topology, firewall, DNS/TLS and reverse proxy. Previous key-only SSH authentication was rejected; no subsequent production connection was attempted.
-2. Real Clerk/browser interactions across two physical devices; microphone/camera/screen permissions, Safari/mobile playback, network handoffs and forced TURN relay. Automated mocks do not prove audiovisual interoperability.
+2. Real authenticated Clerk/browser interactions across two physical devices; microphone/camera/screen permissions, Safari/mobile playback, network handoffs and forced TURN relay. One existing Chrome session authenticated and loaded Chat; a second interactive account was unavailable. The real socket/HTTP integration suite and client unit tests do not prove audiovisual interoperability. No credentials were requested in chat.
 3. Representative restored production schema/data, migration lock duration, backup restoration, real Linux FFmpeg performance, load/soak budgets and rollback rehearsal.
 4. Group LiveKit capacity and removal/reused-token revocation. Both flags must stay false; initial JWT TTL is not a complete revocation control.
 5. Existing social Cloudinary public delivery/unsigned upload policy remains a known privacy boundary outside the new private voice path. An operator must review provider configuration and existing assets before making privacy promises. Existing account deletion/retention policy and legacy social scalability risks are documented in `audit-social.md`.
