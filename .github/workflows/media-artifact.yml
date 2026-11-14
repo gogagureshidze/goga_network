@@ -1,0 +1,38 @@
+name: Package reviewed Goga media release
+on:
+  push:
+    branches: ['codex/communications-hardening']
+permissions:
+  contents: read
+jobs:
+  media-artifact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 95af4c75d2c9164fe503ff9e8b689bd0c404333c
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Build isolated Linux media artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "95af4c75d2c9164fe503ff9e8b689bd0c404333c"
+          npm ci --no-audit --no-fund
+          test -f src/generated/prisma/index.js
+          npm prune --omit=dev --ignore-scripts --no-audit --no-fund
+          mkdir -p /tmp/goga-artifact
+          tar -czf /tmp/goga-artifact/goga-media-95af4c75d2c9164fe503ff9e8b689bd0c404333c.tgz \
+            package.json package-lock.json media-server.js server src/generated/prisma \
+            scripts/prune-voice-media.js node_modules ops
+          (cd /tmp/goga-artifact && sha256sum *.tgz > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: goga-media-95af4c7-linux-amd64
+          path: /tmp/goga-artifact/
+          if-no-files-found: error
+          retention-days: 7
