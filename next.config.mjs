@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: false,
   reactCompiler: true,
+  // Next logs Server Action arguments by default in development. They can
+  // contain message text and push credentials; keep request/error diagnostics only.
+  logging: { serverFunctions: false },
   // Prisma 5's dynamic runtime lookup can otherwise trace local environment files.
   outputFileTracingExcludes: {
     '/*': ['./.env*', './.git/**/*', './.local/**/*', './public/local-test/**/*', './*.pem', './*.key', './tests/**/*', './docs/**/*', './ops/**/*', './.github/**/*'],

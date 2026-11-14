@@ -6,7 +6,9 @@ import { emitWithAck } from '@/hooks/useRealtimeSocket';
 import { createMediaEventGuard, createPlaybackCommandQueue, projectPlayback } from '@/lib/watch-playback';
 import type { Party } from './types';
 
-type ChatMessage = { id: number; senderId: string; text: string | null };
+type ChatMessage = { id: number; conversationId: number; senderId: string; text: string | null; clientMessageId?: string | null; deletedAt?: string | null };
+type PendingMessage = { clientMessageId: string; text: string; delivery: 'sending' | 'failed' };
+const mergeChat = (messages: ChatMessage[], existing: ChatMessage[]) => [...new Map([...messages, ...existing].map(message => [message.id, message])).values()].sort((a, b) => a.id - b.id).slice(-30);
 export default function WatchPartyPanel({ party, socket, userId, onUpdate }: { party: Party; socket: Socket; userId: string; onUpdate: (party: Party | null) => void }) {
   const player = useRef<HTMLVideoElement>(null);
   const current = useRef(party);
@@ -21,7 +23,23 @@ export default function WatchPartyPanel({ party, socket, userId, onUpdate }: { p
   const [theater, setTheater] = useState(false);
   const [draft, setDraft] = useState('');
   const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState('');
+  const [unconfirmed, setUnconfirmed] = useState<PendingMessage[]>([]);
+  const outgoing = useRef(new Map<string, PendingMessage>());
+  const chatSession = useRef(0);
+  const historyEvents = useRef<Map<number, ChatMessage> | null>(null);
+  const refreshChat = useRef<(() => void) | null>(null);
   const canControl = party.hostId === userId || party.collaborative;
+
+  const receiveMessage = useCallback((message: ChatMessage) => {
+    if (message.conversationId !== party.conversationId) return;
+    historyEvents.current?.set(message.id, message);
+    if (message.senderId === userId && message.clientMessageId && outgoing.current.delete(message.clientMessageId)) {
+      setUnconfirmed([...outgoing.current.values()]);
+    }
+    setChat(existing => mergeChat([message], existing.filter(item => item.id !== message.id)));
+  }, [party.conversationId, userId]);
 
   const apply = useCallback(() => {
     const video = player.current;
@@ -71,16 +89,69 @@ export default function WatchPartyPanel({ party, socket, userId, onUpdate }: { p
   }, []);
   useEffect(() => {
     let alive = true;
+    let historyRequest = 0;
+    chatSession.current += 1;
+    const queued = outgoing.current;
+    queued.clear();
     setChat([]);
-    const merge = (messages: ChatMessage[], existing: ChatMessage[]) => [...new Map([...messages, ...existing].map(message => [message.id, message])).values()].sort((a, b) => a.id - b.id).slice(-30);
-    void emitWithAck<{ messages: ChatMessage[] }>(socket, 'getMessages', { conversationId: party.conversationId, limit: 20 })
-      .then(result => { if (alive) setChat(existing => merge(result.messages, existing)); }).catch(() => {});
-    const receive = (message: ChatMessage & { conversationId: number }) => {
-      if (message.conversationId === party.conversationId) setChat(existing => merge([message], existing.filter(item => item.id !== message.id)));
+    setUnconfirmed([]);
+    const loadHistory = () => {
+      const request = ++historyRequest;
+      const live = new Map<number, ChatMessage>();
+      historyEvents.current = live;
+      setChatLoading(true);
+      setChatError('');
+      void emitWithAck<{ messages: ChatMessage[] }>(socket, 'getMessages', { conversationId: party.conversationId, limit: 30 })
+        .then(result => {
+          if (!alive || request !== historyRequest) return;
+          // Replace stale displayed history; only events received after this
+          // request began can take precedence over its authoritative snapshot.
+          const messages = mergeChat(result.messages, [...live.values()]);
+          setChat(messages);
+          for (const message of messages) if (message.senderId === userId && message.clientMessageId) queued.delete(message.clientMessageId);
+          setUnconfirmed([...queued.values()]);
+        })
+        .catch(() => {
+          if (alive && request === historyRequest) setChatError('Conversation history could not be loaded. Messages shown may be out of date.');
+        })
+        .finally(() => {
+          if (!alive || request !== historyRequest) return;
+          historyEvents.current = null;
+          setChatLoading(false);
+        });
     };
-    socket.on('receiveMessage', receive);
-    return () => { alive = false; socket.off('receiveMessage', receive); };
-  }, [socket, party.conversationId]);
+    refreshChat.current = loadHistory;
+    loadHistory();
+    socket.on('receiveMessage', receiveMessage);
+    socket.on('messageUpdated', receiveMessage);
+    socket.on('connect', loadHistory);
+    return () => {
+      alive = false;
+      chatSession.current += 1;
+      queued.clear();
+      historyEvents.current = null;
+      refreshChat.current = null;
+      socket.off('receiveMessage', receiveMessage);
+      socket.off('messageUpdated', receiveMessage);
+      socket.off('connect', loadHistory);
+    };
+  }, [socket, party.conversationId, receiveMessage, userId]);
+
+  async function sendMessage(message: Pick<PendingMessage, 'clientMessageId' | 'text'>) {
+    if (outgoing.current.get(message.clientMessageId)?.delivery === 'sending') return;
+    const session = chatSession.current;
+    outgoing.current.set(message.clientMessageId, { ...message, delivery: 'sending' });
+    setUnconfirmed([...outgoing.current.values()]);
+    try {
+      const result = await emitWithAck<{ message: ChatMessage }>(socket, 'sendMessage', { conversationId: party.conversationId, text: message.text, clientMessageId: message.clientMessageId });
+      // A socket echo may already confirm this send and include a subsequent edit.
+      if (chatSession.current === session && outgoing.current.has(message.clientMessageId)) receiveMessage(result.message);
+    } catch {
+      if (chatSession.current !== session || !outgoing.current.has(message.clientMessageId)) return;
+      outgoing.current.set(message.clientMessageId, { ...message, delivery: 'failed' });
+      setUnconfirmed([...outgoing.current.values()]);
+    }
+  }
 
   async function control(action: string, extra: Record<string, unknown> = {}) {
     const queue = commands.current;
@@ -130,11 +201,16 @@ export default function WatchPartyPanel({ party, socket, userId, onUpdate }: { p
       </div>
       {theater && <aside className="flex min-h-64 flex-col rounded-xl bg-gray-900 p-3">
         <h3 className="mb-3 font-semibold">Conversation</h3>
-        <div className="max-h-80 flex-1 space-y-2 overflow-auto text-sm">{chat.map(message => <p key={message.id} className="rounded bg-gray-800 p-2"><span className="text-xs text-orange-300">{message.senderId === userId ? 'You' : 'Member'} </span>{message.text || 'Media message'}</p>)}</div>
+        {chatLoading && <p role="status" className="mb-2 text-xs text-gray-300">Loading conversation…</p>}
+        {chatError && <div role="alert" className="mb-2 text-xs text-amber-300"><p>{chatError}</p><button type="button" className="mt-1 underline" onClick={() => refreshChat.current?.()}>Retry chat history</button></div>}
+        <div className="max-h-80 flex-1 space-y-2 overflow-auto text-sm">
+          {chat.map(message => <p key={message.id} className="rounded bg-gray-800 p-2"><span className="text-xs text-orange-300">{message.senderId === userId ? 'You' : 'Member'} </span>{message.deletedAt ? 'Deleted message' : message.text || 'Media message'}</p>)}
+          {unconfirmed.map(message => <div key={message.clientMessageId} className="rounded bg-gray-800 p-2"><p><span className="text-xs text-orange-300">You </span>{message.text}</p><span className="text-xs text-gray-300">{message.delivery === 'sending' ? 'Sending…' : 'Not confirmed'}</span>{message.delivery === 'failed' && <button type="button" className="ml-2 text-xs text-orange-300 underline" onClick={() => void sendMessage(message)}>Retry message</button>}</div>)}
+        </div>
         <form className="mt-3 flex gap-2" onSubmit={event => {
           event.preventDefault(); if (!draft.trim()) return;
           const text = draft; setDraft('');
-          void emitWithAck(socket, 'sendMessage', { conversationId: party.conversationId, text, clientMessageId: crypto.randomUUID() }).catch(reason => { setDraft(text); setError(reason.message); });
+          void sendMessage({text, clientMessageId:crypto.randomUUID()});
         }}><input aria-label="Watch party message" maxLength={4000} value={draft} onChange={event => setDraft(event.target.value)} className="min-w-0 flex-1 rounded bg-gray-800 p-2" /><button>Send</button></form>
       </aside>}
     </div>

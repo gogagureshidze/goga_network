@@ -7,20 +7,24 @@ import VoiceMessage, { formatDuration } from "./VoiceMessage";
 export type VoiceAttachment = { mediaAssetId: string; mediaUrl: string; mediaType: "voice"; durationMs: number; waveform?: number[] };
 type Recording = { blob: Blob; url: string; durationMs: number; waveform: number[] };
 const MAX_SECONDS = 120;
+// MediaRecorder stop/data events are queued, and codec tails add a little time.
+// Leave headroom without weakening the server's decoded 120-second maximum.
+const AUTO_STOP_MS = MAX_SECONDS * 1000 - 1000;
 const MAX_BYTES = 4 * 1024 * 1024;
 
-async function audioPeaks(blob: Blob): Promise<number[]> {
+async function inspectAudio(blob: Blob): Promise<{ durationMs: number; waveform: number[] }> {
   const context = new AudioContext();
   try {
     const buffer = await context.decodeAudioData(await blob.arrayBuffer());
     const samples = buffer.getChannelData(0);
-    return Array.from({ length: 48 }, (_, index) => {
+    const waveform = Array.from({ length: 48 }, (_, index) => {
       const start = Math.floor(index * samples.length / 48);
       const end = Math.floor((index + 1) * samples.length / 48);
       let peak = 0;
       for (let offset = start; offset < end; offset += 1) peak = Math.max(peak, Math.abs(samples[offset]));
       return Math.round(peak * 1000) / 1000;
     });
+    return { durationMs: Math.ceil(buffer.duration * 1000), waveform };
   } finally { await context.close(); }
 }
 
@@ -35,9 +39,10 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
   const [recording, setRecording] = useState<Recording | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const deadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopRef = useRef<(() => void) | null>(null);
   const mounted = useRef(true);
   const cancelled = useRef(false);
   const urlRef = useRef<string | null>(null);
@@ -49,6 +54,8 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
     streamRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
+    if (deadlineRef.current) clearTimeout(deadlineRef.current);
+    deadlineRef.current = null;
   }
 
   useEffect(() => {
@@ -58,7 +65,7 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
       mounted.current = false;
       session.current += 1;
       cancelled.current = true;
-      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+      stopRef.current?.();
       releaseTracks();
       requestRef.current?.abort();
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
@@ -69,7 +76,7 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
     session.current += 1;
     cancelled.current = true;
     requestRef.current?.abort();
-    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    stopRef.current?.();
     releaseTracks();
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     urlRef.current = null;
@@ -90,13 +97,22 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
       const mimeType = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type));
       if (!mimeType) throw new Error("This browser does not support a compatible voice recording format.");
       const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64000 });
-      recorderRef.current = recorder;
       const chunks: Blob[] = [];
       let bytes = 0;
-      const started = Date.now();
+      const started = performance.now();
+      let stoppedAt: number | undefined;
+      const stop = () => {
+        if (recorder.state !== "recording") return;
+        stoppedAt = performance.now();
+        recorder.stop();
+        // Release capture immediately instead of waiting for the queued stop event.
+        releaseTracks();
+        if (mounted.current && !cancelled.current && session.current === currentSession) setState("processing");
+      };
+      stopRef.current = stop;
       recorder.ondataavailable = (event) => {
         if (event.data.size) { chunks.push(event.data); bytes += event.data.size; }
-        if (bytes > MAX_BYTES && recorder.state === "recording") recorder.stop();
+        if (bytes > MAX_BYTES) stop();
       };
       recorder.onerror = () => {
         if (session.current !== currentSession) return;
@@ -106,14 +122,16 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
       };
       recorder.onstop = async () => {
         if (session.current !== currentSession) { stream.getTracks().forEach((track) => track.stop()); return; }
-        const durationMs = Math.min(MAX_SECONDS * 1000, Date.now() - started);
+        const elapsedMs = Math.ceil((stoppedAt ?? performance.now()) - started);
         releaseTracks();
         if (!mounted.current || cancelled.current || session.current !== currentSession) return;
         if (bytes > MAX_BYTES || !bytes) { setError("Recording is empty or too large. Please record a shorter message."); setState("idle"); return; }
+        if (elapsedMs > MAX_SECONDS * 1000) { setError("Recording exceeded two minutes while the browser was paused. Please record a shorter message."); setState("idle"); return; }
         setState("processing");
         const blob = new Blob(chunks, { type: recorder.mimeType });
-        const waveform = await audioPeaks(blob).catch(() => []);
+        const { durationMs, waveform } = await inspectAudio(blob).catch(() => ({ durationMs: elapsedMs, waveform: [] }));
         if (!mounted.current || cancelled.current || session.current !== currentSession) return;
+        if (!Number.isFinite(durationMs) || durationMs < 100 || durationMs > MAX_SECONDS * 1000) { setError("Recording is too short or exceeds two minutes. Please record it again."); setState("idle"); return; }
         const url = URL.createObjectURL(blob);
         urlRef.current = url;
         setRecording({ blob, url, durationMs, waveform });
@@ -122,10 +140,11 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
       recorder.start(250);
       setSeconds(0);
       setState("recording");
+      deadlineRef.current = setTimeout(stop, AUTO_STOP_MS);
       timerRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - started) / 1000);
-        setSeconds(elapsed);
-        if (elapsed >= MAX_SECONDS && recorder.state === "recording") recorder.stop();
+        const elapsedMs = performance.now() - started;
+        setSeconds(Math.min(MAX_SECONDS, Math.floor(elapsedMs / 1000)));
+        if (elapsedMs >= AUTO_STOP_MS) stop();
       }, 250);
     } catch (reason) {
       if (session.current !== currentSession) return;
@@ -169,7 +188,7 @@ export default function VoiceRecorder({ receiverId, conversationId, disabled, on
     <div className="w-full">
       {state === "idle" ? <button type="button" onClick={start} disabled={disabled || !supported} className="flex items-center gap-2 text-xs text-orange-700 disabled:opacity-50 dark:text-orange-300" title={supported ? "Record a voice message (up to 2 minutes)" : "Voice recording requires HTTPS and a supported browser"}><Mic size={17} /> Voice message</button> : (
         <div className="flex flex-wrap items-center gap-3 rounded-xl bg-orange-50 p-3 dark:bg-gray-700">
-          {state === "recording" && <><span role="status" className="text-sm text-red-600">Recording {formatDuration(seconds)} / 2:00</span><button aria-label="Stop recording" type="button" onClick={() => recorderRef.current?.stop()} className="rounded-full bg-red-600 p-2 text-white"><Square size={16} /></button></>}
+          {state === "recording" && <><span role="status" className="text-sm text-red-600">Recording {formatDuration(seconds)} / 2:00</span><button aria-label="Stop recording" type="button" onClick={() => stopRef.current?.()} className="rounded-full bg-red-600 p-2 text-white"><Square size={16} /></button></>}
           {state === "permission" && <span role="status" className="text-sm">Waiting for microphone permission…</span>}
           {state === "processing" && <span role="status" className="text-sm">Preparing recording…</span>}
           {recording && <div className="flex-1"><VoiceMessage src={recording.url} durationMs={recording.durationMs} waveform={recording.waveform} /></div>}

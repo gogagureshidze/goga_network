@@ -1,6 +1,6 @@
 # Local runtime recovery and daily workflow
 
-The supported development workflow **never uses the remote database in the original `.env`**. It uses dedicated MySQL 8.4 on loopback port **33367**, `goga_development` for the UI and `goga_validation` for disposable integration tests. Production data is neither copied nor modified. Existing production conversations will not appear in this new, initially empty development database.
+The supported development workflow **never uses the remote database in the original `.env`**. It uses dedicated MySQL 8.4 on loopback port **33367**, `goga_development` for the UI and `goga_validation` for disposable integration tests. Production data is neither copied nor modified. Populate representative local content after signing in with `npm run dev:fixtures` below.
 
 ## Start
 
@@ -32,6 +32,29 @@ The existing Clerk **development** keys are used. If they are absent, configure 
 
 Stop each foreground launcher with Ctrl-C. MySQL remains available across frontend restarts. After stopping both launchers, `npm run dev:db:stop` gracefully stops only the database verified as belonging to this checkout, preserving its files. `npm run dev:setup` starts it again.
 
+## Populate usable local content
+
+Sign in to **http://localhost:3000** using your existing Clerk development account and load the app once. Then run:
+
+```sh
+npm run dev:status
+npm run dev:fixtures
+```
+
+Refresh the homepage and Chat. The fixture command verifies the exact local URL, MySQL socket/datadir ownership and selected database before writing. It adds three clearly labeled synthetic profiles (`demo_maya`, `demo_noah`, `demo_leo`), 14 public feed posts, a post on your own profile, comments/likes, a poll, an event, two stories, mutual demo follows, three direct conversations, a group you own and a pending group invitation. Maya's history has more than 30 messages for pagination; it includes an original generated three-second tone through the real private voice-storage pipeline. The generated watch clip remains `http://localhost:3000/local-test/watch.mp4`.
+
+Fixtures link to existing local `user_…` identities created by verified Clerk development sign-in. **Demo profiles are database fixtures, not Clerk accounts:** they cannot log in, type replies or answer calls. No authentication bypass or automatic pretend participant is installed. Use a second real development login in another profile for bidirectional call testing; load the app once and rerun fixtures to give that identity its own demo conversations. Existing real development accounts can also find/follow/message each other normally.
+
+The command is additive: it never resets, deletes or migrates a database, overwrites a real profile, or uses production. Repeating it preserves IDs, edited fixture posts and renamed groups using ignored `.local/fixtures-v1.json`; message idempotency keys prevent duplicates. It recreates missing fixtures and refreshes expired synthetic stories. Keep the state file with this local database. Do not run concurrent seeders. If interrupted, inspect a stale `.local/fixtures.lock` before removing it and retrying. A deliberate block against a demo person may prevent that conversation's fixture refresh; the guard respects the block.
+
+`dev:status` prints only sanitized local database identifiers, row counts and account counts. Both services use the same guarded environment loader. Next also guards Prisma construction directly; Socket.IO checks schema before starting. Development Server Action argument logging is disabled so message bodies and push keys do not enter terminal logs.
+
+If a browser tab is empty after seeding, refresh it: server-rendered feed data and the contact list are loaded on navigation/mount. Sign-in sessions are browser/profile-specific. A signed-out in-app browser will still show sign-in even when Chrome is authenticated. Extensions that inject markup (observed `data-writer-injected` and `speechify-screenshot-mode`) can cause hydration warnings; use a clean test profile to isolate them. Do not suppress real hydration errors to hide extension interference.
+
+### Actual production content
+
+Production content is not required for this workflow and was not accessed or copied. If an issue later requires a representative production snapshot, first obtain explicit approval for its scope and read-only access. An operator should create a consistent export with a dedicated read-only database account, sanitize it in a restricted environment **before transfer**, replace user identities/text/media with synthetic values, omit subscriptions/tokens/contact details/private messages, and map retained relationships to development Clerk IDs. Transfer only the approved sanitized artifact over authenticated SSH, verify its manifest, and import into a new disposable local database for review. Never point the local app at production or import a raw private dump into this workspace. Review export load, encrypted storage, retention and cleanup separately; no export command has been run.
+
 ## Exercise communications
 
 1. Sign in as two different Clerk development users in separate browser profiles. Each must load the app once so its local profile exists. Find/follow the other test account using the existing social UI, then open Chat.
@@ -53,7 +76,7 @@ npm run test:integration
 npm run build
 ```
 
-`test:integration` verifies the owned local MySQL socket before setting its own disposable test URL. It runs the original MySQL suite and the real Socket.IO/HTTP runtime suite serially. The latter uses synthetic users and ephemeral RSA-signed JWTs verified by the actual Clerk SDK, actual Prisma persistence, real multipart voice handlers and FFmpeg, and real loopback Socket.IO clients. It checks conversation listing/history, delivery/retries/tabs, groups, voice authorization/range reads, call signaling/ICE credentials, watch versioning/reconnect/host changes and block revocation. Its test-only authentication adapter is never imported into the application. This is not a claim that interactive Clerk login, physical microphone/camera capture or TURN has been exercised.
+`test:integration` verifies the owned local MySQL socket before setting its own disposable test URL. It runs the original MySQL, real Socket.IO/HTTP runtime and synthetic-fixture suites serially. The runtime suite uses synthetic users and ephemeral RSA-signed JWTs verified by the actual Clerk SDK, actual Prisma persistence, real multipart voice handlers and FFmpeg, and real loopback Socket.IO clients. It checks conversation listing/history, delivery/retries/tabs, groups, voice authorization/range reads, call signaling/ICE credentials, watch versioning/reconnect/host changes and block revocation. Its test-only authentication adapter is never imported into the application. The fixture suite checks repeat-run preservation, populated history and access rules. These automated suites do not prove physical microphone/camera capture or TURN; separate interactive evidence is recorded in [validation](validation.md).
 
 ## Diagnosed failures
 

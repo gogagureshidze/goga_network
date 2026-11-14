@@ -7,6 +7,7 @@ const { randomUUID } = require('node:crypto');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { createVoiceStorage, parseRange, assetId } = require('../server/voice-storage');
+const { createMediaService } = require('../server/media-policy');
 const run = promisify(execFile);
 const ffmpeg = process.env.FFMPEG_PATH || (process.platform === 'darwin' ? '/opt/homebrew/bin/ffmpeg' : '/usr/bin/ffmpeg');
 const ffprobe = process.env.FFPROBE_PATH || (process.platform === 'darwin' ? '/opt/homebrew/bin/ffprobe' : '/usr/bin/ffprobe');
@@ -76,6 +77,37 @@ test('streaming WebM without duration is decoded and measured; concurrent proces
   await assert.rejects(storage.upload(stdout, `goga/voice/${randomUUID()}`), { code: 'VOICE_PROCESSING_BUSY' });
   const result = await first;
   assert.ok(result.duration >= 1 && result.duration < 1.1);
+});
+
+test('actual browser-style WebM at the timer boundary preserves the strict server limit', async t => {
+  const { root, storage } = await setup(t);
+  const stored = [];
+  const service = createMediaService({
+    prisma: { mediaAsset: { create: async ({ data }) => { stored.push(data); return data; } } },
+    chat: { authorizeConversation: async () => ({ id: 1 }) },
+    upload: storage.upload, destroy: storage.destroy,
+  });
+  const userId = `voice-boundary-${randomUUID()}`;
+  const recording = async seconds => (await run(ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', `sine=frequency=440:sample_rate=48000:duration=${seconds}`, '-c:a', 'libopus', '-b:a', '32k', '-threads', '1', '-f', 'webm', 'pipe:1'], { encoding: 'buffer', maxBuffer: 4 * 1024 * 1024 })).stdout;
+  // The former client stopped on a 250ms UI tick, then falsely clamped metadata
+  // to 120s. Streaming WebM omits its duration, so actual decoding must reject it.
+  const overrun = await recording(120.25);
+  const source = path.join(root, 'duration-boundary.webm');
+  await fs.writeFile(source, overrun);
+  const probe = JSON.parse((await run(ffprobe, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'json', source])).stdout);
+  assert.equal(probe.format.duration, undefined);
+  await fs.unlink(source);
+  await assert.rejects(service.uploadVoice(userId, { bytes: overrun, mime: 'audio/webm', durationMs: 120000, conversationId: 1 }), { code: 'INVALID_AUDIO' });
+  assert.equal(stored.length, 0);
+  assert.deepEqual(await fs.readdir(root), [], 'Rejected overrun leaves no published or temporary files');
+
+  // Stopping at 119s leaves room for a delayed callback and codec tail. This is
+  // the actual maximum-output path, not a mocked duration returned by storage.
+  const result = await service.uploadVoice(userId, { bytes: await recording(119.25), mime: 'audio/webm', durationMs: 119250, conversationId: 1 });
+  assert.ok(result.durationMs >= 119000 && result.durationMs <= 120000);
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].durationMs, result.durationMs);
+  await storage.destroy(stored[0].publicId);
 });
 
 test('symlink replacement cannot expose a file outside private storage', async t => {

@@ -1,57 +1,68 @@
-# Local and staging media validation
+# Browser and media test procedure
 
-These steps are a test procedure, not evidence that real device tests have passed. Record the candidate commit, device/OS/browser versions, network, result, and any console error code for each step. Never record tokens, SDP, ICE addresses, or private message contents in shared logs.
+This is a procedure, not a record of completed browser tests. Record results in [validation.md](validation.md): candidate commit, date, browser/OS, accounts, network, expected/actual behavior and diagnostic reference. An interrupted interaction is **not run**, not a pass. Do not share tokens, SDP, ICE addresses or private messages in test logs.
 
-## Local automated checks
+## Start the isolated app
 
-Use Node 24 LTS, a maintained FFmpeg/ffprobe installation, and a disposable MySQL 8.4 database. Do not reuse a production environment file. One optional local database setup, if Docker is already installed:
-
-```sh
-docker run --rm --name goga-validation \
-  -p 127.0.0.1:33367:3306 \
-  -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
-  -e MYSQL_DATABASE=goga_validation mysql:8.4
-```
-
-The empty password applies only to this disposable loopback test instance. Wait for MySQL readiness. In a second terminal:
+Use the prerequisites in [LOCAL-DEVELOPMENT.md](LOCAL-DEVELOPMENT.md). From the repository:
 
 ```sh
-npm ci
-DATABASE_URL='mysql://root@127.0.0.1:33367/goga_validation' npm run db:deploy
-npm run typecheck
-npm run lint
-npm test
-GOGA_TEST_DATABASE_URL='mysql://root@127.0.0.1:33367/goga_validation' npm run test:integration
+npm run dev:setup
 ```
 
-On macOS set FFMPEG_PATH and FFPROBE_PATH if binaries differ from `/opt/homebrew/bin`; Linux tests default to `/usr/bin`. The integration script refuses every database address other than `127.0.0.1:33367/goga_validation`. It creates synthetic users and removes its own rows. Stop only the disposable database when finished. Never run these fixtures against production.
+Then run these in separate terminals:
 
-For interactive localhost development, configure a Clerk **development** instance, its signed webhook into this local/staging database, and three test accounts. Use a private real directory outside the repository for VOICE_STORAGE_DIR. Run Next on port 3000 and Socket.IO on 3001 with exact `http://localhost:3000` allowed origin. Load the socket environment explicitly in your process manager/terminal; `node socket-server.js` does not load `.env`. Use separate app/socket environments so PORT=3001 does not change the Next listener.
+```sh
+npm run dev
+npm run dev:socket
+```
 
-Two browser profiles on the same computer can use localhost. Separate physical devices require a trusted HTTPS staging origin and secure Socket.IO endpoint. Plain HTTP on a LAN address generally cannot use microphone/camera APIs. Do not disable browser security or publish a development server to the internet to work around this.
+Open **http://localhost:3000** consistently. Setup preserves local rows, uses `goga_development` on `127.0.0.1:33367`, and leaves the original `.env` and production untouched. Do not substitute a Docker database on this port: the launchers verify this checkout's ownership marker and Unix-socket datadir. Do not launch a duplicate frontend or delete an active development cache.
 
-## Prepare an isolated HTTPS staging site
+Use Clerk **development** accounts. Each account must sign in and load the app once; the authenticated local bootstrap creates its profile before socket use. No webhook tunnel or synthetic browser authentication is needed. Production contacts/messages will not appear in this new database. Follow the local guide if startup rejects live keys or a remote `DATABASE_URL`; do not bypass the guard.
 
-An administrator must approve provisioning first. Use isolated application secrets, a staging MySQL database, a Clerk development instance, persistent private voice storage, FFmpeg, and an authorized coturn configuration. Keep both group-calling flags false. Set the exact APP_ORIGIN, SOCKET_ALLOWED_ORIGINS and NEXT_PUBLIC_SOCKET_URL. Allowlist a small direct media test file that you own in WATCH_ALLOWED_HOSTS. Check app `/api/health`, socket `/health` and `/ready` before signing in.
+For representative local data, run `npm run dev:fixtures` after the first sign-in, then refresh. `npm run dev:status` reports sanitized local counts. Demo profiles are offline synthetic fixtures, not second Clerk sessions. They support feed, profile, saved chat, voice playback and caller-side permission/cancellation checks; they cannot answer a call or establish two-way media. Use the real second account below for those tests.
 
-Use Alice on device A, Bob on device B, and Carol in a separate profile as an outsider. Ensure the local User records exist through the signed Clerk webhook. Start on different networks where possible, such as home Wi-Fi and mobile data. Use headphones to avoid acoustic feedback.
+Check that `http://localhost:3001/ready` returns `{"status":"ok"}`. Open **http://localhost:3000/local-test/watch.mp4**: setup generates this original 15-second test pattern and tone. This is authorized test content. The HTTP exception applies only to isolated development and allowlisted loopback hosts; staging/production sources require approved HTTPS.
 
-## Required acceptance sequence
+## One account: group, text, voice and watch
 
-1. **Existing social behavior:** sign in/out; edit a profile; create/read/delete a post; add likes/comments/replies; follow/unfollow a public and private account; accept/reject requests; create/view/archive/repost a story and highlight; vote in a poll; share a post. Verify private/blocked content and hidden activity/likes/viewers remain hidden after refresh and account switching. Test existing media, Google Maps and push subscription flows separately; no outbound test notifications are sent by the automated suite.
-2. **Messaging and groups:** exchange direct messages, replies, edits, deletions and reactions. Open a second Alice tab. Retry a send after a connection drop and confirm one durable message. Load older history, verify read cursors and typing clear. Create a group, invite Bob, accept as Bob, and decline another invite. Verify only owners/admins perform their allowed role/removal operations, owner departure transfers responsibility, and removal immediately denies history and further events. Carol must fail joins, reads and controls even with copied IDs.
-3. **Voice notes:** deny microphone access once, then allow and record on each device. Preview, cancel, record again, upload and send. Verify waveform, actual duration, play/pause/seek, and replay after refresh. Upload during a network interruption and retry without duplicating the send. Test the two-minute limit and wrong-content rejection. Bob cannot read Alice's unsent draft, Carol cannot read either sent asset, and removed/blocked Bob cannot fetch a new byte range. Confirm no static web path serves private files.
-4. **One-to-one audio:** Alice calls Bob; confirm ringing, accept and two-way audible speech. Repeat with Bob initiating. Test decline, caller cancellation, no answer, mute/unmute and microphone selection. Hang up from each end and confirm microphone capture stops. A second Bob tab must not take over an accepted call. A third user must not obtain ICE credentials or relay signaling for this call.
-5. **Video and screen sharing:** repeat with video enabled in both initiation directions. Confirm both live cameras are visible; camera off/on works from either end. Share a window, tab and screen where supported, including from the answering device. Stop via browser UI and in-app control; the camera should resume. Cancel a permission prompt, unplug a device, and resolve a permission prompt after hangup. No microphone, camera or screen track should remain live after leaving.
-6. **Reconnection:** disconnect networking for 5 seconds and then 25 seconds; switch Wi-Fi/mobile; background a mobile tab; leave a tab long enough to need a refreshed Clerk token. Restore connectivity and verify chat recovers with current authorization. Calls must reconnect or end with an actionable message, never silently capture media forever. Hang up while a state request or acceptance is pending and confirm a late response cannot reopen the call. Repeat after sign-out/account switching.
-7. **TURN:** verify a successful ICE candidate pair uses `relay` in browser WebRTC diagnostics, not merely that a TURN URL exists. Test UDP relay and TLS/TCP fallback on restrictive networks; record aggregate bytes and CPU/RSS without logging credentials/IP candidates. If necessary use a temporary staging-only `iceTransportPolicy: 'relay'` test build, then remove that override and rebuild before release. Expired credentials and anonymous allocation must fail. Do not claim fallback works from a same-LAN test.
-8. **Watch party:** use your authorized direct file. Alice starts, Bob joins, then play/pause/seek from the host. Bob controls only when collaborative mode is enabled. Issue simultaneous controls and verify the server version wins. Refresh/reconnect Bob, transfer host, remove a member, and test mobile autoplay denial. Compare playback timestamps after seeking and after five minutes (target drift under 1.2 seconds). Enter/exit theater mode, exchange chat, and maintain a call overlay. This tests synchronized direct playback; screen sharing is a separate call control.
-9. **Operational failures:** stage encoder busy, disk quota/reserve exhaustion, database outage, socket restart and backup restore. Errors must be actionable, files private, and retries safe. Review load targets and resource budgets in operations.md. Do not run load tests against production.
+A group may contain only its creator. No existing contact is required for this smoke test; it does not prove another user's access or invitation consent.
 
-## Group media gate
+1. Open **http://localhost:3000/chat**. Wait until **New group** becomes available. Select it, enter a unique **Group name**, leave invitations empty, and select **Create group**. Confirm the conversation opens and shows **Connected**. On a narrow viewport, **Back** returns to the list.
+2. Enter a harmless **Message** and select **Send message**. Confirm it leaves **Sending…**, reload, and reopen the group: the message must persist. Exercise reply, heart reaction, edit and delete controls. Open the same group in another tab; sends and edits must appear without reloading. Two tabs share one identity and do not prove independent read receipts.
+3. Select **Voice message**, allow microphone access, record 3–5 seconds and select **Stop recording**. Preview, pause and seek; then select **Cancel voice message**. Nothing should appear in history. Record again and select **Send voice**. Confirm upload, playback/seek and replay after refresh; check duration and waveform where browser decoding supports it. Capture must stop after recording/cancellation. Repeat once with permission denied, check the error, and restore permission through browser site controls. Limits are two minutes and 4 MiB.
+4. Select **Watch together**. Enter `http://localhost:3000/local-test/watch.mp4` in **Authorized video URL**, check the permission declaration and select **Create watch party**. Play/pause/seek; enter **Theater mode**, send a message in **Conversation**, then **Exit theater** or Escape. Theater mode is an in-app full-window layout, not browser fullscreen.
+5. Open the same group in the second tab. The party appears and joins automatically; there is no separate Join-party button. Both tabs are the host account, and the count is **one distinct user**, not two tabs. Compare play/pause/seek behavior and reload recovery. If prompted, select **Enable playback on this device**; **Synchronize now** reapplies authoritative state. Finish with **End party**.
 
-Group chat does not require LiveKit and is included above. Group audio/video remains disabled. A separately approved self-hosted LiveKit staging server must pass 2/3/4-user media, screen sharing, device cleanup, outsider denial, removal/reused-token tests, and CPU/memory/bandwidth measurement. Self-hosted token refresh/revocation semantics are an unresolved security gate; setting flags is not evidence of validation. Keep both flags false in production until that gate is resolved.
+Do not use self-DMs or a one-member group for calling. Group media remains gated off. Same-account watch tabs cannot demonstrate member-only controls or host transfer. The 15-second sample cannot establish five-minute drift performance.
 
-## Sign-off record
+## Two accounts: direct chat, calls and screen sharing
 
-For every required row record: commit; environment; actors/devices; expected/actual behavior; pass/fail; issue reference; test date; reviewer. Failed or unexecuted rows remain release blockers. After staging passes, prepare one production approval request naming the exact commit, migration, backup/restore evidence, configuration changes, maintenance window, operator and rollback plan.
+Use Alice and Bob in separate browser profiles, not tabs sharing one Clerk session. Use headphones to avoid feedback. Separate physical devices require approved HTTPS staging; do not expose local HTTP/MySQL to a network to work around permissions.
+
+1. Sign in and load the app as both users. Use **Search users...** to find each other's local username and follow each other; accept requests if private. Reload Chat to refresh its contact list, then select the other user. Exchange messages in both directions; check refresh persistence, reply/edit/delete/reactions, typing and read status. With more than 30 messages, test **Load older messages**. Confirm Bob can replay Alice's voice note after refresh.
+2. Create a group inviting Bob, or use its settings gear and **Person to invite** / **Invite**. Before acceptance, Bob sees **Invitation** and cannot open history. Select **Join group**; test another invitation with **Decline**. Use disposable groups to exercise **Make admin**, **Remove admin role**, **Remove** and **Leave group** according to role. Removed users lose access. Owner departure transfers ownership only if another active member exists.
+3. In the **direct** conversation, select **Voice call** as Alice. Bob should see **Incoming audio call** with **Accept** / **Decline**. Accept, allow permissions and confirm audible speech in both directions. Exercise **Mute** / **Unmute** and **Microphone** selection. Use **Hang up** or **Leave**; both ends must close and release capture. Repeat with Bob initiating, decline, caller cancellation and no answer (approximately 45 seconds). Muting alone need not remove the browser capture indicator.
+4. Repeat with **Video call** in both initiation directions. Confirm both cameras and **Camera off** / **Camera on**. Test **Share screen** from both the caller and the answering account; choose the original test-pattern tab or a non-sensitive window. Verify the remote view changes. Test **Stop sharing** and the browser's stop control. The camera resumes only if previously enabled. Direct-call sharing sends screen video with microphone audio; it does **not** capture tab/system audio.
+5. Cancel a sharing prompt, deny camera access, unplug a selectable device, and resolve a pending permission prompt after hangup. Errors must be actionable and no new track may remain live after leaving. A second Bob tab must not take over a call accepted in the first tab/device.
+6. Create a watch party in the direct conversation. Bob joins automatically by opening it. Only Alice controls playback until **Allow shared playback controls** is enabled. Test simultaneous seeks, Bob's reload, **Transfer host**, and **End party** by the current host. Enabling local autoplay must not grant host powers. Start a direct call before entering theater mode to check its overlay and chat. Screen sharing and synchronized playback are separate features.
+
+## Staging release checks
+
+Local success is not production readiness. Use approved isolated HTTPS staging, persistent private voice storage, FFmpeg and an authorized coturn setup. Add Carol as an outsider and complete:
+
+- **Authorization:** copied conversation/media IDs do not grant Carol access or call credentials. Bob cannot read Alice's unsent voice draft. Removal/blocking denies subsequent history, voice byte ranges, signaling and watch controls, including from open tabs. Hangup or account switching during pending requests must not let late replies reopen calls.
+- **Recovery:** interrupt networking for 5 and 25 seconds, restart sockets, background mobile tabs, cross session refresh, and switch Wi-Fi/mobile. Chat retries must not duplicate durable messages; calls must recover or end without indefinite capture. Test interrupted upload/cancel/retry.
+- **Device coverage:** test the release's Chrome, Safari/iOS and Android browser/device matrix, bidirectional media, permission failures, autoplay and track cleanup. Record unsupported screen-source choices; browsers do not all expose screen/window/tab selection.
+- **TURN:** prove an actual successful `relay` candidate pair, UDP relay and TLS/TCP fallback on restrictive networks. A configured URL or same-computer call is insufficient. Keep credentials/candidate addresses private. Review and remove any temporary staging-only forced-relay override before release.
+- **Watch drift:** use an authorized direct file longer than five minutes. Compare timestamps after seeks and after five minutes; target drift below 1.2 seconds, then test reconnect/host changes. Participants fetch the source directly. Subscription players, DRM bypass and unauthorized content are outside this feature.
+- **Regression/operations:** complete existing social/private/block/story/poll/share flows and storage quota, disk reserve, database outage, retention, backup restore and load checks in [operations.md](operations.md). Existing Cloudinary, Maps and push need separate validation; do not send unrequested outbound notifications.
+
+Group chat works independently of LiveKit. Group audio/video needs separately approved 2/3/4-user capacity, interoperability and removal/reused-token tests. Short initial token expiry does not resolve self-hosted refresh/revocation semantics. Keep both group-calling flags false until that gate is resolved.
+
+## Evidence and sign-off
+
+After local setup, run the checks listed in [LOCAL-DEVELOPMENT.md](LOCAL-DEVELOPMENT.md), including `npm run test:integration`. That command verifies the owned database, selects disposable `goga_validation` itself, and cleans only its synthetic rows. Actual Clerk SDK signature verification, Socket.IO, HTTP handlers, MySQL and FFmpeg tests do not prove interactive Clerk login, physical capture, browser WebRTC interoperability or TURN.
+
+Record **pass**, **fail** or **not run** per required scenario. Failed or unexecuted release requirements remain blockers. Production deployment requires explicit human review of the exact candidate, migrations, backup/restore evidence, configuration, maintenance window and rollback plan. This procedure performs no production deployment.

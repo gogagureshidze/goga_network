@@ -6,6 +6,8 @@
     "dev": "node scripts/dev-runner.js web",
     "dev:socket": "node scripts/dev-runner.js socket",
     "dev:setup": "node scripts/dev-setup.js",
+    "dev:fixtures": "node scripts/dev-fixtures.js",
+    "dev:status": "node scripts/dev-status.js",
     "dev:db:stop": "node scripts/dev-db-stop.js",
     "dev:clean": "node scripts/dev-clean.js",
     "build": "prisma generate && next build",

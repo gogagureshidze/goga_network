@@ -7,8 +7,8 @@ const {root,useSupportedNode:ensureSupportedNode,portOpen} = require('./local-de
   // Confirm the private marker and Unix-socket server identity before any tests.
   require('./dev-setup').verifyOwnedDatabase();
   const env = {...process.env,GOGA_TEST_DATABASE_URL:'mysql://root@127.0.0.1:33367/goga_validation?connection_limit=5&connect_timeout=5'};
-  // Run serially: both suites exercise concurrency internally against the same disposable DB.
-  for (const suite of ['tests/mysql.integration.cjs','tests/runtime.integration.cjs']) {
+  // Run serially: suites exercise concurrency internally against the same disposable DB.
+  for (const suite of ['tests/mysql.integration.cjs','tests/runtime.integration.cjs','tests/fixtures.integration.cjs']) {
     const result = spawnSync(process.execPath,['--test',suite],{cwd:root,env,stdio:'inherit'});
     if (result.status !== 0) {process.exitCode=result.status || 1;return;}
   }
