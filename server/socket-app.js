@@ -36,7 +36,7 @@ function createRateLimiter({ now = Date.now, limits = DEFAULT_LIMITS } = {}) {
 }
 
 function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents, logger = console, now = Date.now,
-  limits = DEFAULT_LIMITS, ready = async () => true, onMembershipRevoked, sweepRooms, closeRooms }) {
+  limits = DEFAULT_LIMITS, ready = async () => true, onMembershipRevoked, sweepRooms, closeRooms, presenceIntervalMs = 15_000 }) {
   if (!Array.isArray(allowedOrigins) || !allowedOrigins.length) throw new Error('At least one socket origin is required');
   const origins = new Set(allowedOrigins);
   const metrics = { connections: 0, rejected: 0, events: 0, failures: 0, messageLatencyMs: 0, messages: 0 };
@@ -71,7 +71,79 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
   const chatTyping = new Map();
   const inFlight = new Map();
   const limiter = createRateLimiter({ now, limits });
+  const presenceSnapshots = new Map();
+  const inboxPresenceConversations = new Map();
+  const activityMutations = new Map();
+  const hiddenPresence = new Set();
+  let presenceRevision = 0;
+  let presenceWork = null;
   let closing = false;
+
+  function joinedPresenceConversations(userId) {
+    return [...new Set([...(online.get(userId) || [])].flatMap(id => [...(io.sockets.sockets.get(id)?.data.presenceConversations || [])]))];
+  }
+
+  function watchedConversations(userId) {
+    // One current inbox per identity, plus at most 100 open rooms across all tabs.
+    return [...new Set([...(inboxPresenceConversations.get(userId) || []), ...joinedPresenceConversations(userId)])];
+  }
+
+  async function presenceSnapshot(userId, conversationIds = watchedConversations(userId)) {
+    let revision, presence;
+    do {
+      revision = presenceRevision;
+      const participants = await chat.presenceParticipants(userId, conversationIds);
+      presence = await chat.visiblePresence(participants.filter(id => online.has(id)), userId);
+    } while (revision !== presenceRevision && !closing);
+    return { presence: presence.filter(id => online.has(id) && !hiddenPresence.has(id)).sort(), presenceRevision: revision };
+  }
+
+  function publishPresence(userId, snapshot) {
+    const key = JSON.stringify(snapshot.presence);
+    const previous = presenceSnapshots.get(userId);
+    if (previous && snapshot.presenceRevision < previous.revision) return;
+    presenceSnapshots.set(userId, { key, revision: snapshot.presenceRevision });
+    if (previous?.key === key) return;
+    io.to(userRoom(userId)).emit('presenceChanged', snapshot);
+  }
+
+  function updateActivity(userId, showActivityStatus) {
+    // Keep DB writes and broadcasts in the same order across every device.
+    // The normal event in-flight/rate limits also bound this per-user queue.
+    const operation = (activityMutations.get(userId) || Promise.resolve()).catch(() => {}).then(async () => {
+      const result = await chat.setActivityStatus(userId, showActivityStatus);
+      if (result.showActivityStatus) hiddenPresence.delete(userId); else hiddenPresence.add(userId);
+      io.to(userRoom(userId)).emit('activityStatusChanged', { showActivityStatus: result.showActivityStatus });
+      await refreshPresence();
+      return { showActivityStatus: result.showActivityStatus };
+    });
+    activityMutations.set(userId, operation);
+    return operation.finally(() => { if (activityMutations.get(userId) === operation) activityMutations.delete(userId); });
+  }
+
+  function refreshPresence() {
+    if (closing) return Promise.resolve();
+    presenceRevision++;
+    if (presenceWork) return presenceWork;
+    presenceWork = (async () => {
+      let revision;
+      do {
+        revision = presenceRevision;
+        const visible = await chat.visiblePresence([...online.keys()]);
+        if (revision !== presenceRevision) continue;
+        const sharing = new Set(visible);
+        for (const id of online.keys()) {
+          if (sharing.has(id)) hiddenPresence.delete(id); else hiddenPresence.add(id);
+        }
+        for (const userId of online.keys()) {
+          if (watchedConversations(userId).length || presenceSnapshots.has(userId)) publishPresence(userId, await presenceSnapshot(userId));
+        }
+        if (revision === presenceRevision && !closing) io.emit('onlineCount', visible.filter(id => online.has(id) && !hiddenPresence.has(id)).length);
+      } while (revision !== presenceRevision && !closing);
+    })().catch(error => reportException(logger, 'socket.presence_refresh_failed', error, { phase: 'presence' }))
+      .finally(() => { presenceWork = null; });
+    return presenceWork;
+  }
 
   async function authenticate(token) {
     if (typeof token !== 'string' || token.length > 16384 || !token) throw new ChatError('UNAUTHENTICATED', 'Sign in to connect', 401);
@@ -135,9 +207,13 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
     const { userId, profile } = socket.data;
     if (!online.has(userId)) online.set(userId, new Set());
     online.get(userId).add(socket.id);
+    socket.data.presenceConversations = new Set();
     socket.join(userRoom(userId));
+    socket.emit('activityStatusChanged', { showActivityStatus: profile.showActivityStatus !== false });
     metrics.connections++;
-    io.emit('onlineCount', online.size);
+    if (profile.showActivityStatus === false) hiddenPresence.add(userId);
+    else hiddenPresence.delete(userId);
+    refreshPresence();
     log('info', 'socket.connected', { activeUsers: online.size, activeSockets: io.engine.clientsCount });
     let expiryTimer;
     const armExpiry = () => {
@@ -203,20 +279,40 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
     handle('joinConversation', 'join', async ({ conversationId }) => {
       const conversation = await chat.authorizeConversation(userId, conversationId);
       if (socket.rooms.size > 80) throw new ChatError('RATE_LIMITED', 'Too many joined rooms', 429);
-      await socket.join(conversationRoom(conversationId));
-      return { conversationId, presence: await chat.visiblePresence(conversation.participantIds.filter(id => online.has(id))) };
+      const joined = joinedPresenceConversations(userId);
+      if (!joined.includes(conversationId) && joined.length >= 100) throw new ChatError('RATE_LIMITED', 'Too many active conversation subscriptions', 429);
+      socket.data.presenceConversations.add(conversationId);
+      try { await socket.join(conversationRoom(conversationId)); }
+      catch (error) { socket.data.presenceConversations.delete(conversationId); throw error; }
+      return { conversationId, ...(await presenceSnapshot(userId, [conversation.id])) };
     });
     handle('leaveConversationRoom', 'join', async ({ conversationId }) => {
       positiveId(conversationId, 'conversation');
       await socket.leave(conversationRoom(conversationId));
+      socket.data.presenceConversations.delete(conversationId);
       deleteTyping(chatTyping, conversationId, socket.id);
       return {};
     });
     handle('getMessages', 'read', async data => chat.getMessages(userId, data));
-    handle('listConversations', 'read', async () => ({ conversations: await chat.listConversations(userId) }));
+    handle('listConversations', 'read', async () => {
+      const conversations = await chat.listConversations(userId);
+      inboxPresenceConversations.set(userId, new Set(conversations.filter(conversation => conversation.kind !== 'GROUP'
+        || conversation.members.some(member => member.userId === userId && member.status === 'ACTIVE')).map(conversation => conversation.id)));
+      const snapshot = await presenceSnapshot(userId);
+      publishPresence(userId, snapshot);
+      return { conversations, ...snapshot };
+    });
     handle('getPresence', 'read', async ({ conversationId }) => {
-      const conversation = await chat.authorizeConversation(userId, conversationId);
-      return { presence: await chat.visiblePresence(conversation.participantIds.filter(id => online.has(id))) };
+      if (conversationId !== undefined) {
+        await chat.authorizeConversation(userId, conversationId);
+        return presenceSnapshot(userId, [conversationId]);
+      }
+      return presenceSnapshot(userId);
+    });
+    handle('setActivityStatus', 'mutation', ({ showActivityStatus }) => updateActivity(userId, showActivityStatus));
+    handle('getActivityStatus', 'read', async () => {
+      const current = await chat.getProfile(userId);
+      return { showActivityStatus: current.showActivityStatus !== false };
     });
     handle('chatTyping', 'typing', async ({ conversationId, isTyping }) => {
       await chat.authorizeConversation(userId, conversationId);
@@ -260,6 +356,7 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
         await onMembershipRevoked?.(data.conversationId, data.memberId);
         io.in(userRoom(data.memberId)).socketsLeave(conversationRoom(data.conversationId));
         io.to(userRoom(data.memberId)).emit('conversationRemoved', { conversationId: data.conversationId });
+        await refreshPresence();
       }
       await emitToConversation(data.conversationId, 'conversationsChanged', { conversationId: data.conversationId });
       return { member };
@@ -269,6 +366,7 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
       await onMembershipRevoked?.(data.conversationId, userId);
       io.in(userRoom(userId)).socketsLeave(conversationRoom(data.conversationId));
       io.to(userRoom(userId)).emit('conversationRemoved', { conversationId: data.conversationId });
+      await refreshPresence();
       await emitToConversation(data.conversationId, 'conversationsChanged', { conversationId: data.conversationId });
       return result;
     });
@@ -304,8 +402,8 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
     socket.on('disconnect', () => {
       clearTimeout(expiryTimer);
       online.get(userId)?.delete(socket.id);
-      if (!online.get(userId)?.size) { online.delete(userId); }
-      io.emit('onlineCount', online.size);
+      if (!online.get(userId)?.size) { online.delete(userId); presenceSnapshots.delete(userId); inboxPresenceConversations.delete(userId); hiddenPresence.delete(userId); }
+      refreshPresence();
       for (const postId of postTyping.keys()) if (deleteTyping(postTyping, postId, socket.id)) emitPostTyping(postId).catch(error => reportException(logger, 'socket.typing_cleanup_failed', error, { phase: 'cleanup' }));
       for (const conversationId of chatTyping.keys()) if (deleteTyping(chatTyping, conversationId, socket.id)) {
         const stillTyping = [...(chatTyping.get(conversationId)?.values() || [])].some(entry => entry.userId === userId);
@@ -330,6 +428,10 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
     }
   }, 5000);
   cleanup.unref();
+  // Socket.IO heartbeats remove stale devices; this bounded repair poll also catches
+  // blocks or legacy settings writes performed by the separate Netlify application.
+  const presenceRepair = setInterval(() => refreshPresence(), presenceIntervalMs);
+  presenceRepair.unref();
   const diagnostics = setInterval(() => log('info', 'socket.metrics', { ...metrics,
     activeUsers: online.size, activeSockets: io.engine.clientsCount,
     meanMessageLatencyMs: metrics.messages ? Math.round(metrics.messageLatencyMs / metrics.messages) : 0,
@@ -341,7 +443,8 @@ function createSocketApp({ chat, verifyToken, allowedOrigins, registerRoomEvents
     listen(port = 3001, host = '0.0.0.0') { return new Promise((resolve, reject) => { httpServer.once('error', reject); httpServer.listen(port, host, () => { httpServer.off('error', reject); resolve(httpServer.address()); }); }); },
     async close() {
       closing = true;
-      clearInterval(cleanup); clearInterval(diagnostics);
+      clearInterval(cleanup); clearInterval(diagnostics); clearInterval(presenceRepair);
+      if (presenceWork) await presenceWork;
       await closeRooms?.();
       await new Promise(resolve => io.close(resolve));
       httpServer.closeAllConnections?.();

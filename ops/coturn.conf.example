@@ -1,7 +1,18 @@
 # REVIEW TEMPLATE ONLY: never install without administrator approval.
 # Substitute verified interfaces/addresses/certificate paths securely.
+# These listeners are direct TURN sockets, never an HTTP reverse proxy.
+listening-ip=REPLACE_WITH_VERIFIED_VPS_INTERFACE_IP
+relay-ip=REPLACE_WITH_VERIFIED_VPS_INTERFACE_IP
+# Only if the interface is NATed: external-ip=PUBLIC_IP/PRIVATE_INTERFACE_IP
 listening-port=3478
 tls-listening-port=5349
+# Keep UDP/TCP3478 and TLS/TCP5349 enabled. No TCP relay allocations are
+# needed by browser WebRTC; client-to-TURN TCP and TLS still work.
+no-tcp-relay
+# Supported by Ubuntu24.04 coturn; redundant/deprecated on newer upstream
+# releases where DTLS is disabled by default. Verify installed help first.
+no-dtls
+relay-threads=1
 fingerprint
 use-auth-secret
 static-auth-secret=SET_IN_PRIVATE_SERVER_CONFIG
@@ -14,11 +25,14 @@ max-port=49200
 total-quota=32
 user-quota=4
 max-bps=1250000
-# Aggregate traffic cap: staging starting point, bytes/second; measure before release.
+# Per-direction aggregate cap in bytes/second: staging starting point only.
+# Quotas are per temporary username, not a durable Clerk-account abuse budget.
 bps-capacity=3000000
 stale-nonce=600
 no-multicast-peers
 no-cli
+no-software-attribute
+log-file=stdout
 no-tlsv1
 no-tlsv1_1
 # Do not allow the relay to reach internal/private services.
@@ -33,7 +47,9 @@ denied-peer-ip=224.0.0.0-255.255.255.255
 denied-peer-ip=::1
 denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
-# Bind listening-ip/relay-ip/external-ip only after read-only network audit.
+# Verify listening-ip/relay-ip/external-ip after the read-only network audit.
+# Never put443 here while CloudPanel/Nginx owns that address/port.
+# Do not enable allow-loopback-peers, no-auth, or anonymous TURN.
 # Set process memory/CPU limits and restricted service user in reviewed systemd unit.
 
 # Options reviewed against the upstream example; verify the actual installed package version.

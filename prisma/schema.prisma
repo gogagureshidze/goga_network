@@ -548,6 +548,13 @@ model CallSession {
   kind           String            @db.VarChar(8)
   status         String            @default("RINGING") @db.VarChar(16)
   roomName       String            @unique
+  mediaVersion   Int               @default(0)
+  screenVersion  Int               @default(0)
+  screenLeaseId  String?            @unique @db.VarChar(36)
+  screenRoomName String?            @unique
+  screenUserId   String?
+  screenDeviceId String?            @db.VarChar(128)
+  screenExpiresAt DateTime?
   createdAt      DateTime          @default(now())
   startedAt      DateTime?
   endedAt        DateTime?
@@ -557,6 +564,20 @@ model CallSession {
 
   @@index([conversationId, status])
   @@index([status, expiresAt])
+}
+
+// Tombstones outlive deleted conversations and retry SFU room cleanup safely.
+// Deliberately no foreign key: deleting social data must not lose cleanup work.
+model RetiredMediaRoom {
+  roomName      String   @id
+  callId        String?
+  createdAt     DateTime @default(now())
+  retainUntil   DateTime
+  retryAt       DateTime @default(now())
+  attempts      Int      @default(0)
+  lastErrorCode String?  @db.VarChar(32)
+
+  @@index([retryAt])
 }
 
 model CallParticipant {

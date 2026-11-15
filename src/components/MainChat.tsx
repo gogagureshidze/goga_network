@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { Message, Friend } from "../app/chat/page";
 import SharedPost from "./SharedPost";
+import Image from "next/image";
+import { canReadVisibleMessage } from "@/lib/chat-inbox";
 import { getMessages } from "@/actions/getMessages";
 import { emitWithAck, useRealtimeSocket } from "@/hooks/useRealtimeSocket";
 import VoiceMessage from "./chat/VoiceMessage";
@@ -28,7 +30,7 @@ type RawMessage = Omit<Message, "createdAt" | "isOwn" | "editedAt" | "deletedAt"
   waveform?: unknown;
 };
 
-export default function MainChat({ selectedFriend, messages, setMessages, Avatar, SendIcon, onBack, userId }: Props) {
+export default function MainChat({ selectedFriend, messages, setMessages, SendIcon, onBack, userId }: Props) {
   const { socket, isConnected, connectionError, reconnect } = useRealtimeSocket();
   const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState<number | undefined>(selectedFriend?.conversationId);
@@ -41,6 +43,7 @@ export default function MainChat({ selectedFriend, messages, setMessages, Avatar
   const [typing, setTyping] = useState<string[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const oldestRef = useRef<number | undefined>(undefined);
   const fetchingOlder = useRef(false);
   const generation = useRef(0);
@@ -172,11 +175,14 @@ export default function MainChat({ selectedFriend, messages, setMessages, Avatar
   useEffect(() => {
     if (!socket || !conversationId || !isConnected) return;
     let active = true;
+    let presenceVersion = 0;
+    let lastPresenceRevision = -1;
     const expiryTimers = typingExpiry.current;
-    void emitWithAck<{ presence: string[] }>(socket, "joinConversation", { conversationId }).then((result) => { if (active) setOnlineUsers(result.presence || []); }).catch(() => {});
+    void emitWithAck<{ presence: string[]; presenceRevision: number }>(socket, "joinConversation", { conversationId }).then((result) => { if (active && presenceVersion === 0 && result.presenceRevision >= lastPresenceRevision) { lastPresenceRevision = result.presenceRevision; setOnlineUsers(result.presence || []); } }).catch(() => {});
     const presenceTimer = setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void emitWithAck<{ presence: string[] }>(socket, "getPresence", { conversationId }).then((result) => { if (active) setOnlineUsers(result.presence || []); }).catch(() => { if (active) setOnlineUsers([]); });
+      const version = presenceVersion;
+      void emitWithAck<{ presence: string[]; presenceRevision: number }>(socket, "getPresence", { conversationId }).then((result) => { if (active && version === presenceVersion && result.presenceRevision >= lastPresenceRevision) { lastPresenceRevision = result.presenceRevision; setOnlineUsers(result.presence || []); } }).catch(() => { if (active && version === presenceVersion) setOnlineUsers([]); });
     }, 30000);
     const update = (data: { conversationId: number; userId: string; isTyping: boolean }) => {
       if (data.conversationId !== conversationId || data.userId === userId) return;
@@ -185,11 +191,17 @@ export default function MainChat({ selectedFriend, messages, setMessages, Avatar
       setTyping((previous) => data.isTyping ? Array.from(new Set([...previous, data.userId])) : previous.filter((id) => id !== data.userId));
       if (data.isTyping) typingExpiry.current.set(data.userId, setTimeout(() => setTyping((previous) => previous.filter((id) => id !== data.userId)), 5000));
     };
+    const presence = (data: { presence: string[]; presenceRevision: number }) => { if (data.presenceRevision < lastPresenceRevision) return; lastPresenceRevision = data.presenceRevision; presenceVersion += 1; if (active) setOnlineUsers(data.presence || []); };
+    const offline = () => { if (active) setOnlineUsers([]); };
     socket.on("chatTyping", update);
+    socket.on("presenceChanged", presence);
+    socket.on("disconnect", offline);
     return () => {
       active = false;
       clearInterval(presenceTimer);
       socket.off("chatTyping", update);
+      socket.off("presenceChanged", presence);
+      socket.off("disconnect", offline);
       leaveConversationRoom(socket, conversationId);
       if (typingTimeout.current) clearTimeout(typingTimeout.current);
       expiryTimers.forEach(clearTimeout);
@@ -198,22 +210,40 @@ export default function MainChat({ selectedFriend, messages, setMessages, Avatar
   }, [socket, conversationId, isConnected, userId]);
 
   useEffect(() => {
-    const markRead = () => {
-      if (!isConnected || !conversationId || document.visibilityState !== "visible" || !document.hasFocus()) return;
-      const latest = messages.filter((message) => !message.isOwn && message.id > 0).at(-1);
-      if (!latest || latest.id <= lastRead.current) return;
-      const element = scrollRef.current;
-      if (element && element.scrollHeight - element.scrollTop - element.clientHeight > 180) return;
-      lastRead.current = latest.id;
-      void emitWithAck(socket, "markRead", { conversationId, messageId: latest.id }).catch(() => { lastRead.current = 0; });
-    };
-    const frame = requestAnimationFrame(markRead);
-    document.addEventListener("visibilitychange", markRead);
-    window.addEventListener("focus", markRead);
     const element = scrollRef.current;
-    element?.addEventListener("scroll", markRead, { passive: true });
-    return () => { cancelAnimationFrame(frame); document.removeEventListener("visibilitychange", markRead); window.removeEventListener("focus", markRead); element?.removeEventListener("scroll", markRead); };
-  }, [socket, isConnected, conversationId, messages]);
+    if (!element || loading || !conversationId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const request = generation.current;
+    const markRead = () => {
+      if (request !== generation.current) return;
+      const panel = element.getBoundingClientRect();
+      const latest = [...messages].reverse().find((message) => {
+        if (message.isOwn || message.id <= 0 || message.id <= lastRead.current) return false;
+        const row = element.querySelector(`[data-message-id="${message.id}"]`);
+        if (!row) return false;
+        const bounds = row.getBoundingClientRect();
+        const hit = document.elementFromPoint(Math.max(0, Math.min(window.innerWidth - 1, (bounds.left + bounds.right) / 2)), Math.min(panel.bottom - 1, bounds.bottom - 1));
+        return canReadVisibleMessage({ connected: isConnected, visible: document.visibilityState === "visible", focused: document.hasFocus(), loading, unobscured: Boolean(hit && row.contains(hit)),
+          panelTop: Math.max(0, panel.top), panelBottom: Math.min(window.innerHeight, panel.bottom), messageTop: bounds.top, messageBottom: bounds.bottom });
+      });
+      if (!latest) return;
+      lastRead.current = latest.id;
+      void emitWithAck(socket, "markRead", { conversationId, messageId: latest.id }).catch(() => { if (request === generation.current) lastRead.current = 0; });
+    };
+    // Do not mark a message read merely because it swept through the viewport.
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(markRead, 350); };
+    schedule();
+    document.addEventListener("visibilitychange", schedule);
+    document.addEventListener("fullscreenchange", schedule);
+    document.addEventListener("pointerup", schedule);
+    window.addEventListener("focus", schedule);
+    window.addEventListener("resize", schedule);
+    element.addEventListener("scroll", schedule, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    observer?.observe(element);
+    if (messagesRef.current) observer?.observe(messagesRef.current);
+    return () => { clearTimeout(timer); observer?.disconnect(); document.removeEventListener("visibilitychange", schedule); document.removeEventListener("fullscreenchange", schedule); document.removeEventListener("pointerup", schedule); window.removeEventListener("focus", schedule); window.removeEventListener("resize", schedule); element.removeEventListener("scroll", schedule); };
+  }, [socket, isConnected, conversationId, messages, loading]);
 
   function onInput(value: string) {
     composerRevision.current += 1;
@@ -287,9 +317,9 @@ export default function MainChat({ selectedFriend, messages, setMessages, Avatar
     const quoted = messages.find((entry) => entry.id === message.replyToId) || message.replyTo;
     const reactions = Array.from(new Set((message.reactions || []).map((reaction) => reaction.emoji)));
     return (
-      <article key={message.clientMessageId || message.id} className={`mb-4 flex ${message.isOwn ? "justify-end" : "justify-start"}`}>
+      <article key={message.clientMessageId || message.id} data-message-id={message.id} className={`mb-4 flex ${message.isOwn ? "justify-end" : "justify-start"}`}>
         <div className={`flex w-full max-w-[88%] flex-col gap-1 sm:max-w-[70%] lg:max-w-[420px] ${message.isOwn ? "items-end" : "items-start"}`}>
-          {selectedFriend?.kind === "GROUP" && !message.isOwn && <span className="text-xs text-gray-500">{message.sender?.name || message.sender?.username || "Member"}</span>}
+          {selectedFriend?.kind === "GROUP" && !message.isOwn && <span className="flex items-center gap-1.5 text-xs text-gray-500">{isConnected && onlineUsers.includes(message.senderId) && <span aria-label="Online" className="h-2 w-2 rounded-full bg-emerald-500" />}{message.sender?.name || message.sender?.username || "Member"}</span>}
           {message.replyToId && <div className="max-w-full truncate border-l-2 border-orange-400 px-2 text-xs text-gray-500">Reply to: {quoted?.deletedAt ? "Deleted message" : quoted?.text || (quoted?.mediaType === "voice" ? "Voice message" : "Earlier message")}</div>}
           {message.deletedAt ? <p className="rounded-xl bg-gray-100 px-4 py-2 text-sm italic text-gray-500 dark:bg-gray-800">Message deleted</p> : <>
             {sharedPost ? <SharedPost postData={sharedPost} isOwn={message.isOwn} /> : message.text && <p className={`whitespace-pre-wrap break-words rounded-[20px] px-4 py-2.5 text-[15px] leading-relaxed shadow-sm ${message.isOwn ? "rounded-br-[4px] bg-orange-500 text-white" : "rounded-bl-[4px] bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100"}`}>{message.text}</p>}
@@ -313,8 +343,8 @@ export default function MainChat({ selectedFriend, messages, setMessages, Avatar
     <section aria-label={`Chat with ${selectedFriend.name}`} className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-r-3xl bg-white shadow-xl dark:bg-gray-800">
       <header className="flex items-center gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
         {onBack && <button onClick={onBack} className="text-sm text-rose-800 dark:text-white">Back</button>}
-        <Avatar />
-        <div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{selectedFriend.name}</h2><p className="text-xs text-gray-500">{isConnected ? selectedFriend.kind === "GROUP" ? "Connected" : onlineUsers.includes(selectedFriend.id) ? "Online" : "Connected" : connectionError || "Connecting…"}</p></div>
+        <span className="relative shrink-0"><Image src={selectedFriend.avatar || "/noAvatar.png"} alt="" width={40} height={40} className="h-10 w-10 rounded-full object-cover" />{isConnected && selectedFriend.kind !== "GROUP" && onlineUsers.includes(selectedFriend.id) && <span aria-label="Online" className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-gray-800" />}</span>
+        <div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{selectedFriend.name}</h2><p className="text-xs text-gray-500 dark:text-gray-400">{isConnected ? selectedFriend.kind === "GROUP" ? "Group conversation" : onlineUsers.includes(selectedFriend.id) ? "Online" : "Direct message" : connectionError || "Connecting…"}</p></div>
         {!isConnected && <button onClick={reconnect} className="text-sm text-orange-600">Reconnect</button>}
       </header>
       <ConversationExperience key={selectionKey} conversationId={conversationId} receiverId={selectedFriend.kind === "GROUP" ? undefined : selectedFriend.id} />
@@ -323,7 +353,7 @@ export default function MainChat({ selectedFriend, messages, setMessages, Avatar
         {loading ? <p role="status" className="py-4 text-center text-sm text-gray-500">Loading messages…</p> : <>
           {hasMore && <button disabled={loadingOlder} onClick={() => void loadOlder()} className="mx-auto mb-4 block text-xs text-orange-700 disabled:opacity-50 dark:text-orange-300">{loadingOlder ? "Loading…" : "Load older messages"}</button>}
           {!messages.length && <p className="py-8 text-center text-sm text-gray-500">Say hello to start the conversation.</p>}
-          {messages.map(renderMessage)}
+          <div ref={messagesRef}>{messages.map(renderMessage)}</div>
         </>}
       </div>
       {typing.length > 0 && <p role="status" className="px-4 py-1 text-xs text-gray-500">{selectedFriend.kind === "GROUP" ? `${typing.length} member${typing.length === 1 ? "" : "s"}` : selectedFriend.name} typing…</p>}

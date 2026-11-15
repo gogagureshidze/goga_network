@@ -55,7 +55,7 @@ function event(socket, name, predicate = () => true, timeout = 5000) {
   return pending;
 }
 
-async function runtimeHarness(t, configured) {
+async function runtimeHarness(t, configured, { roomEnv = {}, livekit, names = ['alice', 'bob', 'outsider'], now } = {}) {
   const databaseUrl = disposableDatabaseUrl(configured);
   const { PrismaClient } = require('../../src/generated/prisma');
   const { createChatService } = require('../../server/chat-service');
@@ -65,14 +65,14 @@ async function runtimeHarness(t, configured) {
   const { createMediaApi } = require('../../server/media-http');
   const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   const prefix = `runtime_${randomUUID()}`;
-  const ids = Object.fromEntries(['alice', 'bob', 'outsider'].map(name => [name, `${prefix}_${name}`]));
+  const ids = Object.fromEntries(names.map(name => [name, `${prefix}_${name}`]));
   const userIds = Object.values(ids);
   const clients = [];
   const origin = 'http://localhost:3000';
   const sessions = syntheticSessions(origin);
   const chat = createChatService(prisma, { mediaCloudName: 'runtime-test-only' });
-  const rooms = createRoomService({ prisma, chat, env: { WATCH_ALLOWED_HOSTS: 'media.example.test' } });
-  const credentials = createCallCredentials({ rooms, env: { RTC_STUN_URLS: 'stun:127.0.0.1:3478' } });
+  const rooms = createRoomService({ prisma, chat, livekit, ...(now ? { now } : {}), env: { WATCH_ALLOWED_HOSTS: 'media.example.test', ...roomEnv } });
+  const credentials = createCallCredentials({ rooms, ...(now ? { now } : {}), env: { RTC_STUN_URLS: 'stun:127.0.0.1:3478', ...roomEnv } });
   let socketApp, httpServer, mediaApi, root;
   t.after(async () => {
     for (const socket of clients) socket.disconnect();
@@ -84,6 +84,8 @@ async function runtimeHarness(t, configured) {
     }
     try {
       // Delete only this run's identities and rows; never truncate or reset tables.
+      const ownedCalls = await prisma.callSession.findMany({ where: { initiatorId: { in: userIds } }, select: { id: true } });
+      await prisma.retiredMediaRoom.deleteMany({ where: { callId: { in: ownedCalls.map(call => call.id) } } });
       await prisma.conversation.deleteMany({ where: { OR: [{ user1Id: { in: userIds } }, { user2Id: { in: userIds } }, { ownerId: { in: userIds } }] } });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     } finally {
@@ -195,7 +197,7 @@ async function runtimeHarness(t, configured) {
     headers: { Origin: origin, ...(userId ? { Authorization: `Bearer ${sessions.token(userId)}` } : {}), ...options.headers },
     signal: AbortSignal.timeout(30000), redirect: 'error',
   });
-  return { prisma, ids, rooms, credentials, client, ack, rawAck, denied, request, event, sessions, origin, socketUrl };
+  return { prisma, chat, ids, rooms, credentials, client, ack, rawAck, denied, request, event, sessions, origin, socketUrl };
 }
 
 function audioWav() {

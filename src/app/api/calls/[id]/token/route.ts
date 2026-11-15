@@ -14,7 +14,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const input = JSON.parse((await boundedBody(request, 1024)).toString('utf8'));
     if (!input || typeof input !== 'object' || Array.isArray(input)) return Response.json({ error: 'INVALID_INPUT' }, { status: 400 });
     const { id } = await context.params;
-    const result = await callCredentials().issueToken(userId, id, input.deviceId);
+    const result = await callCredentials().issueToken(userId, id, input.deviceId, {
+      media: input.media ?? 'main', leaseId: input.leaseId,
+    });
     return Response.json(result, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return apiError(error); }
 }

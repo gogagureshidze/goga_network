@@ -1,6 +1,8 @@
 import { Webhook } from "svix";
 import prisma from "@/lib/client";
 import { clerkClient } from "@clerk/nextjs/server";
+import { callRooms } from "@/lib/call-server";
+import { reportException } from "../../../../../server/diagnostics";
 
 // Prisma needs Node.js, not Edge
 export const runtime = "nodejs";
@@ -44,12 +46,16 @@ export async function POST(req: Request) {
     }) as SvixEvent;
 
   } catch (err) {
-    console.error("❌ Webhook verification failed:", err);
+    reportException(console, "clerk.webhook_verification_failed", err, { phase: "verification" });
     return new Response("Invalid signature", { status: 400 });
   }
 
-  const { type, data } = evt;
-  const { id } = data;
+  const type = evt?.type;
+  const id = evt?.data?.id;
+  if (["user.created", "user.updated", "user.deleted"].includes(type) &&
+      (typeof id !== "string" || !id.trim() || id.length > 191)) {
+    return new Response("Invalid account identifier", { status: 400 });
+  }
 
   try {
 
@@ -85,13 +91,15 @@ export async function POST(req: Request) {
 
     // Handle user deletion (no need to fetch from Clerk, as the user is already gone)
     if (type === "user.deleted") {
-      await prisma.user.deleteMany({ where: { id } });
+      // Preserve the call roster until room rotation and cleanup tombstones are
+      // durable. Cascading participant deletion first would lose revocation data.
+      await callRooms().deleteAccountUser(id);
       return new Response("✅ user.deleted handled", { status: 200 });
     }
 
     return new Response("⚠️ event ignored", { status: 200 });
-  } catch (err: any) {
-    console.error("❌ Prisma error:", err);
+  } catch (err: unknown) {
+    reportException(console, "clerk.webhook_processing_failed", err, { phase: "processing" });
     return new Response("Server error", { status: 500 });
   }
 

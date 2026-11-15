@@ -84,3 +84,41 @@ test('historical shared-post snapshots are hidden when their author becomes priv
   assert.equal(message.text, 'This shared post is no longer available.');
   assert.ok(state.messages[0].mediaUrl, 'Stored snapshot is preserved');
 });
+
+test('inbox sorts by messages, counts only incoming nondeleted unread and preserves monotonic group reads', async () => {
+  const { chat, state } = setup();
+  const first = await chat.sendMessage('alice', { receiverId: 'bob', text: 'direct' });
+  const group = await chat.createGroup('alice', { name: 'Group', memberIds: ['bob'] });
+  const beforeJoin = await chat.sendMessage('alice', { conversationId: group.id, text: 'group history' });
+  let list = await chat.listConversations('bob');
+  assert.equal(list.find(row => row.id === group.id).unreadCount, 0);
+  assert.deepEqual(list.find(row => row.id === group.id).messages, []);
+  await chat.respondInvite('bob', { conversationId: group.id, accept: true });
+  const latest = await chat.sendMessage('alice', { conversationId: group.id, text: 'latest' });
+  state.conversations.find(row => row.id === first.conversationId).updatedAt = new Date(Date.now() + 60000);
+  list = await chat.listConversations('bob');
+  assert.equal(list[0].id, group.id, 'membership changes cannot move an older message ahead');
+  assert.equal(list[0].unreadCount, 2);
+  assert.equal(list[1].unreadCount, 1);
+  await chat.markRead('bob', { conversationId: group.id, messageId: latest.id });
+  const stale = await chat.markRead('bob', { conversationId: group.id, messageId: beforeJoin.id });
+  assert.equal(stale.messageId, latest.id);
+  assert.equal((await chat.listConversations('bob'))[0].unreadCount, 0);
+  await chat.deleteMessage('alice', { messageId: first.id });
+  assert.equal((await chat.listConversations('bob')).find(row => row.id === first.conversationId).unreadCount, 0);
+});
+
+test('presence queries require current membership and suppress blocks in both directions', async () => {
+  const { chat, state } = setup();
+  const direct = await chat.getOrCreateDirect('alice', 'bob');
+  const group = await chat.createGroup('alice', { name: 'Private', memberIds: ['eve'] });
+  assert.deepEqual(await chat.presenceParticipants('eve', [direct.id, group.id]), []);
+  assert.deepEqual((await chat.presenceParticipants('bob', [direct.id])).sort(), ['alice', 'bob']);
+  await assert.rejects(chat.setActivityStatus('alice', 'false'), error => error.code === 'INVALID_INPUT');
+  await chat.setActivityStatus('alice', false);
+  assert.deepEqual(await chat.visiblePresence(['alice', 'bob'], 'bob'), ['bob']);
+  await chat.setActivityStatus('alice', true);
+  state.blocks.push({ id: 1, blockerId: 'alice', blockedId: 'bob' });
+  assert.deepEqual(await chat.presenceParticipants('bob', [direct.id]), []);
+  assert.deepEqual(await chat.visiblePresence(['alice', 'bob'], 'bob'), ['bob']);
+});

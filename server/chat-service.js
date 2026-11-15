@@ -39,10 +39,37 @@ function createChatService(prisma, { mediaCloudName = process.env.NEXT_PUBLIC_CL
     return user;
   }
 
-  async function visiblePresence(userIds) {
+  async function visiblePresence(userIds, viewerId) {
     if (!userIds.length) return [];
-    const users = await prisma.user.findMany({ where: { id: { in: userIds }, showActivityStatus: true }, select: { id: true } });
-    return users.map(user => user.id);
+    const [users, blocks] = await Promise.all([
+      prisma.user.findMany({ where: { id: { in: [...new Set(userIds)] }, showActivityStatus: true }, select: { id: true } }),
+      viewerId ? prisma.block.findMany({ where: { OR: [{ blockerId: viewerId }, { blockedId: viewerId }] }, select: { blockerId: true, blockedId: true } }) : [],
+    ]);
+    const blocked = new Set(blocks.map(block => block.blockerId === viewerId ? block.blockedId : block.blockerId));
+    return users.map(user => user.id).filter(id => !blocked.has(id));
+  }
+
+  async function setActivityStatus(userId, showActivityStatus) {
+    if (typeof showActivityStatus !== 'boolean') fail('INVALID_INPUT', 'Invalid activity visibility');
+    return prisma.user.update({ where: { id: userId }, data: { showActivityStatus }, select: { showActivityStatus: true } });
+  }
+
+  const conversationAccess = userId => ({ OR: [
+    { kind: 'DIRECT', OR: [{ user1Id: userId }, { user2Id: userId }] },
+    { kind: 'GROUP', members: { some: { userId, status: 'ACTIVE' } } },
+  ] });
+
+  async function presenceParticipants(userId, conversationIds) {
+    if (!conversationIds.length) return [];
+    // Recheck current membership on every snapshot; never trust a room joined before removal.
+    const conversations = await prisma.conversation.findMany({ where: { ...conversationAccess(userId), id: { in: conversationIds } },
+      select: { kind: true, user1Id: true, user2Id: true, members: { where: { status: 'ACTIVE' }, select: { userId: true } } } });
+    const blocks = await prisma.block.findMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] }, select: { blockerId: true, blockedId: true } });
+    const blocked = new Set(blocks.map(block => block.blockerId === userId ? block.blockedId : block.blockerId));
+    return [...new Set(conversations.flatMap(conversation => {
+      const ids = conversation.kind === 'GROUP' ? conversation.members.map(member => member.userId) : [conversation.user1Id, conversation.user2Id].filter(Boolean);
+      return ids.some(id => blocked.has(id)) ? [] : ids;
+    }))];
   }
 
   async function sanitizeMessageReads(userId, messages) {
@@ -275,6 +302,8 @@ function createChatService(prisma, { mediaCloudName = process.env.NEXT_PUBLIC_CL
     if (message.conversationId !== conversation.id) forbidden();
     if (conversation.kind === 'GROUP') {
       await prisma.conversationMember.updateMany({ where: { conversationId, userId, status: 'ACTIVE', OR: [{ lastReadMessageId: null }, { lastReadMessageId: { lt: messageId } }] }, data: { lastReadMessageId: messageId } });
+      const current = await prisma.conversationMember.findUnique({ where: { conversationId_userId: { conversationId, userId } }, select: { lastReadMessageId: true } });
+      return { conversationId, userId, messageId: current?.lastReadMessageId || messageId };
     } else {
       await prisma.message.updateMany({ where: { conversationId, receiverId: userId, id: { lte: messageId }, isRead: false }, data: { isRead: true } });
     }
@@ -282,18 +311,50 @@ function createChatService(prisma, { mediaCloudName = process.env.NEXT_PUBLIC_CL
   }
 
   async function listConversations(userId) {
-    const conversations = await prisma.conversation.findMany({ where: { OR: [
+    // Select the bounded page by actual latest message before loading relations.
+    // Conversation.updatedAt also changes on membership/call actions, so sorting
+    // a page already limited by that field can silently hide newer conversations.
+    // Tagged $queryRaw binds the identity as data; all SQL identifiers are static.
+    const page = await prisma.$queryRaw`
+      SELECT c.id FROM Conversation c
+      LEFT JOIN ConversationMember ownMember ON ownMember.conversationId = c.id AND ownMember.userId = ${userId}
+      LEFT JOIN Message latest ON latest.id = (
+        SELECT m.id FROM Message m WHERE m.conversationId = c.id ORDER BY m.id DESC LIMIT 1
+      )
+      WHERE ((c.kind = 'DIRECT' AND (c.user1Id = ${userId} OR c.user2Id = ${userId}))
+        OR (c.kind = 'GROUP' AND ownMember.status IN ('ACTIVE', 'INVITED')))
+        AND NOT EXISTS (
+          SELECT 1 FROM Block b WHERE
+          (b.blockerId = ${userId} AND (b.blockedId = c.user1Id OR b.blockedId = c.user2Id OR EXISTS (
+            SELECT 1 FROM ConversationMember blockedMember WHERE blockedMember.conversationId = c.id AND blockedMember.status = 'ACTIVE' AND blockedMember.userId = b.blockedId
+          ))) OR (b.blockedId = ${userId} AND (b.blockerId = c.user1Id OR b.blockerId = c.user2Id OR EXISTS (
+            SELECT 1 FROM ConversationMember blockedMember WHERE blockedMember.conversationId = c.id AND blockedMember.status = 'ACTIVE' AND blockedMember.userId = b.blockerId
+          )))
+        )
+      ORDER BY CASE WHEN ownMember.status = 'INVITED' THEN NULL ELSE latest.createdAt END DESC,
+        CASE WHEN ownMember.status = 'INVITED' THEN NULL ELSE latest.id END DESC, c.createdAt DESC, c.id DESC
+      LIMIT 100`;
+    const conversations = await prisma.conversation.findMany({ where: { id: { in: page.map(row => row.id) }, OR: [
       { kind: 'DIRECT', OR: [{ user1Id: userId }, { user2Id: userId }] },
       { kind: 'GROUP', members: { some: { userId, status: { in: ['ACTIVE', 'INVITED'] } } } },
-    ] }, include: { user1: { select: { id: true, username: true, avatar: true } }, user2: { select: { id: true, username: true, avatar: true } }, members: { include: { user: { select: { id: true, username: true, avatar: true } } } }, messages: { orderBy: { id: 'desc' }, take: 1 } }, orderBy: { updatedAt: 'desc' }, take: 100 });
+    ] }, include: { user1: { select: { id: true, username: true, avatar: true } }, user2: { select: { id: true, username: true, avatar: true } }, members: { include: { user: { select: { id: true, username: true, avatar: true } } } }, messages: { orderBy: { id: 'desc' }, take: 1 } } });
     const blocks = await prisma.block.findMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] }, select: { blockerId: true, blockedId: true } });
     const blockedIds = new Set(blocks.map(b => b.blockerId === userId ? b.blockedId : b.blockerId));
     const visible = conversations.filter(c => ![c.user1Id, c.user2Id, ...c.members.filter(m => m.status === 'ACTIVE').map(m => m.userId)].some(id => blockedIds.has(id)));
-    const previews = new Map((await sanitizeMessageReads(userId, visible.flatMap(c => c.messages))).map(message => [message.id, message]));
+    const active = visible.filter(c => !c.members.some(m => m.userId === userId && m.status === 'INVITED'));
+    const unreadFilters = active.map(c => c.kind === 'GROUP'
+      ? { conversationId: c.id, senderId: { not: userId }, id: { gt: c.members.find(m => m.userId === userId)?.lastReadMessageId || 0 } }
+      : { conversationId: c.id, receiverId: userId, isRead: false });
+    // One aggregate query for the entire inbox, not one count per conversation.
+    const unread = unreadFilters.length ? await prisma.message.groupBy({ by: ['conversationId'], where: { deletedAt: null, OR: unreadFilters }, _count: { _all: true } }) : [];
+    const counts = new Map(unread.map(row => [row.conversationId, row._count._all]));
+    const previews = new Map((await sanitizeMessageReads(userId, active.flatMap(c => c.messages))).map(message => [message.id, message]));
     return visible.map(c => {
       const invited = c.members.some(m => m.userId === userId && m.status === 'INVITED');
-      return { ...c, messages: invited ? [] : c.messages.map(message => previews.get(message.id)) };
-    });
+      return { ...c, messages: invited ? [] : c.messages.map(message => previews.get(message.id)),
+        unreadCount: invited ? 0 : counts.get(c.id) || 0,
+        lastMessageAt: invited ? null : c.messages[0]?.createdAt || null };
+    }).sort((a, b) => page.findIndex(row => row.id === a.id) - page.findIndex(row => row.id === b.id));
   }
 
   async function createGroup(userId, { name, memberIds = [] }) {
@@ -375,7 +436,7 @@ function createChatService(prisma, { mediaCloudName = process.env.NEXT_PUBLIC_CL
     });
   }
 
-  return { getProfile, visiblePresence, getDeliveryRecipients, assertUnblocked, assertCanContact, authorizeConversation, getOrCreateDirect, authorizePost,
+  return { getProfile, visiblePresence, presenceParticipants, setActivityStatus, getDeliveryRecipients, assertUnblocked, assertCanContact, authorizeConversation, getOrCreateDirect, authorizePost,
     sendMessage, getMessage, notifyMessage, getMessages, editMessage, deleteMessage, reactMessage, markRead,
     listConversations, createGroup, inviteMember, respondInvite, updateMember, leaveConversation };
 }

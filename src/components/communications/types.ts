@@ -1,2 +1,4 @@
-export type Call = {id:string;conversationId:number;initiatorId:string;kind:'AUDIO'|'VIDEO';status:string;transport:'p2p'|'livekit';createdAt:string;startedAt?:string|null;participants:{userId:string;status:string;deviceId?:string|null}[]};
+export type ScreenShareLease = { leaseId: string; version: number; userId: string; deviceId: string; expiresAt: string };
+export type CallParticipant = { userId: string; status: string; deviceId?: string | null; user?: { id: string; username: string; avatar?: string | null } };
+export type Call = {id:string;conversationId:number;initiatorId:string;kind:'AUDIO'|'VIDEO';status:string;transport:'p2p'|'livekit';createdAt:string;startedAt?:string|null;serverTime?:number;mediaVersion?:number;screenVersion?:number;screenShare?:ScreenShareLease|null;participants:CallParticipant[]};
 export type Party = {id:string;conversationId:number;hostId:string;sourceUrl:string;title:string;collaborative:boolean;playing:boolean;position:number;version:number;updatedAt:string;endedAt:string|null;serverTime:number;participants?:string[]};

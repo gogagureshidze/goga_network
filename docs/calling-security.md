@@ -1,65 +1,32 @@
 # Call credentials and staging checks
 
-Direct calls use native WebRTC. Socket.IO carries authenticated invitations and
-SDP/ICE signaling; it never relays media bytes. Calls bind each accepted participant
-to a device identifier. Credential requests check current conversation membership,
-both-direction blocks, JOINED state, active call expiry and the accepted device.
+Direct calls use native WebRTC. Socket.IO carries authenticated invitations and SDP/ICE/media-state signaling, never live audio/video bytes. Each accepted participant binds to one device identifier. Every credential request checks current conversation membership, both-direction blocks, JOINED state, active call expiry and accepted device. The authenticated server selects the sender and room; clients cannot nominate arbitrary identities.
 
-`GET /api/calls/:id/ice?deviceId=...` returns configured `RTC_STUN_URLS` and
-`TURN_URLS`. TURN credentials use coturn's shared-secret HMAC-SHA1 convention with
-an expiry, opaque user digest and random nonce. `TURN_SHARED_SECRET` stays on the
-server. Credentials last five minutes; active clients must refresh ICE configuration
-before expiry, and test long calls through forced relay. Without configured TURN,
-some NAT/firewall combinations cannot connect. `relayAvailable:false` makes that
-limitation explicit. No public STUN/TURN service is silently selected.
+`GET /api/calls/:id/ice?deviceId=...` returns configured STUN/TURN servers. TURN credentials use coturn's expiring HMAC-SHA1 convention, an opaque identity digest and random nonce. The static secret stays server-side. The browser refreshes before expiration, queues an ICE restart until signaling is ready and buffers candidates by ICE generation. Without TURN, restrictive NAT/firewalls may prevent calls; the UI reports missing relay configuration. See [TURN-VALIDATION.md](TURN-VALIDATION.md).
 
-`POST /api/calls/:id/token` accepts same-origin JSON `{deviceId}` of at most 1 KB.
-It emits a 30-second initial LiveKit join token for the server-created room name and
-authenticated account. Grants permit subscribing plus microphone, camera and screen
-tracks. Data publishing, room creation/listing/admin/recording and ingress control
-are denied. `LIVEKIT_URL` must use `wss:` in production; local development can use
-`ws://localhost`. Secrets and signing SDK are server-only. Both routes share a bounded
-per-account 30 requests/minute process-local budget.
+`POST /api/calls/:id/token` requires same-origin JSON of at most 1 KB: `{deviceId,media:'main'|'screen',leaseId?}`. Omitting media retains the old main-token contract. Tokens initially last 30 seconds and bind the authenticated identity to a server-created room. Main rooms permit only microphone/camera sources. Screen tokens permit screen video/audio only for the holder of the current database lease; others are subscribe-only. Data publishing, room administration, recording, ingress and own-metadata changes are denied. The server verifies a maximum of three participants at the SFU before issuing credentials. Both routes use a bounded per-account 30 requests/minute process-local budget.
 
-Group calls remain disabled unless **both** `ENABLE_GROUP_CALLS=true` and
-`GROUP_CALL_SECURITY_REVIEWED=true` are set, with a configured LiveKit control client.
-The second flag records a human security review; it does not itself fix revocation.
-The small-server participant limit is at most four. Do not enable these flags merely
-to make a staging test pass.
+`LIVEKIT_URL` must use WSS in production. Only loopback WS is accepted outside production. Signing keys, shared TURN secret and server SDK stay server-side. Provider API requests have a five-second deadline and no automatic failover. Cleanup failures are sanitized and persisted for retry; they do not delay committed call-state publication.
 
-## Self-hosted LiveKit revocation blocker
+Group admission requires both `ENABLE_GROUP_CALLS=true` and `GROUP_CALL_SECURITY_REVIEWED=true`, plus a configured media control client. These flags remain false by default. They record a reviewed rollout, not a substitute for testing.
 
-LiveKit can refresh tokens for connected clients. Initial JWT expiration does not
-bound reconnect authorization, and self-hosted participant removal does not revoke
-all previously issued/refreshed credentials. Consequently this application's short
-initial TTL and `removeParticipant` call **do not prove** that a removed member can
-never rejoin media. App API and socket authorization deny further app operations,
-but the SFU boundary needs its own tested revocation policy. Review an enforceable
-media-server authorization/room-rotation policy before enabling production group
-calls. Do not describe the 30-second TTL as a complete revocation window.
+## Self-hosted token boundary
 
-Sources checked against installed SDK 2.19.3:
-[AccessToken API](https://docs.livekit.io/reference/server-sdk-js/classes/AccessToken.html),
-[token lifecycle and refresh](https://docs.livekit.io/frontends/reference/tokens-grants/),
-[RoomServiceClient API](https://docs.livekit.io/reference/server-sdk-js/classes/RoomServiceClient.html).
+LiveKit proactively refreshes connected clients' tokens. A short initial TTL does not invalidate cached/refreshed tokens on self-hosted servers. This implementation uses fresh room names for every screen lease and rotates the main room whenever a joined group participant leaves/is removed. Remaining clients reconnect to the new epoch; previous tokens cannot enter it. Retired-room deletion is durable and retried, with tombstones retained longer than refreshed-token lifetime.
 
-## Required staging evidence
+The signed Clerk deletion webhook invokes an internal transaction that locks the account, retires/rotates calls and then deletes the account, so participant cascades cannot erase revocation evidence. This helper is never registered as a socket event. Signature failures and invalid IDs fail before mutation; restrictive foreign-key or deadlock failures roll back and return HTTP 500 for retry. Cross-process clients reconcile call state every five seconds, and the persistent Socket.IO sweeper retries cleanup even if a Netlify invocation ends.
 
-- Two real separate identities: accepted member gets credentials; outsider,
-  invited-but-unaccepted member, blocked member, removed member, expired call and
-  wrong device get none. Capture status codes without logging credentials.
-- Multiple tabs: only the accepted device opens tracks or signals. Reconnect inside
-  the 20-second grace period restores state; an abandoned device leaves after grace.
-- Direct offer/answer, camera toggle, mic mute, device changes and screen-share stop
-  terminate old tracks and do not leak capture after hangup or route changes.
-- Forced TURN on mobile and restrictive networks; a call longer than ten minutes;
-  network handoff; denied browser permissions; unplugged microphone/camera.
-- Group revocation with a deliberately retained and refreshed media token, attempted
-  rejoin after removal, browser reconnect and media-room recreation. This is blocked
-  without a real configured media server and an accepted mitigation.
-- Watch host-only/collaborative controls, stale versions, clock drift, host removal
-  and reconnect using separate browsers/devices. Content must be authorized direct
-  video from exact `WATCH_ALLOWED_HOSTS`; no DRM or provider restrictions are bypassed.
+A malicious client may recreate an old room using an old token; this is explicitly tested and is **not** described as token revocation. Such a room is isolated from current listeners. Cleanup, resource monitoring, client lease expiry, signaling-loss handling and provider outage tests remain required. See [GROUP-CALLS.md](GROUP-CALLS.md) for the complete design and operational limitations, including aggregate capacity admission.
 
-Automated tests sign and verify real JWTs but mock application persistence. They
-cannot establish browser connectivity, TURN allocation or actual SFU revocation.
+Primary references: [LiveKit tokens and refresh](https://docs.livekit.io/home/server/generating-tokens), [participant management](https://docs.livekit.io/intro/basics/rooms-participants-tracks/participants/), [RoomServiceClient](https://docs.livekit.io/reference/server-sdk-js/classes/RoomServiceClient.html).
+
+## Required evidence
+
+- Real MySQL/Socket.IO tests for simultaneous acceptances/claims, third participant admission, lease expiry, delayed releases, membership/device denial, durable retirement and recovery.
+- Actual SFU tests for microphone/camera media, forbidden screen sources, subscriber-only restrictions, room capacity and reuse of retired tokens. These use synthetic media and are separate from browser/Clerk login verification.
+- Real-device staging: two-way P2P, three group participants on different networks, tab audio plus speech, camera-off placeholders, fullscreen/mobile, permission cancellation, microphone replacement and no capture after hangup.
+- Forced TURN over each configured UDP/TCP/TLS route, a long call spanning multiple credential refreshes, network handoff and browser suspension.
+- Revocation/room migration while sharing or reconnecting; delayed/failed SFU control requests and cleanup retry recovery. Verify no current listener stays in a retired room.
+- Existing voice playback, group/direct chat, privacy and watch-party event ordering/reconnect regression.
+
+No test result establishes Hostinger's production capacity or authorizes enabling group flags. Production publication requires the separate explicit approval described in [CALL-INBOX-RELEASE.md](CALL-INBOX-RELEASE.md).

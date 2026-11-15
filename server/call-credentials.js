@@ -25,22 +25,29 @@ function createCallCredentials({ rooms, env = process.env, now = Date.now, Token
   }
   async function authorize(userId, callId, deviceId) {
     consume(userId);
-    if (typeof deviceId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(deviceId)) throw new ChatError('INVALID_INPUT', 'Device identifier required');
+    if (typeof deviceId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(deviceId)) throw new ChatError('INVALID_INPUT', 'Device identifier required');
     const call = await rooms.authorizeCall(userId, callId, deviceId);
     // Defense in depth: also enforce binding when a service adapter is supplied.
     const participant = call.participants.find(member => member.userId === userId);
     if (participant?.status !== 'JOINED' || participant.deviceId !== deviceId) throw new ChatError('FORBIDDEN', 'Call unavailable', 403);
     return call;
   }
-  async function issueToken(userId, callId, deviceId) {
+  /** @param {{media?: 'main'|'screen', leaseId?: string}} [options] */
+  async function issueToken(userId, callId, deviceId, options = {}) {
+    const { media = 'main', leaseId } = options;
     const call = await authorize(userId, callId, deviceId);
     if (env.ENABLE_GROUP_CALLS !== 'true' || env.GROUP_CALL_SECURITY_REVIEWED !== 'true' || call.transport !== 'livekit' || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) throw new ChatError('UNAVAILABLE', 'Group calling is not enabled', 503);
     const serverUrl = getLiveKitUrl(env);
-    const token = new Token(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, { identity: userId, ttl: 30 });
-    token.addGrant({ room: call.roomName, roomJoin: true, canSubscribe: true, canPublish: true,
-      canPublishSources: [TrackSource.MICROPHONE, TrackSource.CAMERA, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO],
+    const prepared = await rooms.prepareMediaRoom(userId, callId, deviceId, { media, leaseId });
+    const token = new Token(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, { identity: userId,
+      name: prepared.call.participants.find(member => member.userId === userId)?.user?.username || 'Participant', ttl: 30 });
+    token.addGrant({ room: prepared.roomName, roomJoin: true, canSubscribe: true, canPublish: prepared.canPublish,
+      canPublishSources: !prepared.canPublish ? [] : media === 'screen'
+        ? [TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO] : [TrackSource.MICROPHONE, TrackSource.CAMERA],
       canPublishData: false, canUpdateOwnMetadata: false, roomAdmin: false, roomCreate: false, roomList: false, roomRecord: false, ingressAdmin: false });
-    return { token: await token.toJwt(), serverUrl, expiresAt: now() + 30_000 };
+    return { token: await token.toJwt(), serverUrl, expiresAt: now() + 30_000, roomName: prepared.roomName,
+      mediaVersion: prepared.call.mediaVersion, screenVersion: prepared.call.screenVersion, leaseId: prepared.leaseId,
+      canPublish: prepared.canPublish, media };
   }
   function urls(value, kind) {
     const values = (value || '').split(',').map(url => url.trim()).filter(Boolean);

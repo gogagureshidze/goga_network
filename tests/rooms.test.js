@@ -6,7 +6,7 @@ const { ChatError } = require('../server/chat-service');
 function setup({ group = false, enabled = false, env = {} } = {}) {
   let clock = 1_800_000_000_000;
   const members = new Set(group ? ['alice', 'bob', 'charlie'] : ['alice', 'bob']);
-  const calls = new Map(), parties = new Map();
+  const calls = new Map(), parties = new Map(), retired = new Map();
   const conversation = { id: 1, kind: group ? 'GROUP' : 'DIRECT' };
   const chat = {
     async authorizeConversation(userId, id) { if (id !== 1 || !members.has(userId)) throw new ChatError('FORBIDDEN', 'Denied', 403); return { ...conversation, participantIds: [...members] }; },
@@ -20,6 +20,7 @@ function setup({ group = false, enabled = false, env = {} } = {}) {
       if (value && typeof value === 'object' && !(value instanceof Date)) {
         if ('in' in value) return value.in.includes(row[key]);
         if ('gt' in value) return new Date(row[key]) > value.gt;
+        if ('lte' in value) return new Date(row[key]) <= value.lte;
       }
       return row[key] === value;
     });
@@ -32,7 +33,7 @@ function setup({ group = false, enabled = false, env = {} } = {}) {
       findFirst: async ({ where }) => copy([...calls.values()].find(row => matches(row, where))),
       findMany: async ({ where }) => [...calls.values()].filter(row => matches(row, where)).map(copy),
       create: async ({ data }) => {
-        const row = { ...data, createdAt: new Date(clock), startedAt: null, endedAt: null, conversation,
+        const row = { mediaVersion: 0, screenVersion: 0, screenLeaseId: null, screenRoomName: null, screenUserId: null, screenDeviceId: null, screenExpiresAt: null, ...data, createdAt: new Date(clock), startedAt: null, endedAt: null, conversation,
           participants: data.participants.create.map(participant => ({ ...participant, callId: data.id, user: { id: participant.userId, username: participant.userId } })) };
         calls.set(row.id, row); return copy(row);
       },
@@ -41,6 +42,13 @@ function setup({ group = false, enabled = false, env = {} } = {}) {
     callParticipant: {
       update: async ({ where, data }) => { const row = calls.get(where.callId_userId.callId).participants.find(member => member.userId === where.callId_userId.userId); dataUpdate(row, data); return copy(row); },
       updateMany: async ({ where, data }) => { let count = 0; for (const call of calls.values()) for (const row of call.participants) if (matches(row, where)) { dataUpdate(row, data); count++; } return { count }; },
+    },
+    retiredMediaRoom: {
+      findMany: async ({ where }) => [...retired.values()].filter(row => matches(row, where)).map(copy),
+      upsert: async ({ where, create }) => { if (!retired.has(where.roomName)) retired.set(where.roomName, { attempts: 0, lastErrorCode: null, createdAt: new Date(clock), ...create }); return copy(retired.get(where.roomName)); },
+      update: async ({ where, data }) => { const row = retired.get(where.roomName); dataUpdate(row, data); return copy(row); },
+      updateMany: async ({ where, data }) => { const row = retired.get(where.roomName); if (!row) return { count: 0 }; dataUpdate(row, data); return { count: 1 }; },
+      deleteMany: async ({ where }) => { retired.delete(where.roomName); },
     },
     watchParty: {
       findUnique: async ({ where }) => copy(parties.get(where.id)),
@@ -52,11 +60,12 @@ function setup({ group = false, enabled = false, env = {} } = {}) {
     $transaction: async callback => callback(prisma),
   };
   const removed = [], deleted = [], published = [];
+  const livekit = { createRoom: async options => options, removeParticipant: async (...args) => removed.push(args), deleteRoom: async (...args) => deleted.push(args) };
   const service = createRoomService({ prisma, chat, now: () => clock,
     env: { ENABLE_GROUP_CALLS: enabled ? 'true' : 'false', GROUP_CALL_SECURITY_REVIEWED: enabled ? 'true' : 'false', WATCH_ALLOWED_HOSTS: 'media.example.test', ...env },
-    livekit: enabled ? { removeParticipant: async (...args) => removed.push(args), deleteRoom: async (...args) => deleted.push(args) } : undefined });
+    livekit: enabled ? livekit : undefined, logger: { error() {} } });
   service.setPublisher(async (...args) => published.push(args));
-  return { service, prisma, members, calls, parties, removed, deleted, published, advance: ms => { clock += ms; } };
+  return { service, prisma, members, calls, parties, retired, livekit, removed, deleted, published, advance: ms => { clock += ms; } };
 }
 const start = service => service.initiate('alice', { conversationId: 1, kind: 'VIDEO', deviceId: 'alice-tab' });
 const accept = (service, callId, userId = 'bob', deviceId = 'bob-tab') => service.respond(userId, { callId, accept: true, deviceId });
@@ -80,6 +89,23 @@ test('accepted device is pinned and another tab cannot signal or end the call', 
   assert.equal(signal.payload.toDeviceId, 'alice-tab');
 });
 
+test('device identifiers respect the persisted 64-character bound before writes', async () => {
+  const { service, calls } = setup();
+  await assert.rejects(service.initiate('alice', { conversationId: 1, kind: 'VIDEO', deviceId: 'a'.repeat(65) }), error => error.code === 'INVALID_INPUT');
+  assert.equal(calls.size, 0);
+  const call = await service.initiate('alice', { conversationId: 1, kind: 'VIDEO', deviceId: 'a'.repeat(64) });
+  await assert.rejects(accept(service, call.id, 'bob', 'b'.repeat(65)), error => error.code === 'INVALID_INPUT');
+  assert.equal(calls.get(call.id).participants.find(member => member.userId === 'bob').status, 'INVITED');
+  assert.equal((await accept(service, call.id, 'bob', 'b'.repeat(64))).status, 'ACTIVE');
+});
+
+test('internal account deletion rejects absent or unbounded identifiers before any query', async () => {
+  const { service } = setup();
+  for (const id of [undefined, null, '', 123, {}, 'u'.repeat(192)]) {
+    await assert.rejects(service.deleteAccountUser(id), error => error.code === 'INVALID_INPUT');
+  }
+});
+
 test('signaling validates sender, recipient, offer role and bounded SDP', async () => {
   const { service } = setup(); const call = await start(service); await accept(service, call.id);
   const base = { callId: call.id, deviceId: 'bob-tab', toUserId: 'alice' };
@@ -87,6 +113,38 @@ test('signaling validates sender, recipient, offer role and bounded SDP', async 
   await assert.rejects(service.validateSignal('bob', { ...base, description: { type: 'answer', sdp: 'x'.repeat(48001) } }), error => error.code === 'INVALID_INPUT');
   await assert.rejects(service.validateSignal('bob', { ...base, toUserId: 'mallory', ready: true }), error => error.code === 'FORBIDDEN');
   assert.equal((await service.validateSignal('alice', { callId: call.id, deviceId: 'alice-tab', toUserId: 'bob', description: { type: 'offer', sdp: 'v=0' } })).payload.description.type, 'offer');
+});
+
+test('media state is scoped to accepted participants, devices and current membership', async () => {
+  const { service, members } = setup(); const call = await start(service);
+  const mediaState = { sequence: 1, cameraEnabled: false, screenSharing: true, screenAudio: true, microphoneMuted: false };
+  const input = { callId: call.id, deviceId: 'alice-tab', toUserId: 'bob', mediaState };
+  await assert.rejects(service.validateSignal('alice', input), error => error.code === 'FORBIDDEN');
+  await accept(service, call.id);
+  assert.deepEqual((await service.validateSignal('alice', input)).payload, {
+    callId: call.id, fromUserId: 'alice', fromDeviceId: 'alice-tab', toDeviceId: 'bob-tab', mediaState,
+  });
+  await assert.rejects(service.validateSignal('alice', { ...input, deviceId: 'other-tab' }), error => error.code === 'FORBIDDEN');
+  await assert.rejects(service.validateSignal('mallory', input), error => error.code === 'FORBIDDEN');
+  members.delete('bob');
+  await assert.rejects(service.validateSignal('alice', input), error => error.code === 'FORBIDDEN');
+});
+
+test('media signals require bounded ordered state and cannot smuggle unrelated signaling', async () => {
+  const { service } = setup(); const call = await start(service); await accept(service, call.id);
+  const mediaState = { sequence: 1, cameraEnabled: false, screenSharing: false, screenAudio: false, microphoneMuted: true };
+  const input = { callId: call.id, deviceId: 'alice-tab', toUserId: 'bob', mediaState };
+  for (const invalidState of [null, [], {}, { ...mediaState, sequence: -1 }, { ...mediaState, sequence: Infinity },
+    { ...mediaState, sequence: 1.5 }, { ...mediaState, sequence: Number.MAX_SAFE_INTEGER + 1 },
+    { ...mediaState, cameraEnabled: 'false' }, { ...mediaState, screenAudio: true },
+    { ...mediaState, source: 'untrusted' }]) {
+    await assert.rejects(service.validateSignal('alice', { ...input, mediaState: invalidState }), error => error.code === 'INVALID_INPUT');
+  }
+  for (const extra of [{ ready: true }, { ready: false }, { description: { type: 'offer', sdp: 'v=0' } }, { candidate: { candidate: '' } }]) {
+    await assert.rejects(service.validateSignal('alice', { ...input, ...extra }), error => error.code === 'INVALID_INPUT');
+  }
+  await service.leave('alice', { callId: call.id, deviceId: 'alice-tab' });
+  await assert.rejects(service.validateSignal('alice', input), error => error.code === 'FORBIDDEN');
 });
 
 test('duplicate active call is rejected and hanging up persists ended lifecycle', async () => {
@@ -108,10 +166,12 @@ test('unanswered call becomes missed after ringing expiry', async () => {
 
 test('group calls are disabled unless configured and revoke SFU membership on removal', async () => {
   await assert.rejects(start(setup({ group: true }).service), error => error.code === 'UNAVAILABLE');
-  const { service, members, removed } = setup({ group: true, enabled: true });
+  const { service, members, deleted } = setup({ group: true, enabled: true });
   const call = await start(service); await accept(service, call.id);
   members.delete('bob'); await service.onMembershipRevoked(1, 'bob');
-  assert.equal(removed[0][1], 'bob');
+  await service.sweep();
+  assert.equal(deleted[0][0], call.roomName);
+  assert.equal((await service.getCall('alice', call.id)).mediaVersion, 1);
   await assert.rejects(service.authorizeCall('bob', call.id, 'bob-tab'), error => error.code === 'FORBIDDEN');
 });
 
@@ -255,4 +315,90 @@ test('room registrar routes revocation only to the removed authenticated identit
   });
   revoke('bob', { callId: 'call-1', conversationId: 1 });
   assert.deepEqual(deliveries, [{ room: 'user:bob', event: 'callRevoked', payload: { callId: 'call-1', conversationId: 1 } }]);
+});
+
+test('group acceptance caps joined identities at three while other invitations remain pending', async () => {
+  const { service, members } = setup({ group: true, enabled: true, env: { GROUP_CALL_MAX_PARTICIPANTS: '99' } });
+  members.add('dana');
+  const call = await start(service);
+  await accept(service, call.id);
+  await accept(service, call.id, 'charlie', 'charlie-tab');
+  await assert.rejects(accept(service, call.id, 'dana', 'dana-tab'), error => error.code === 'CONFLICT');
+  assert.equal((await service.getCall('alice', call.id)).participants.filter(member => member.status === 'JOINED').length, 3);
+});
+
+test('exclusive screen leases enforce owner/device, expiry and delayed release isolation', async () => {
+  const { service, advance, deleted } = setup({ group: true, enabled: true });
+  const call = await start(service); await accept(service, call.id);
+  const claimed = await service.claimScreen('alice', { callId: call.id, deviceId: 'alice-tab' });
+  assert.equal(claimed.screenShare.userId, 'alice');
+  assert.equal(Object.hasOwn(claimed.screenShare, 'roomName'), false);
+  const leaseId = claimed.screenShare.leaseId;
+  await assert.rejects(service.claimScreen('bob', { callId: call.id, deviceId: 'bob-tab' }), error => error.code === 'CONFLICT');
+  await assert.rejects(service.heartbeatScreen('alice', { callId: call.id, deviceId: 'wrong-tab', leaseId }), error => error.code === 'FORBIDDEN');
+  await assert.rejects(service.releaseScreen('bob', { callId: call.id, deviceId: 'bob-tab', leaseId }), error => error.code === 'FORBIDDEN');
+  advance(7000);
+  const renewed = await service.heartbeatScreen('alice', { callId: call.id, deviceId: 'alice-tab', leaseId });
+  assert.ok(new Date(renewed.screenShare.expiresAt) > new Date(claimed.screenShare.expiresAt));
+  advance(21000);
+  await assert.rejects(service.heartbeatScreen('alice', { callId: call.id, deviceId: 'alice-tab', leaseId }), error => error.code === 'CONFLICT');
+  const replacement = await service.claimScreen('bob', { callId: call.id, deviceId: 'bob-tab' });
+  await service.sweep();
+  assert.notEqual(replacement.screenShare.leaseId, leaseId);
+  assert.equal((await service.releaseScreen('alice', { callId: call.id, deviceId: 'alice-tab', leaseId })).screenShare.leaseId, replacement.screenShare.leaseId);
+  assert.ok(deleted.length > 0);
+});
+
+test('group departure rotates listener rooms and screen leases; SFU deletion failures remain durable and retried', async () => {
+  const { service, livekit, retired, deleted, advance } = setup({ group: true, enabled: true });
+  const call = await start(service); await accept(service, call.id); await accept(service, call.id, 'charlie', 'charlie-tab');
+  await service.claimScreen('bob', { callId: call.id, deviceId: 'bob-tab' });
+  livekit.deleteRoom = async () => { throw new Error('synthetic SFU unavailable'); };
+  const changed = await service.leave('bob', { callId: call.id, deviceId: 'bob-tab' });
+  await service.sweep();
+  assert.equal(changed.status, 'ACTIVE'); assert.equal(changed.mediaVersion, 1); assert.equal(changed.screenShare, null);
+  assert.notEqual(changed.roomName, call.roomName);
+  assert.equal(retired.size, 2);
+  assert.ok([...retired.values()].every(row => row.attempts === 1));
+  livekit.deleteRoom = async roomName => deleted.push(roomName);
+  advance(6000); await service.sweep();
+  assert.equal(deleted.length, 2);
+  assert.ok([...retired.values()].every(row => row.attempts === 0));
+  assert.equal(retired.size, 2, 'Successful cleanup retains tombstones against refreshed old tokens');
+});
+
+test('slow SFU cleanup does not delay authoritative departure or shutdown ownership', { timeout: 2000 }, async () => {
+  const { service, livekit } = setup({ group: true, enabled: true });
+  const call = await start(service); await accept(service, call.id);
+  let release;
+  const blocked = new Promise(resolve => { release = resolve; });
+  livekit.deleteRoom = async () => blocked;
+  try {
+    const changed = await service.leave('bob', { callId: call.id, deviceId: 'bob-tab' });
+    assert.equal(changed.mediaVersion, 1);
+    let closed = false;
+    const closing = service.close().then(() => { closed = true; });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(closed, false, 'Graceful shutdown tracks its outstanding cleanup request');
+    release(); await closing;
+    assert.equal(closed, true);
+  } finally { release(); await service.close(); }
+});
+
+test('disconnecting the screen holder releases sharing immediately without ending the main call grace', async () => {
+  const { service } = setup({ group: true, enabled: true });
+  const call = await start(service); await accept(service, call.id);
+  await service.attachCall('alice', call.id, 'alice-tab', 'alice-socket');
+  await service.claimScreen('alice', { callId: call.id, deviceId: 'alice-tab' });
+  await service.disconnected('alice-socket');
+  const current = await service.getCall('bob', call.id);
+  assert.equal(current.screenShare, null); assert.equal(current.status, 'ACTIVE');
+  service.close();
+});
+
+test('ICE signaling preserves bounded username fragments for restart-generation guards', async () => {
+  const { service } = setup(); const call = await start(service); await accept(service, call.id);
+  const input = { callId: call.id, deviceId: 'alice-tab', toUserId: 'bob', candidate: { candidate: 'candidate:1 1 UDP 1 127.0.0.1 5000 typ host', sdpMid: '0', sdpMLineIndex: 0, usernameFragment: 'restart_ufrag' } };
+  assert.equal((await service.validateSignal('alice', input)).payload.candidate.usernameFragment, 'restart_ufrag');
+  for (const usernameFragment of [42, 'a'.repeat(129)]) await assert.rejects(service.validateSignal('alice', { ...input, candidate: { ...input.candidate, usernameFragment } }), error => error.code === 'INVALID_INPUT');
 });

@@ -2,7 +2,7 @@ name: Application checks (no deployment)
 on:
   pull_request:
   push:
-    branches: [main, 'codex/**']
+    branches: [main, 'codex/**', 'fix/**']
 permissions:
   contents: read
 concurrency:
@@ -50,7 +50,38 @@ jobs:
       - run: node --test tests/runtime.integration.cjs
       - run: node --test tests/fixtures.integration.cjs
       - run: node --test tests/media-api.integration.cjs
+      - run: node --test tests/call-media.integration.cjs
+      - run: node --test tests/inbox.integration.cjs
+      - run: node --test tests/group-calls.integration.cjs
       - run: npm run build
       - run: node scripts/check-build-artifacts.js
       - name: Check production dependencies for high or critical advisories
         run: npm audit --omit=dev --audit-level=high
+  sfu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      # The SFU test imports pure JS policy/signing modules only.
+      - run: npm ci --ignore-scripts
+      - name: Real local SFU publication and room isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOGA_SFU_TOOLS="$(mktemp -d)"
+          docker run --rm -d --name goga-livekit-validation --cpus=1 --memory=512m \
+            -p 127.0.0.1:17880:17880 -p 127.0.0.1:17881:17881 -p 127.0.0.1:17882:17882/udp \
+            --mount "type=bind,source=$PWD/ops/livekit.local-test.yaml,target=/etc/livekit-test.yaml,readonly" \
+            livekit/livekit-server:v1.13.11 --config /etc/livekit-test.yaml
+          trap 'docker stop goga-livekit-validation >/dev/null' EXIT
+          curl --retry 10 --retry-delay 1 --retry-connrefused --fail http://127.0.0.1:17880/
+          docker run --rm --network container:goga-livekit-validation --cpus=2 --memory=1g \
+            --mount "type=bind,source=$PWD,target=/workspace,readonly" \
+            --mount "type=bind,source=$GOGA_SFU_TOOLS,target=/tools" \
+            -e GOGA_LOCAL_SFU_TEST=true -e GOGA_RTC_NODE_TEST_MODULE=/tools/node_modules/@livekit/rtc-node \
+            -w /workspace node:24-bookworm-slim sh -c \
+            'npm install --prefix /tools --no-audit --no-fund @livekit/rtc-node@1.2.2 && node --test tests/livekit-sfu.integration.cjs'

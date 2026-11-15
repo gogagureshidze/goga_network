@@ -8,11 +8,17 @@ const activeStatuses = ['RINGING', 'ACTIVE'];
 const denied = () => { throw new ChatError('FORBIDDEN', 'Room is unavailable', 403); };
 const invalid = message => { throw new ChatError('INVALID_INPUT', message); };
 const roomId = value => { if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(value)) invalid('Invalid room'); return value; };
-const device = value => { if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)) invalid('A valid device identifier is required'); return value; };
+const device = value => { if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(value)) invalid('A valid device identifier is required'); return value; };
 const versionValue = value => { if (!Number.isSafeInteger(value) || value < 0) invalid('Invalid playback version'); return value; };
 
 function createRoomService({ prisma, chat, now = Date.now, livekit, env = process.env, logger = console }) {
-  const groupLimit = Math.min(4, Math.max(2, Number(env.GROUP_CALL_MAX_PARTICIPANTS) || 4));
+  const groupLimit = Math.min(3, Math.max(2, Math.trunc(Number(env.GROUP_CALL_MAX_PARTICIPANTS)) || 3));
+  const screenLeaseMs = 20_000;
+  // Prisma's relation reads must observe commits made by a previous lock holder.
+  // MySQL REPEATABLE READ can otherwise retain a snapshot from before the wait.
+  const transaction = callback => prisma.$transaction(callback, { isolationLevel: 'ReadCommitted' });
+  const configuredRetirement = Number(env.LIVEKIT_RETIRED_ROOM_TTL_MS);
+  const retirementMs = Number.isFinite(configuredRetirement) && configuredRetirement > 0 ? Math.max(15 * 60_000, configuredRetirement) : 24 * 60 * 60_000;
   const maxDuration = Math.min(4 * 60 * 60_000, Math.max(60_000, Number(env.CALL_MAX_DURATION_MS) || 2 * 60 * 60_000));
   const watchHosts = new Set((env.WATCH_ALLOWED_HOSTS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean));
   const watchMembers = new Map(); // party -> socket -> user; authoritative playback is persisted.
@@ -21,10 +27,18 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
   let publish = async () => {};
   let revoke = async () => {};
   let sweeping = false;
+  let closed = false;
+  let mediaCleanup = null;
   let callCursor = null;
   let partyCursor = null;
   const timestamp = () => new Date(now());
-  const callView = call => ({ ...call, transport: call.conversation?.kind === 'GROUP' ? 'livekit' : 'p2p', serverTime: now() });
+  const callView = call => {
+    const { screenRoomName: _privateScreenRoom, screenLeaseId, screenUserId, screenDeviceId, screenExpiresAt, ...publicCall } = call;
+    return { ...publicCall, mediaVersion: call.mediaVersion || 0, screenVersion: call.screenVersion || 0,
+      screenShare: screenLeaseId && new Date(screenExpiresAt).getTime() > now()
+        ? { leaseId: screenLeaseId, version: call.screenVersion, userId: screenUserId, deviceId: screenDeviceId, expiresAt: screenExpiresAt } : null,
+      transport: call.conversation?.kind === 'GROUP' ? 'livekit' : 'p2p', serverTime: now() };
+  };
   const partyView = party => ({ ...party, serverTime: now(), participants: [...new Set([...(watchMembers.get(party.id)?.values() || [])])] });
   const groupEnabled = () => env.ENABLE_GROUP_CALLS === 'true' && env.GROUP_CALL_SECURITY_REVIEWED === 'true' && !!livekit;
   const connectionKey = (callId, userId, deviceId) => JSON.stringify([callId, userId, deviceId]);
@@ -60,12 +74,10 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
       ? await chat.authorizeConversation(userId, input.conversationId)
       : await chat.getOrCreateDirect(userId, input.receiverId);
     if (conversation.kind === 'GROUP' && !groupEnabled()) throw new ChatError('UNAVAILABLE', 'Group calling requires the configured media server', 503);
-    if (conversation.kind === 'GROUP' && conversation.participantIds.length > groupLimit) invalid(`Group calls are limited to ${groupLimit} members on this server`);
     if (conversation.participantIds.length < 2) invalid('Invite another member first');
-    const call = await prisma.$transaction(async tx => {
+    const call = await transaction(async tx => {
       // Serialize competing initiations on the durable conversation row.
       const currentConversation = await lockConversation(tx, userId, conversation.id);
-      if (currentConversation.kind === 'GROUP' && currentConversation.participantIds.length > groupLimit) invalid(`Group calls are limited to ${groupLimit} members on this server`);
       if (currentConversation.participantIds.length < 2) invalid('Invite another member first');
       const existing = await tx.callSession.findFirst({ where: { conversationId: conversation.id, status: { in: activeStatuses }, expiresAt: { gt: timestamp() } } });
       if (existing) throw new ChatError('CONFLICT', 'This conversation already has a call', 409);
@@ -79,7 +91,7 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
   }
   async function lockCall(tx, call) {
     // Same row lock also coordinates respond/leave/expiry in concurrent requests.
-    await tx.callSession.update({ where: { id: call.id }, data: { roomName: call.roomName } });
+    await tx.callSession.update({ where: { id: call.id }, data: { mediaVersion: { increment: 0 } } });
     return tx.callSession.findUnique({ where: { id: call.id }, include: callInclude });
   }
   async function respond(userId, input) {
@@ -88,7 +100,7 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     const call = await getCall(userId, input.callId);
     const deviceId = device(input.deviceId);
     if (call.transport === 'livekit' && !groupEnabled()) throw new ChatError('UNAVAILABLE', 'Group calling is disabled', 503);
-    const result = await prisma.$transaction(async tx => {
+    const result = await transaction(async tx => {
       await lockConversation(tx, userId, call.conversationId);
       const current = await lockCall(tx, call);
       if (!activeStatuses.includes(current.status) || new Date(current.expiresAt).getTime() <= now()) denied();
@@ -98,6 +110,9 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
         if (participant.deviceId !== deviceId) throw new ChatError('CONFLICT', 'This call is active on another device', 409);
         if (!input.accept) denied();
         return current;
+      }
+      if (input.accept && call.transport === 'livekit' && current.participants.filter(member => member.status === 'JOINED').length >= groupLimit) {
+        throw new ChatError('CONFLICT', `This call already has ${groupLimit} participants`, 409);
       }
       await tx.callParticipant.update({ where: { callId_userId: { callId: call.id, userId } }, data: input.accept
         ? { status: 'JOINED', joinedAt: timestamp(), leftAt: null, deviceId }
@@ -114,8 +129,18 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     return callView(result);
   }
   async function endInTransaction(tx, call, status) {
+    if (call.conversation?.kind === 'GROUP') {
+      await retireRoom(tx, call.id, call.roomName);
+      await retireRoom(tx, call.id, call.screenRoomName);
+    }
     await tx.callParticipant.updateMany({ where: { callId: call.id, status: { in: ['JOINED', 'INVITED'] } }, data: { status: 'LEFT', leftAt: timestamp() } });
-    await tx.callSession.update({ where: { id: call.id }, data: { status, endedAt: timestamp() } });
+    await tx.callSession.update({ where: { id: call.id }, data: { status, endedAt: timestamp(), ...clearScreen(), screenVersion: { increment: 1 } } });
+  }
+
+  const clearScreen = () => ({ screenLeaseId: null, screenRoomName: null, screenUserId: null, screenDeviceId: null, screenExpiresAt: null });
+  async function retireRoom(tx, callId, roomName) {
+    if (!roomName) return;
+    await tx.retiredMediaRoom.upsert({ where: { roomName }, create: { roomName, callId, retainUntil: new Date(now() + retirementMs), retryAt: timestamp() }, update: {} });
   }
   async function mediaOperation(operation) {
     try { await operation(); }
@@ -125,7 +150,28 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     }
   }
   async function closeMediaRoom(call) {
-    if (!activeStatuses.includes(call.status) && call.conversation?.kind === 'GROUP' && livekit) await mediaOperation(() => livekit.deleteRoom(call.roomName));
+    if (call.conversation?.kind === 'GROUP') void scheduleMediaCleanup();
+  }
+  function scheduleMediaCleanup() {
+    if (!livekit) return Promise.resolve();
+    if (!mediaCleanup) mediaCleanup = cleanupRetiredRooms()
+      .catch(error => reportException(logger, 'rooms.media_cleanup_queue_failed', error, { phase: 'media-cleanup' }))
+      .finally(() => { mediaCleanup = null; });
+    return mediaCleanup;
+  }
+  async function cleanupRetiredRooms() {
+    if (!livekit) return;
+    const retired = await prisma.retiredMediaRoom.findMany({ where: { retryAt: { lte: timestamp() } }, orderBy: { retryAt: 'asc' }, take: 5 });
+    for (const room of retired) {
+      try {
+        await mediaOperation(() => livekit.deleteRoom(room.roomName));
+        if (new Date(room.retainUntil).getTime() <= now()) await prisma.retiredMediaRoom.deleteMany({ where: { roomName: room.roomName } });
+        else await prisma.retiredMediaRoom.updateMany({ where: { roomName: room.roomName }, data: { retryAt: new Date(now() + 60_000), attempts: 0, lastErrorCode: null } });
+      } catch (error) {
+        await prisma.retiredMediaRoom.updateMany({ where: { roomName: room.roomName }, data: { attempts: { increment: 1 }, retryAt: new Date(now() + Math.min(60_000, 5000 * 2 ** Math.min(room.attempts, 4))), lastErrorCode: 'MEDIA_DELETE_FAILED' } });
+        reportException(logger, 'rooms.retired_media_cleanup_failed', error, { phase: 'media-cleanup' });
+      }
+    }
   }
   async function leave(userId, input) {
     object(input);
@@ -135,20 +181,128 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     return leaveInternal(call, userId);
   }
   async function leaveInternal(call, userId) {
-    const result = await prisma.$transaction(async tx => {
+    const result = await transaction(tx => leaveInTransaction(tx, call, userId));
+    if (call.conversation?.kind === 'GROUP') await closeMediaRoom(result);
+    return callView(result);
+  }
+  async function leaveInTransaction(tx, call, userId) {
       await tx.conversation.update({ where: { id: call.conversationId }, data: { updatedAt: timestamp() } });
       const current = await lockCall(tx, call);
       if (!activeStatuses.includes(current.status)) return current;
+      const departing = current.participants.find(member => member.userId === userId);
       await tx.callParticipant.updateMany({ where: { callId: call.id, userId, status: { in: ['JOINED', 'INVITED'] } }, data: { status: 'LEFT', leftAt: timestamp() } });
       const remaining = current.participants.filter(member => member.userId !== userId && member.status === 'JOINED');
       if (call.conversation?.kind !== 'GROUP' || !remaining.length || (current.status === 'RINGING' && current.initiatorId === userId)) await endInTransaction(tx, current, 'ENDED');
+      else if (departing?.status === 'JOINED') {
+        // Self-hosted LiveKit does not revoke already-issued/refreshed tokens.
+        // Rotate the room for remaining listeners, never reuse an old epoch.
+        await retireRoom(tx, current.id, current.roomName);
+        await retireRoom(tx, current.id, current.screenRoomName);
+        await tx.callSession.update({ where: { id: current.id }, data: { roomName: `goga-${randomUUID()}`, mediaVersion: { increment: 1 }, screenVersion: { increment: 1 }, ...clearScreen() } });
+      }
       return tx.callSession.findUnique({ where: { id: call.id }, include: callInclude });
+  }
+  // Internal only: invoke from the verified account-deletion webhook, never a
+  // socket handler. Keep the roster until retired room names are durable.
+  async function deleteAccountUser(userId) {
+    if (typeof userId !== 'string' || !userId || userId.length > 191) invalid('Invalid account');
+    const result = await transaction(async tx => {
+      // The exclusive parent lock also blocks new CallParticipant FK inserts.
+      // Releasing it only after deletion closes the revoke-then-delete race.
+      const locked = await tx.user.updateMany({ where: { id: userId }, data: { id: userId } });
+      if (!locked.count) return { count: 0, calls: [] };
+      const calls = await tx.callSession.findMany({ where: { status: { in: activeStatuses },
+        participants: { some: { userId, status: { in: ['JOINED', 'INVITED'] } } } }, orderBy: { id: 'asc' }, include: callInclude });
+      const changed = [];
+      for (const call of calls) changed.push(await leaveInTransaction(tx, call, userId));
+      const deleted = await tx.user.deleteMany({ where: { id: userId } });
+      return { count: deleted.count, calls: changed };
     });
-    if (call.conversation?.kind === 'GROUP' && livekit) {
-      if (activeStatuses.includes(result.status)) await mediaOperation(() => livekit.removeParticipant(call.roomName, userId));
-      else await closeMediaRoom(result);
+    void scheduleMediaCleanup();
+    for (const call of result.calls) {
+      await revoke(userId, { callId: call.id, conversationId: call.conversationId });
+      await publish(call.conversationId, 'callUpdated', { call: callView(call) });
     }
+    return { count: result.count };
+  }
+  async function screenMutation(userId, input, action) {
+    object(input);
+    const deviceId = device(input.deviceId);
+    const call = await authorizeCall(userId, input.callId, deviceId);
+    if (call.transport !== 'livekit') invalid('Group screen sharing requires the media server');
+    if (action !== 'claim') roomId(input.leaseId);
+    const result = await transaction(async tx => {
+      await lockConversation(tx, userId, call.conversationId);
+      const current = await lockCall(tx, call);
+      const member = current.participants.find(participant => participant.userId === userId);
+      if (!activeStatuses.includes(current.status) || new Date(current.expiresAt).getTime() <= now() || member?.status !== 'JOINED' || member.deviceId !== deviceId) denied();
+      const active = current.screenLeaseId && new Date(current.screenExpiresAt).getTime() > now();
+      if (action === 'claim') {
+        if (active) {
+          if (current.screenUserId === userId && current.screenDeviceId === deviceId) return current;
+          throw new ChatError('CONFLICT', 'Another participant is sharing their screen', 409);
+        }
+        await retireRoom(tx, current.id, current.screenRoomName);
+        return tx.callSession.update({ where: { id: current.id }, data: {
+          screenLeaseId: randomUUID(), screenRoomName: `goga-screen-${randomUUID()}`, screenUserId: userId,
+          screenDeviceId: deviceId, screenExpiresAt: new Date(now() + screenLeaseMs), screenVersion: { increment: 1 },
+        }, include: callInclude });
+      }
+      if (current.screenLeaseId !== input.leaseId) {
+        if (action === 'release') return current; // A delayed release cannot terminate its successor.
+        throw new ChatError('CONFLICT', 'Screen sharing ended; start a new share', 409);
+      }
+      if (current.screenUserId !== userId || current.screenDeviceId !== deviceId) denied();
+      if (action === 'heartbeat') {
+        if (!active) throw new ChatError('CONFLICT', 'Screen sharing expired; start a new share', 409);
+        return tx.callSession.update({ where: { id: current.id }, data: { screenExpiresAt: new Date(now() + screenLeaseMs) }, include: callInclude });
+      }
+      await retireRoom(tx, current.id, current.screenRoomName);
+      return tx.callSession.update({ where: { id: current.id }, data: { ...clearScreen(), screenVersion: { increment: 1 } }, include: callInclude });
+    });
+    if (action !== 'heartbeat') void scheduleMediaCleanup();
     return callView(result);
+  }
+
+  async function expireScreen(call) {
+    const result = await transaction(async tx => {
+      const current = await lockCall(tx, call);
+      if (!current.screenLeaseId || new Date(current.screenExpiresAt).getTime() > now()) return null;
+      await retireRoom(tx, current.id, current.screenRoomName);
+      return tx.callSession.update({ where: { id: current.id }, data: { ...clearScreen(), screenVersion: { increment: 1 } }, include: callInclude });
+    });
+    if (result) await publish(result.conversationId, 'callUpdated', { call: callView(result) });
+  }
+
+  async function prepareMediaRoom(userId, callId, deviceId, { media = 'main', leaseId } = {}) {
+    if (!['main', 'screen'].includes(media)) invalid('Invalid media room');
+    const authorized = await authorizeCall(userId, callId, device(deviceId));
+    if (authorized.transport !== 'livekit' || !groupEnabled() || typeof livekit.createRoom !== 'function') throw new ChatError('UNAVAILABLE', 'Group media is unavailable', 503);
+    const call = await readCall(callId);
+    let canPublish = true;
+    let roomName = call.roomName;
+    if (media === 'screen') {
+      roomId(leaseId);
+      if (call.screenLeaseId !== leaseId || !call.screenRoomName || new Date(call.screenExpiresAt).getTime() <= now()) throw new ChatError('CONFLICT', 'Screen sharing has ended', 409);
+      roomName = call.screenRoomName;
+      canPublish = call.screenUserId === userId && call.screenDeviceId === deviceId;
+    }
+    let room;
+    try { room = await livekit.createRoom({ name: roomName, maxParticipants: groupLimit, emptyTimeout: 60, departureTimeout: 30 }); }
+    catch (error) {
+      reportException(logger, 'rooms.media_prepare_failed', error, { phase: 'media-prepare' });
+      throw new ChatError('UNAVAILABLE', 'The media server could not prepare the call. Try again shortly.', 503);
+    }
+    if (!room || room.maxParticipants !== groupLimit) throw new ChatError('UNAVAILABLE', 'Media room capacity could not be verified', 503);
+    // An API request may overlap departure/lease expiry. Never return credentials
+    // for a room that stopped being authoritative while creation was pending.
+    await authorizeCall(userId, callId, deviceId);
+    const current = await readCall(callId);
+    if (current.roomName !== call.roomName || current.mediaVersion !== call.mediaVersion || (media === 'screen' &&
+      (current.screenLeaseId !== leaseId || current.screenRoomName !== roomName || new Date(current.screenExpiresAt).getTime() <= now()))) {
+      throw new ChatError('CONFLICT', 'Call media changed; refresh the call state', 409);
+    }
+    return { call: callView(current), roomName, canPublish, media, leaseId: media === 'screen' ? leaseId : null };
   }
   async function validateSignal(userId, input) {
     object(input);
@@ -159,6 +313,19 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     if (!recipient) denied();
     await chat.authorizeConversation(input.toUserId, call.conversationId);
     const payload = { callId: call.id, fromUserId: userId, fromDeviceId: input.deviceId, toDeviceId: recipient.deviceId };
+    if (input.mediaState !== undefined) {
+      // Track replacement does not produce a new remote track or an SDP change.
+      // Relay explicit presentation state through the same accepted-device and
+      // current conversation checks as ICE/SDP, never a client-selected room.
+      object(input.mediaState);
+      const keys = ['sequence', 'cameraEnabled', 'screenSharing', 'screenAudio', 'microphoneMuted'];
+      if (Object.keys(input.mediaState).some(key => !keys.includes(key)) ||
+          !Number.isSafeInteger(input.mediaState.sequence) || input.mediaState.sequence < 0 ||
+          keys.slice(1).some(key => typeof input.mediaState[key] !== 'boolean') ||
+          (input.mediaState.screenAudio && !input.mediaState.screenSharing) ||
+          input.ready !== undefined || input.description !== undefined || input.candidate !== undefined) invalid('Invalid media state');
+      payload.mediaState = Object.fromEntries(keys.map(key => [key, input.mediaState[key]]));
+    }
     if (input.ready === true) payload.ready = true;
     if (input.description !== undefined) {
       object(input.description);
@@ -169,11 +336,14 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     }
     if (input.candidate !== undefined) {
       object(input.candidate);
-      const { candidate, sdpMid, sdpMLineIndex } = input.candidate;
-      if (typeof candidate !== 'string' || candidate.length > 4000 || (sdpMid != null && (typeof sdpMid !== 'string' || sdpMid.length > 64)) || (sdpMLineIndex != null && (!Number.isSafeInteger(sdpMLineIndex) || sdpMLineIndex < 0 || sdpMLineIndex > 100))) invalid('Invalid ICE candidate');
-      payload.candidate = { candidate, sdpMid: sdpMid ?? null, sdpMLineIndex: sdpMLineIndex ?? null };
+      const { candidate, sdpMid, sdpMLineIndex, usernameFragment } = input.candidate;
+      if (typeof candidate !== 'string' || candidate.length > 4000 || (sdpMid != null && (typeof sdpMid !== 'string' || sdpMid.length > 64)) ||
+          (sdpMLineIndex != null && (!Number.isSafeInteger(sdpMLineIndex) || sdpMLineIndex < 0 || sdpMLineIndex > 100)) ||
+          (usernameFragment != null && (typeof usernameFragment !== 'string' || usernameFragment.length > 128))) invalid('Invalid ICE candidate');
+      payload.candidate = { candidate, sdpMid: sdpMid ?? null, sdpMLineIndex: sdpMLineIndex ?? null,
+        ...(usernameFragment !== undefined ? { usernameFragment } : {}) };
     }
-    if (!payload.ready && !payload.description && !payload.candidate) invalid('Empty signal');
+    if (!payload.ready && !payload.description && !payload.candidate && !payload.mediaState) invalid('Empty signal');
     return { call, payload, toUserId: input.toUserId };
   }
   function validateSource(sourceUrl) {
@@ -198,7 +368,7 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     const sourceUrl = validateSource(input.sourceUrl);
     const title = input.title === undefined ? 'Watch party' : input.title;
     if (typeof title !== 'string' || !title.trim() || title.length > 100) invalid('Invalid title');
-    const party = await prisma.$transaction(async tx => {
+    const party = await transaction(async tx => {
       await lockConversation(tx, userId, conversation.id);
       const existing = await tx.watchParty.findFirst({ where: { conversationId: conversation.id, endedAt: null } });
       if (existing) throw new ChatError('CONFLICT', 'This conversation already has a watch party', 409);
@@ -219,7 +389,7 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     object(input);
     const initial = await getWatch(userId, input.partyId);
     const version = versionValue(input.version);
-    const result = await prisma.$transaction(async tx => {
+    const result = await transaction(async tx => {
     await lockConversation(tx, userId, initial.conversationId);
     const party = await tx.watchParty.findUnique({ where: { id: initial.id } });
     if (!party || party.endedAt) denied();
@@ -251,7 +421,7 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
   }
   async function endWatch(userId, input) {
     const initial = await getWatch(userId, input.partyId);
-    const result = await prisma.$transaction(async tx => {
+    const result = await transaction(async tx => {
       await lockConversation(tx, userId, initial.conversationId);
       const party = await tx.watchParty.findUnique({ where: { id: initial.id } });
       if (!party || party.endedAt || party.hostId !== userId) denied();
@@ -298,6 +468,7 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     return call;
   }
   async function disconnected(socketId) {
+    if (closed) return;
     for (const [partyId, members] of watchMembers) {
       if (!members.delete(socketId)) continue;
       if (!members.size) watchMembers.delete(partyId);
@@ -320,6 +491,18 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
         } catch (error) { reportException(logger, 'rooms.disconnect_cleanup_failed', error, { phase: 'disconnect-grace' }); }
       }, 20_000);
       timer.unref?.(); disconnectTimers.set(key, timer);
+      // Release screen publication immediately when its accepted device loses
+      // its last socket. The main call retains the existing reconnect grace.
+      try {
+        const current = await readCall(callId);
+        if (closed) return;
+        if (current.screenLeaseId && current.screenUserId === userId && current.screenDeviceId === deviceId) {
+          const changed = await screenMutation(userId, { callId, deviceId, leaseId: current.screenLeaseId }, 'release');
+          await publish(changed.conversationId, 'callUpdated', { call: changed });
+        }
+      } catch (error) {
+        if (error.code !== 'FORBIDDEN') reportException(logger, 'rooms.screen_disconnect_cleanup_failed', error, { phase: 'disconnect' });
+      }
     }
   }
   async function onMembershipRevoked(conversationId, userId) {
@@ -350,14 +533,14 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
     return { calls: changedCalls, parties: changedParties };
   }
   async function sweep() {
-    if (sweeping) return;
+    if (sweeping || closed) return;
     sweeping = true;
     try {
       const calls = await prisma.callSession.findMany({ where: { status: { in: activeStatuses } }, include: callInclude, take: 100, orderBy: { id: 'asc' }, ...(callCursor ? { cursor: { id: callCursor }, skip: 1 } : {}) });
       callCursor = calls.length === 100 ? calls[calls.length - 1].id : null;
       for (const call of calls) {
         if (new Date(call.expiresAt).getTime() <= now()) {
-          const result = await prisma.$transaction(async tx => {
+          const result = await transaction(async tx => {
             const current = await lockCall(tx, call);
             if (activeStatuses.includes(current.status) && new Date(current.expiresAt).getTime() <= now()) await endInTransaction(tx, current, current.status === 'RINGING' ? 'MISSED' : 'ENDED');
             return tx.callSession.findUnique({ where: { id: call.id }, include: callInclude });
@@ -370,7 +553,9 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
           try { await chat.authorizeConversation(member.userId, call.conversationId); }
           catch (error) { if (error.code === 'FORBIDDEN') await onMembershipRevoked(call.conversationId, member.userId); else throw error; }
         }
+        if (call.screenLeaseId && new Date(call.screenExpiresAt).getTime() <= now()) await expireScreen(call);
       }
+      await scheduleMediaCleanup();
       const parties = await prisma.watchParty.findMany({ where: { endedAt: null }, take: 100, orderBy: { id: 'asc' }, ...(partyCursor ? { cursor: { id: partyCursor }, skip: 1 } : {}) });
       partyCursor = parties.length === 100 ? parties[parties.length - 1].id : null;
       for (const party of parties) {
@@ -388,8 +573,12 @@ function createRoomService({ prisma, chat, now = Date.now, livekit, env = proces
       }
     } finally { sweeping = false; }
   }
-  function close() { for (const timer of disconnectTimers.values()) clearTimeout(timer); disconnectTimers.clear(); callConnections.clear(); watchMembers.clear(); }
-  return { initiate, respond, leave, getCall, authorizeCall, validateSignal, createWatch, getWatch, controlWatch, endWatch, sync, joinWatch, leaveWatch, attachCall, disconnected, onMembershipRevoked, sweep, close,
+  async function close() { closed = true; for (const timer of disconnectTimers.values()) clearTimeout(timer); disconnectTimers.clear(); callConnections.clear(); watchMembers.clear(); await mediaCleanup; }
+  return { initiate, respond, leave, getCall, authorizeCall, prepareMediaRoom,
+    claimScreen: (userId, input) => screenMutation(userId, input, 'claim'),
+    heartbeatScreen: (userId, input) => screenMutation(userId, input, 'heartbeat'),
+    releaseScreen: (userId, input) => screenMutation(userId, input, 'release'),
+    validateSignal, createWatch, getWatch, controlWatch, endWatch, sync, joinWatch, leaveWatch, attachCall, disconnected, onMembershipRevoked, deleteAccountUser, sweep, close,
     setPublisher(fn) { publish = fn; }, setRevoker(fn) { revoke = fn; } };
 }
 
@@ -411,6 +600,20 @@ function createRoomRegistrar(service) {
       return callUpdated(call);
     });
     handle('call:leave', 'mutation', async input => callUpdated(await service.leave(userId, input)));
+    handle('call:screenClaim', 'mutation', async input => {
+      const call = await service.claimScreen(userId, input);
+      await callUpdated(call); return { call, screenShare: call.screenShare };
+    });
+    handle('call:screenHeartbeat', 'read', async input => {
+      // Renewed expiry reaches all three participants so subscribers fail closed
+      // on a genuinely stale lease rather than the original twenty-second date.
+      const call = await service.heartbeatScreen(userId, input);
+      await callUpdated(call); return { call, screenShare: call.screenShare };
+    });
+    handle('call:screenRelease', 'mutation', async input => {
+      const call = await service.releaseScreen(userId, input);
+      await callUpdated(call); return { call, screenShare: call.screenShare };
+    });
     handle('call:state', 'read', async input => {
       const call = await service.getCall(userId, input.callId);
       const participant = call.participants.find(member => member.userId === userId);

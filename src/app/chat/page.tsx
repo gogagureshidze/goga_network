@@ -93,7 +93,6 @@ export default function Messenger() {
             lastMessage: "Start a conversation!",
           }));
           setFollowers(formattedFollowers);
-          if (formattedFollowers.length > 0) setSelectedFriend((current) => current || (window.innerWidth >= 768 ? formattedFollowers[0] : null));
         } else {
           setFollowers([]);
         }
@@ -111,7 +110,7 @@ export default function Messenger() {
   // Clear messages when switching friends
   useEffect(() => {
     setMessages([]);
-  }, [selectedFriend]);
+  }, [selectedFriend?.id]);
 
   const handleBack = () => setSelectedFriend(null);
 

@@ -9,7 +9,8 @@ const REQUIRED_SCHEMA = Object.freeze({
   ConversationMember: ['conversationId', 'userId', 'role', 'status', 'joinedAt', 'lastReadMessageId'],
   MessageReaction: ['messageId', 'userId', 'emoji'],
   MediaAsset: ['id', 'ownerId', 'conversationId', 'publicId', 'format', 'bytes', 'durationMs', 'waveform', 'createdAt', 'expiresAt'],
-  CallSession: ['id', 'conversationId', 'initiatorId', 'kind', 'status', 'roomName', 'createdAt', 'startedAt', 'endedAt', 'expiresAt'],
+  CallSession: ['id', 'conversationId', 'initiatorId', 'kind', 'status', 'roomName', 'mediaVersion', 'screenVersion', 'screenLeaseId', 'screenRoomName', 'screenUserId', 'screenDeviceId', 'screenExpiresAt', 'createdAt', 'startedAt', 'endedAt', 'expiresAt'],
+  RetiredMediaRoom: ['roomName', 'callId', 'createdAt', 'retainUntil', 'retryAt', 'attempts', 'lastErrorCode'],
   CallParticipant: ['callId', 'userId', 'status', 'joinedAt', 'leftAt', 'deviceId'],
   WatchParty: ['id', 'conversationId', 'hostId', 'sourceUrl', 'title', 'collaborative', 'playing', 'position', 'version', 'updatedAt', 'createdAt', 'endedAt'],
 });

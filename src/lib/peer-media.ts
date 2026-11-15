@@ -46,3 +46,98 @@ export async function prepareAnswerVideo(peer: RTCPeerConnection, stream: MediaS
   await transceiver.sender.replaceTrack(track);
   return isCurrent();
 }
+
+export type PeerMediaState = {
+  sequence: number;
+  cameraEnabled: boolean;
+  screenSharing: boolean;
+  screenAudio: boolean;
+  microphoneMuted: boolean;
+};
+
+// Kept outside the component so a remount on the accepted device cannot send a
+// lower revision than the previous instance. Reconnect announcements also advance.
+let lastMediaSequence = 0;
+export function nextMediaSequence(now = Date.now()) {
+  lastMediaSequence = Math.max(lastMediaSequence + 1, now);
+  return lastMediaSequence;
+}
+
+export function acceptPeerMediaState(previous: PeerMediaState | null, next: PeerMediaState) {
+  return !previous || next.sequence > previous.sequence ? next : previous;
+}
+
+export function showPeerVideo(state: PeerMediaState | null, receivingVideo: boolean, signalingConnected = true) {
+  // Older clients do not publish media state. Continue their live video during
+  // additive rollout; once state arrives it remains authoritative, even offline.
+  return signalingConnected && receivingVideo && (!state || state.screenSharing || state.cameraEnabled);
+}
+
+/** Request another browser tab, never loop desktop call output back to the peer.
+ * Browsers may ignore these hints. The returned surface is checked separately. */
+export const screenCaptureOptions: DisplayMediaStreamOptions & {
+  selfBrowserSurface: "exclude";
+  systemAudio: "exclude";
+  windowAudio: "exclude";
+} = {
+  video: { frameRate: { ideal: 15, max: 30 } },
+  audio: true,
+  selfBrowserSurface: "exclude",
+  systemAudio: "exclude",
+  windowAudio: "exclude",
+};
+
+export function safeScreenAudio(stream: MediaStream) {
+  // Whole-desktop/window loopback can contain the remote participant's voice.
+  // Tab audio is safe when a separate content tab is chosen. Unknown capture
+  // surfaces fail closed; their video can still be shared without sound.
+  if (stream.getVideoTracks()[0]?.getSettings().displaySurface !== "browser") return null;
+  return stream.getAudioTracks().find((track) => track.readyState === "live") || null;
+}
+
+/** Mix only local microphone + captured content into the existing audio sender.
+ * Nothing connects to context.destination: local monitoring would cause echo.
+ * Mono output matches our mono microphone constraint, avoiding renegotiation. */
+export function createCallAudioMixer(microphone: MediaStreamTrack, context = new AudioContext()) {
+  const destination = context.createMediaStreamDestination();
+  destination.channelCount = 1;
+  destination.channelCountMode = "explicit";
+  const limiter = context.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.knee.value = 6;
+  limiter.ratio.value = 12;
+  limiter.connect(destination);
+  let micSource: MediaStreamAudioSourceNode | null = null;
+  let displaySource: MediaStreamAudioSourceNode | null = null;
+  let disposed = false;
+  const connect = (track: MediaStreamTrack) => {
+    if (disposed) throw new Error("Call audio has ended.");
+    const source = context.createMediaStreamSource(new MediaStream([track]));
+    source.connect(limiter);
+    return source;
+  };
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    micSource?.disconnect(); displaySource?.disconnect(); limiter.disconnect(); destination.disconnect();
+    destination.stream.getTracks().forEach((track) => track.stop());
+    void context.close().catch(() => {});
+  };
+  try { micSource = connect(microphone); } catch (error) { dispose(); throw error; }
+  return {
+    track: destination.stream.getAudioTracks()[0],
+    async resume() {
+      await context.resume();
+      if (disposed || context.state !== "running") throw new Error("Shared audio could not start. Stop sharing and try again.");
+    },
+    setMicrophone(track: MediaStreamTrack) {
+      const replacement = connect(track);
+      micSource?.disconnect(); micSource = replacement;
+    },
+    setDisplay(track: MediaStreamTrack | null) {
+      const replacement = track ? connect(track) : null;
+      displaySource?.disconnect(); displaySource = replacement;
+    },
+    dispose,
+  };
+}

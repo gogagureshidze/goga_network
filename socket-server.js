@@ -38,7 +38,7 @@ async function main({ env = process.env, PrismaClientConstructor = PrismaClient,
     if (env.ENABLE_GROUP_CALLS === 'true') {
       if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) throw new Error('Group calls require LiveKit server configuration');
       const { RoomServiceClient } = require('livekit-server-sdk');
-      livekit = new RoomServiceClient(env.LIVEKIT_URL.replace(/^ws/, 'http'), env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
+      livekit = new RoomServiceClient(env.LIVEKIT_URL.replace(/^ws/, 'http'), env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET, { requestTimeout: 5, failover: false });
     }
     if (env.NODE_ENV !== 'production') developmentGuard(env);
     phase = 'database-preflight';

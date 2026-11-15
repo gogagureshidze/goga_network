@@ -1,0 +1,13 @@
+# Disposable loopback-only SFU tests, never a production configuration.
+# Publish these ports on 127.0.0.1 only when running in Docker.
+port: 17880
+bind_addresses: ["0.0.0.0"]
+rtc:
+  tcp_port: 17881
+  udp_port: 17882
+  use_external_ip: false
+  enable_loopback_candidate: true
+keys:
+  goga-local-test: goga-local-test-secret-not-for-production-00000000
+logging:
+  level: warn

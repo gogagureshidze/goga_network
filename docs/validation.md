@@ -1,3 +1,33 @@
+# Calling and inbox validation — 15 November 2026
+
+Candidate branch: `fix/call-screen-audio-fullscreen-camera-state`; working changes remain uncommitted. No push, merge, production access, deployment or production database mutation. Original `Post.tsx` remains unchanged by this work. Earlier validation notes follow as a historical record; this section describes the current candidate.
+
+| Check | Current result |
+| --- | --- |
+| Unit suite | **261 passed**, zero failed/skipped, Node 24. Includes media mixing/cleanup, ICE generation/refresh, privacy, inbox, group leases, delayed cleanup and actual Svix signature verification on the Clerk webhook. |
+| MySQL integration | **25 passed** across seven suites, real Socket.IO/HTTP/FFmpeg and Clerk SDK verification of synthetic signed sessions. Only owned `127.0.0.1:33367/goga_validation`. Includes admission/lease races, account-deletion concurrency, authorized reads/uploads/calls/watch events and durable inbox state. |
+| Real local SFU | **1 passed**, LiveKit 1.13.11 and native RTC SDK 1.2.2 in disposable Docker containers. Three synthetic peers publish cameras/microphones; a remote peer decodes real audio/video frames; unauthorized screen sources stay absent; subscriber-only screen grants hold; fourth participant rejected; retained token accesses only retired screen room. Persistence here is an adapter; the separate MySQL suite validates database authorization/concurrency. |
+| TypeScript / lint | Passed; lint zero errors and six pre-existing warnings. |
+| Production build | Passed Next 16.4.6 / Node 24 with explicitly guarded local database and staging-origin overrides. Existing middleware deprecation and Prisma tracing warnings remain. |
+| Build artifact audit | Passed all 28 traces; no environment/private database/key files or VPS-only media runtime. |
+| Migration / schema | New additive `20261115000000_group_media_leases` applied only to owned development and validation databases; read-only Prisma comparison reports **No difference detected**. No earlier migration edited. |
+| Local runtime | Socket restarted locally; read-only preflight passed 13 tables / 101 columns. Frontend reloaded and reconnected; history/inbox populated. No recurring sweep or conversation error observed. |
+| Whitespace / preserved edits | `git diff --check` passes; `Post.tsx` has no new diff. |
+
+The MySQL race test found and drove a real fix: waiting row-lock transactions under REPEATABLE READ could still see stale participant relations. READ COMMITTED plus existing row locks now admits exactly three participants under concurrent acceptance. Provider cleanup was moved off the acknowledgement path so an SFU outage cannot delay authoritative departure updates.
+
+The final account-deletion review found that cascading CallParticipant deletion could lose the information needed to retire a deleted member's media room. The verified Clerk webhook now atomically locks the user, rotates/retires affected calls, then deletes the account. Real MySQL tests cover the cascade, an overlapping new call and rollback when existing restrictive foreign keys prevent deletion. Signature, malformed-ID and sanitized retry-response tests pass. Existing deletion restrictions remain unchanged; failed deletion requires the established account-retention process and a retried webhook.
+
+Local SFU image digest: `sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20`. The initial Mac-host native client could not reach Docker ICE candidates; the successful test ran clients in the server's container network namespace. An initial assertion expected an immediate rejection, but LiveKit silently drops unauthorized publication requests; the final regression inspects actual server permissions and track inventory repeatedly and rejects any successful publication. It does not count a timeout alone as proof. The new CI SFU job is prepared but has not run on GitHub.
+
+Browser checks this pass used **one real development Clerk account in two tabs**, not two distinct accounts. Direct history, a sent message, immediate inbox ordering/preview, group message delivery into the other tab and durable read state passed. An outgoing call to an explicitly offline fixture exercised microphone capture, mute, expanded/fullscreen controls and hangup. No remote answer or two-way hardware audio is claimed. Activity hiding persisted after refresh; the original enabled preference was restored. Following the final local socket restart, chat reconnected and retained the messages. The isolated database contains 4 users (one development account and three fixtures), 15 posts, 6 follows, 2 stories, 5 comments, 6 conversations, 58 messages and 2 media assets.
+
+**Still release-blocking:** real two-/three-device browser calls, audible tab audio without echo, external TURN UDP/TCP/TLS, mobile/Safari and physical device cleanup, provider outage/room-rotation staging tests, live Hostinger resource capacity, deployed-schema migration rehearsal/backup restoration and explicit release approval. The group flags remain false. The branch enforces three participants per call but does not yet impose an aggregate concurrent-group-call admission budget; establish and enforce that budget before enabling groups on the 1 vCPU host. This pass did not re-exercise every social control in a browser; the earlier social/voice/watch browser evidence below and current regression tests must be supplemented by the staging checklist.
+
+Release commands and service boundaries: [CALL-INBOX-RELEASE.md](CALL-INBOX-RELEASE.md). Group design/testing: [GROUP-CALLS.md](GROUP-CALLS.md). TURN setup/testing: [TURN-VALIDATION.md](TURN-VALIDATION.md).
+
+---
+
 # Validation record — 14 November 2026
 
 Branch: `codex/communications-hardening`. Local application candidate only; no production deployment or infrastructure mutation. The original user change in `src/components/Post.tsx` is preserved separately. No exposed passwords were used.

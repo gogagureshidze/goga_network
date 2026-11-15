@@ -6,14 +6,19 @@ import { createRoomService } from '../../server/rooms';
 import { createCallCredentials, getLiveKitUrl } from '../../server/call-credentials';
 
 let credentials: ReturnType<typeof createCallCredentials> | undefined;
-export function callCredentials() {
-  if (credentials) return credentials;
+let rooms: ReturnType<typeof createRoomService> | undefined;
+export function callRooms() {
+  if (rooms) return rooms;
   let livekit: RoomServiceClient | undefined;
   if (process.env.ENABLE_GROUP_CALLS === 'true' && process.env.GROUP_CALL_SECURITY_REVIEWED === 'true' && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET) {
     const url = getLiveKitUrl().replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
-    livekit = new RoomServiceClient(url, process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET);
+    livekit = new RoomServiceClient(url, process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, { requestTimeout: 5, failover: false });
   }
-  const rooms = createRoomService({ prisma, chat: chatService, livekit });
-  credentials = createCallCredentials({ rooms });
+  rooms = createRoomService({ prisma, chat: chatService, livekit });
+  return rooms;
+}
+export function callCredentials() {
+  if (credentials) return credentials;
+  credentials = createCallCredentials({ rooms: callRooms() });
   return credentials;
 }

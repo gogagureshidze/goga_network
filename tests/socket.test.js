@@ -133,3 +133,137 @@ test('chat client cleanup releases the actual server room and typing without rem
   assert.deepEqual((await chat.authorizeConversation('alice', group.id)).participantIds, ['alice', 'bob']);
   assert.equal((await ack(alice, 'joinConversation', { conversationId: group.id })).ok, true);
 });
+
+test('realtime activity privacy spans devices, online tabs and reconnect snapshots', async t => {
+  const { client, ack, chat } = await setup(t);
+  const direct = await chat.getOrCreateDirect('alice', 'bob');
+  const alice = await client('alice');
+  const tab = await client('alice');
+  const bob = await client('bob');
+  assert.deepEqual((await ack(bob, 'listConversations', {})).presence.sort(), ['alice', 'bob']);
+  const hidden = once(bob, 'presenceChanged');
+  const preference = once(tab, 'activityStatusChanged');
+  assert.equal((await ack(alice, 'setActivityStatus', { showActivityStatus: false })).ok, true);
+  assert.deepEqual((await hidden)[0].presence, ['bob']);
+  assert.deepEqual((await preference)[0], { showActivityStatus: false });
+  assert.deepEqual((await ack(bob, 'getPresence', { conversationId: direct.id })).presence, ['bob']);
+  const shown = once(bob, 'presenceChanged');
+  await ack(tab, 'setActivityStatus', { showActivityStatus: true });
+  assert.deepEqual((await shown)[0].presence.sort(), ['alice', 'bob']);
+  alice.disconnect();
+  assert.deepEqual((await ack(bob, 'getPresence', {})).presence.sort(), ['alice', 'bob']);
+  const offline = once(bob, 'presenceChanged');
+  tab.disconnect();
+  assert.deepEqual((await offline)[0].presence, ['bob']);
+  const reconnect = once(bob, 'presenceChanged');
+  await client('alice');
+  assert.deepEqual((await reconnect)[0].presence.sort(), ['alice', 'bob']);
+});
+
+test('inbox subscriptions expose no outsider presence and removal immediately clears existing snapshots', async t => {
+  const { client, ack, chat, state } = await setup(t, { presenceIntervalMs: 40 });
+  const group = await chat.createGroup('alice', { name: 'Private', memberIds: ['bob'] });
+  await chat.respondInvite('bob', { conversationId: group.id, accept: true });
+  const alice = await client('alice');
+  const bob = await client('bob');
+  const eve = await client('eve');
+  assert.deepEqual((await ack(eve, 'listConversations', {})).presence, []);
+  assert.deepEqual((await ack(bob, 'listConversations', {})).presence.sort(), ['alice', 'bob']);
+  const removed = once(bob, 'presenceChanged');
+  await ack(alice, 'updateMember', { conversationId: group.id, memberId: 'bob', remove: true });
+  assert.deepEqual((await removed)[0].presence, []);
+  await chat.getOrCreateDirect('alice', 'bob');
+  await ack(bob, 'listConversations', {});
+  const blocked = once(bob, 'presenceChanged');
+  state.blocks.push({ id: 1, blockerId: 'alice', blockedId: 'bob' });
+  assert.deepEqual((await blocked)[0].presence, []);
+});
+
+test('an in-flight presence response cannot restore an identity after activity sharing is disabled', async t => {
+  const { client, ack, chat } = await setup(t);
+  await chat.getOrCreateDirect('alice', 'bob');
+  const alice = await client('alice');
+  const bob = await client('bob');
+  await ack(bob, 'listConversations', {});
+  let release, started;
+  const waiting = new Promise(resolve => { started = resolve; });
+  const delayed = new Promise(resolve => { release = resolve; });
+  const visible = chat.visiblePresence;
+  let intercept = true;
+  chat.visiblePresence = async (ids, viewerId) => {
+    const result = await visible(ids, viewerId);
+    if (viewerId === 'bob' && intercept) { intercept = false; started(); await delayed; }
+    return result;
+  };
+  const pending = ack(bob, 'getPresence', {});
+  await waiting;
+  await ack(alice, 'setActivityStatus', { showActivityStatus: false });
+  release();
+  assert.deepEqual((await pending).presence, ['bob']);
+});
+
+test('expired authenticated sessions are removed from realtime presence without a client event', async t => {
+  const { client, ack, chat } = await setup(t, { verifyToken: async token => ({ sub: token, exp: Date.now() / 1000 + (token === 'alice' ? 0.2 : 120) }) });
+  await chat.getOrCreateDirect('alice', 'bob');
+  await client('alice');
+  const bob = await client('bob');
+  assert.ok((await ack(bob, 'listConversations', {})).presence.includes('alice'));
+  const expired = once(bob, 'presenceChanged');
+  assert.deepEqual((await expired)[0].presence, ['bob']);
+});
+
+test('cross-device activity mutations serialize their DB commits and preference broadcasts', async t => {
+  const { client, ack, chat, state } = await setup(t);
+  const alice = await client('alice');
+  const tab = await client('alice');
+  const setter = chat.setActivityStatus;
+  let release, started;
+  const waiting = new Promise(resolve => { started = resolve; });
+  const delayed = new Promise(resolve => { release = resolve; });
+  const calls = [];
+  chat.setActivityStatus = async (id, visible) => {
+    calls.push(visible);
+    const result = await setter(id, visible);
+    if (calls.length === 1) { started(); await delayed; }
+    return result;
+  };
+  const broadcasts = [];
+  tab.on('activityStatusChanged', value => broadcasts.push(value.showActivityStatus));
+  const first = ack(alice, 'setActivityStatus', { showActivityStatus: false });
+  await waiting;
+  const second = ack(tab, 'setActivityStatus', { showActivityStatus: true });
+  // The server event arrives while the first database response is delayed.
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(calls, [false]);
+  release();
+  assert.equal((await first).showActivityStatus, false);
+  assert.equal((await second).showActivityStatus, true);
+  assert.deepEqual(calls, [false, true]);
+  assert.deepEqual(broadcasts, [false, true]);
+  assert.equal(state.users.find(user => user.id === 'alice').showActivityStatus, true);
+  assert.equal((await ack(tab, 'getActivityStatus', {})).showActivityStatus, true);
+});
+
+test('presence subscriptions retain an open older conversation and cap rooms across tabs', async t => {
+  const { client, ack, chat, prisma, app } = await setup(t, { limits: { ...DEFAULT_LIMITS, join: [300, 60_000] } });
+  const direct = await chat.getOrCreateDirect('alice', 'bob');
+  const alice = await client('alice');
+  const tab = await client('alice');
+  await client('bob');
+  await ack(alice, 'joinConversation', { conversationId: direct.id });
+  const groups = [];
+  for (let index = 0; index < 101; index++) groups.push(await prisma.conversation.create({ data: {
+    kind: 'GROUP', name: `Subscription ${index}`, ownerId: 'alice', members: { create: [{ userId: 'alice', role: 'OWNER', status: 'ACTIVE' }] },
+  } }));
+  const listed = await ack(alice, 'listConversations', {});
+  assert.equal(listed.conversations.length, 100);
+  assert.equal(listed.conversations.some(row => row.id === direct.id), false);
+  assert.ok(listed.presence.includes('bob'), 'An older open conversation survives canonical inbox replacement');
+  for (let index = 0; index < 99; index++) assert.equal((await ack(index < 49 ? alice : tab, 'joinConversation', { conversationId: groups[index].id })).ok, true);
+  assert.equal((await ack(tab, 'joinConversation', { conversationId: groups[99].id })).error.code, 'RATE_LIMITED');
+  const subscriptions = new Set([...app.io.sockets.sockets.values()].filter(socket => socket.data.userId === 'alice').flatMap(socket => [...socket.data.presenceConversations]));
+  assert.equal(subscriptions.size, 100);
+  await ack(alice, 'leaveConversationRoom', { conversationId: direct.id });
+  assert.equal((await ack(tab, 'joinConversation', { conversationId: groups[99].id })).ok, true);
+  assert.equal((await ack(alice, 'getPresence', {})).presence.includes('bob'), false);
+});

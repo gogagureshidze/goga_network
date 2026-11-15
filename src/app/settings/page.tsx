@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import {
   User,
@@ -22,7 +22,9 @@ import Image from "next/image";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { togglePrivateAccount } from "../../actions/togglePrivateAction";
-import { toggleActivityStatus } from "../../actions/activityActions";
+import { refreshActivityPrivacy } from "../../actions/activityActions";
+import { emitWithAck, useRealtimeSocket } from "@/hooks/useRealtimeSocket";
+import { observeActivityStatus } from "@/lib/activity-client";
 import {
   toggleAllowStoryComments,
   toggleShowStoryLikes,
@@ -39,8 +41,13 @@ export default function SettingsPage() {
     isLoading: isContextLoading,
   } = useUserContext();
 
+  const { socket, isConnected } = useRealtimeSocket();
+  const [activityOverride, setActivityOverride] = useState<boolean | undefined>();
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const activityGeneration = useRef(0);
+  const activityRevision = useRef(0);
   const isPrivate = userData?.isPrivate ?? false;
-  const showActivityStatusState = userData?.showActivityStatus ?? true;
+  const showActivityStatusState = activityOverride ?? userData?.showActivityStatus ?? true;
   const allowStoryCommentsState = userData?.allowStoryComments ?? true;
   const showStoryLikesState = userData?.showStoryLikes ?? true;
 
@@ -72,15 +79,34 @@ export default function SettingsPage() {
     }
   };
 
+  useEffect(() => {
+    setActivityOverride(undefined);
+    setActivityError(null);
+    activityGeneration.current += 1;
+    const generation = activityGeneration.current;
+    if (!socket) return;
+    const changed = (data: { showActivityStatus: boolean }) => {
+      if (generation !== activityGeneration.current || typeof data.showActivityStatus !== "boolean") return;
+      activityRevision.current += 1;
+      setActivityOverride(data.showActivityStatus);
+    };
+    const dispose = observeActivityStatus(socket, () => emitWithAck<{ showActivityStatus: boolean }>(socket, "getActivityStatus", {}), changed);
+    return () => { activityGeneration.current += 1; dispose(); };
+  }, [socket, user?.id]);
+
   const handleToggleActivityStatus = async () => {
+    if (isActivityToggleLoading) return;
     setIsActivityToggleLoading(true);
+    setActivityError(null);
+    const generation = activityGeneration.current;
+    const revision = ++activityRevision.current;
     try {
-      const res = await toggleActivityStatus();
-      if (res.success) {
-        await refreshUser();
-      }
-    } catch (error) {
-      console.error("Failed to toggle activity status:", error);
+      const res = await emitWithAck<{ showActivityStatus: boolean }>(socket, "setActivityStatus", { showActivityStatus: !showActivityStatusState });
+      if (generation !== activityGeneration.current) return;
+      if (revision === activityRevision.current) setActivityOverride(res.showActivityStatus);
+      await Promise.all([refreshActivityPrivacy(), refreshUser()]);
+    } catch {
+      if (generation === activityGeneration.current) setActivityError("Activity status could not be confirmed. Reconnect and try again.");
     } finally {
       setIsActivityToggleLoading(false);
     }
@@ -242,6 +268,8 @@ export default function SettingsPage() {
                       ✨ Others can see when you&apos;re online ✨
                     </p>
                   )}
+                  {!isConnected && <p className="mt-2 text-xs text-gray-500">Connect to chat to update activity privacy.</p>}
+                  {activityError && <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{activityError}</p>}
                   {!showActivityStatusState && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-medium">
                       🔒 Your activity status is hidden
@@ -251,7 +279,10 @@ export default function SettingsPage() {
               </div>
               <button
                 onClick={handleToggleActivityStatus}
-                disabled={isActivityToggleLoading}
+                role="switch"
+                aria-label="Show activity status"
+                aria-checked={showActivityStatusState}
+                disabled={isActivityToggleLoading || !isConnected}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                   showActivityStatusState
                     ? "bg-orange-500"

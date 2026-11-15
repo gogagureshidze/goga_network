@@ -10,13 +10,14 @@ function setup({ direct = false, reviewed = true } = {}) {
   const env = { NODE_ENV: 'production', LIVEKIT_URL: 'wss://media.example.test', LIVEKIT_API_KEY: 'test-api-key', LIVEKIT_API_SECRET: 'test-secret-at-least-thirty-two-characters', ENABLE_GROUP_CALLS: 'true', GROUP_CALL_SECURITY_REVIEWED: reviewed ? 'true' : 'false',
     RTC_STUN_URLS: 'stun:turn.example.test:3478', TURN_URLS: 'turn:turn.example.test:3478?transport=udp,turns:turn.example.test:5349?transport=tcp', TURN_SHARED_SECRET: 'test-turn-shared-secret-not-production' };
   const members = new Set(['alice', 'bob']);
-  const call = { id: 'call-1', conversationId: 1, roomName: 'server-owned-random-room', status: 'ACTIVE', expiresAt: new Date(Date.now() + 3600_000), conversation: { kind: direct ? 'DIRECT' : 'GROUP' }, participants: [
+  const call = { id: 'call-1', conversationId: 1, roomName: 'server-owned-random-room', mediaVersion: 0, screenVersion: 0, status: 'ACTIVE', expiresAt: new Date(Date.now() + 3600_000), conversation: { kind: direct ? 'DIRECT' : 'GROUP' }, participants: [
     { userId: 'alice', status: 'JOINED', deviceId: 'alice-tab' }, { userId: 'bob', status: 'JOINED', deviceId: 'bob-tab' },
   ] };
   const chat = { authorizeConversation: async userId => { if (!members.has(userId)) throw new ChatError('FORBIDDEN', 'Denied', 403); return { id: 1 }; } };
-  const rooms = createRoomService({ prisma: { callSession: { findUnique: async () => call } }, chat, env, livekit: {} });
+  const livekit = { createRoom: async options => options };
+  const rooms = createRoomService({ prisma: { callSession: { findUnique: async () => structuredClone(call) } }, chat, env, livekit, logger: { error() {} } });
   const service = createCallCredentials({ rooms, env });
-  return { service, env, call, members };
+  return { service, env, call, members, livekit };
 }
 
 test('real signed LiveKit token is scoped to authenticated user and server-selected room with 30s initial TTL', async () => {
@@ -33,7 +34,7 @@ test('real signed LiveKit token is scoped to authenticated user and server-selec
   assert.equal(payload.video.roomAdmin, false);
   assert.equal(payload.video.roomCreate, false);
   assert.equal(payload.video.roomRecord, false);
-  assert.deepEqual(payload.video.canPublishSources, ['microphone', 'camera', 'screen_share', 'screen_share_audio']);
+  assert.deepEqual(payload.video.canPublishSources, ['microphone', 'camera']);
   assert.equal(result.serverUrl, 'wss://media.example.test');
 });
 
@@ -84,4 +85,35 @@ test('credential endpoint enforces shared per-account 30 requests/minute budget'
   for (let i = 0; i < 30; i++) await service.issueIce('alice', 'call-1', 'alice-tab');
   await assert.rejects(service.issueIce('alice', 'call-1', 'alice-tab'), error => error.code === 'RATE_LIMITED');
   assert.equal((await service.issueIce('bob', 'call-1', 'bob-tab')).relayAvailable, true);
+});
+
+test('both credential paths reject device identifiers longer than the database bound', async () => {
+  await assert.rejects(setup().service.issueToken('alice', 'call-1', 'a'.repeat(65)), error => error.code === 'INVALID_INPUT');
+  await assert.rejects(setup({ direct: true }).service.issueIce('alice', 'call-1', 'a'.repeat(65)), error => error.code === 'INVALID_INPUT');
+});
+
+test('screen room grants isolate publisher from subscribers and never enable screen publication in main room', async () => {
+  const { service, call } = setup();
+  Object.assign(call, { screenLeaseId: 'lease-one', screenRoomName: 'separate-screen-room', screenUserId: 'alice', screenDeviceId: 'alice-tab', screenExpiresAt: new Date(Date.now() + 20000), screenVersion: 1 });
+  const claims = result => JSON.parse(Buffer.from(result.token.split('.')[1], 'base64url').toString('utf8')).video;
+  const main = claims(await service.issueToken('alice', call.id, 'alice-tab'));
+  assert.deepEqual(main.canPublishSources, ['microphone', 'camera']);
+  const holder = claims(await service.issueToken('alice', call.id, 'alice-tab', { media: 'screen', leaseId: 'lease-one' }));
+  assert.equal(holder.room, 'separate-screen-room'); assert.equal(holder.canPublish, true);
+  assert.deepEqual(holder.canPublishSources, ['screen_share', 'screen_share_audio']);
+  const viewer = claims(await service.issueToken('bob', call.id, 'bob-tab', { media: 'screen', leaseId: 'lease-one' }));
+  assert.equal(viewer.canPublish, false); assert.deepEqual(viewer.canPublishSources, []);
+  await assert.rejects(service.issueToken('bob', call.id, 'bob-tab', { media: 'screen', leaseId: 'old-lease' }), error => error.code === 'CONFLICT');
+  call.screenExpiresAt = new Date(0);
+  await assert.rejects(service.issueToken('alice', call.id, 'alice-tab', { media: 'screen', leaseId: 'lease-one' }), error => error.code === 'CONFLICT');
+});
+
+test('tokens fail closed when room capacity cannot be prepared or a media epoch changes during creation', async () => {
+  const { service, call, livekit } = setup();
+  livekit.createRoom = async () => { throw new Error('media unavailable'); };
+  await assert.rejects(service.issueToken('alice', call.id, 'alice-tab'), error => error.code === 'UNAVAILABLE');
+  livekit.createRoom = async options => ({ ...options, maxParticipants: 0 });
+  await assert.rejects(service.issueToken('alice', call.id, 'alice-tab'), error => error.code === 'UNAVAILABLE');
+  livekit.createRoom = async options => { call.roomName = 'new-epoch'; call.mediaVersion++; return options; };
+  await assert.rejects(service.issueToken('alice', call.id, 'alice-tab'), error => error.code === 'CONFLICT');
 });

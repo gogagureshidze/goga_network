@@ -4,6 +4,7 @@ import {useAuth} from '@clerk/nextjs';
 import dynamic from 'next/dynamic';
 import {emitWithAck, useRealtimeSocket} from '@/hooks/useRealtimeSocket';
 import {createCallLifecycle} from '@/lib/call-lifecycle';
+import {isCallInvitation, isCurrentCallUpdate} from '@/lib/group-call-state';
 import type {Call} from './types';
 
 const CallRoom = dynamic(() => import('./CallRoom'), {ssr: false});
@@ -23,8 +24,8 @@ export default function CommunicationsProvider({children}: {children: ReactNode}
   const invitation = useRef<Call | null>(null);
   const pending = useRef<number | null>(null);
   const lifecycle = useRef(createCallLifecycle());
-  const showCall = useCallback((next: Call | null) => { active.current = next; setCall(next); }, []);
-  const showInvitation = useCallback((next: Call | null) => { invitation.current = next; setIncoming(next); }, []);
+  const showCall = useCallback((next: Call | null) => { if (next && !isCurrentCallUpdate(active.current, next)) return; active.current = next; setCall(next); }, []);
+  const showInvitation = useCallback((next: Call | null) => { if (next && !isCurrentCallUpdate(invitation.current, next)) return; invitation.current = next; setIncoming(next); }, []);
   const close = useCallback((id: string) => {
     lifecycle.current.close(id);
     if (active.current?.id === id) showCall(null);
@@ -46,11 +47,12 @@ export default function CommunicationsProvider({children}: {children: ReactNode}
       if (disposed || !guard.accepts(next.id)) return;
       const participant = next.participants.find(p => p.userId === userId);
       if (['ENDED', 'MISSED', 'REJECTED'].includes(next.status)) { close(next.id); return; }
+      if (!isCurrentCallUpdate(active.current?.id === next.id ? active.current : invitation.current, next)) return;
       if (participant?.status === 'JOINED' && participant.deviceId === deviceId) {
         if (active.current && active.current.id !== next.id) return;
         showCall(next);
         if (invitation.current?.id === next.id) showInvitation(null);
-      } else if (participant?.status === 'INVITED' && next.status === 'RINGING' && next.initiatorId !== userId) {
+      } else if (isCallInvitation(next, userId)) {
         showInvitation(next);
       } else {
         if (invitation.current?.id === next.id) showInvitation(null);
